@@ -15,7 +15,8 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import { CHATS, type MessageAttachment } from '@/data/mock';
+import { type MessageAttachment } from '@/data/mock';
+import { useChats } from '@/data/chat-store';
 import { useTheme } from '@/hooks/use-theme';
 import { getLocale, t } from '@/i18n';
 
@@ -212,7 +213,18 @@ function ContactSheet({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
-  const list = CHATS.filter((c) => !c.isGroup && c.name.toLowerCase().includes(query.trim().toLowerCase()));
+  // Real chats only — never the demo CHATS fixture (which invents people).
+  const { chats } = useChats();
+  const q = query.trim().toLowerCase();
+  const list = chats
+    .filter((c) => c.type === 'direct' && c.peer_user_id)
+    .map((c) => ({
+      id: c.id,
+      name: c.title ?? c.peer_username ?? '',
+      username: c.peer_username ? `@${c.peer_username.replace(/^@/, '')}` : '',
+      avatarUri: c.avatar_url,
+    }))
+    .filter((c) => !q || c.name.toLowerCase().includes(q) || c.username.toLowerCase().includes(q));
 
   return (
     <SheetShell title={t('chat.contact_share')} onClose={onClose}>
@@ -232,6 +244,11 @@ function ContactSheet({
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, Spacing.md) }}
         keyboardShouldPersistTaps="handled"
       >
+        {list.length === 0 ? (
+          <Text style={[styles.listSub, { color: colors.textSecondary, padding: Spacing.md }]}>
+            {t('chat.contact_empty') === 'chat.contact_empty' ? 'No contacts to share yet.' : t('chat.contact_empty')}
+          </Text>
+        ) : null}
         {list.map((c) => (
           <Pressable
             key={c.id}
