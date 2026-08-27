@@ -6,11 +6,13 @@ import {
   getStory,
   listStories,
   mapStoryDTO,
+  reactStory,
   type StoryDTO,
   type StoryKind,
   type StoryVisibility,
 } from '@/data/api/stories';
 import type { Story } from '@/data/mock';
+import { applyMyReactions } from '@/data/story-reactions';
 import { showToast } from '@/data/toast-store';
 import { t } from '@/i18n';
 
@@ -137,6 +139,48 @@ export function prependStoryFromDTO(dto: StoryDTO) {
 export function markStoryViewedLocal(id: string) {
   feed = feed.map((s) => (s.id === id ? { ...s, isViewed: true } : s));
   emit();
+}
+
+function patchStoryLocal(id: string, patch: Partial<Story>) {
+  feed = feed.map((s) => (s.id === id ? { ...s, ...patch } : s));
+  emit();
+}
+
+/**
+ * Replace your reactions on a story.
+ *
+ * The feed moves first so the chip answers the tap, then the server's own
+ * counts land on top: somebody else may have reacted in between, and their
+ * number is the true one.
+ *
+ * A failure puts the old set back. Leaving a chip lit that the server never
+ * accepted is worse than the tap appearing not to register — the count would
+ * be wrong until the next refresh, with nothing to say so.
+ */
+export async function setStoryReactions(id: string, emojis: string[]): Promise<void> {
+  const story = getStoryLocal(id);
+  if (!story) return;
+  const previousMine = story.myReactions ?? [];
+  const previousCounts = story.reactions ?? [];
+
+  patchStoryLocal(id, {
+    reactions: applyMyReactions(previousCounts, previousMine, emojis),
+    myReactions: emojis,
+  });
+
+  // A story still uploading has no server id to react to yet.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return;
+
+  try {
+    const dto = await reactStory(id, emojis);
+    patchStoryLocal(id, {
+      reactions: dto.reactions ?? [],
+      myReactions: dto.my_reactions ?? [],
+    });
+  } catch {
+    patchStoryLocal(id, { reactions: previousCounts, myReactions: previousMine });
+    showToast(t('stories.react_failed'), 'error', 2600);
+  }
 }
 
 export function removeStoryLocal(id: string) {

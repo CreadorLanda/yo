@@ -1,3 +1,5 @@
+import type { StoryReactionCount } from '@/data/story-reactions';
+
 import { api } from './client';
 import { mediaFileURL } from './media';
 
@@ -24,6 +26,10 @@ export interface StoryDTO {
   is_own: boolean;
   allow_comments?: boolean;
   allow_anonymous_replies?: boolean;
+  /** Every emoji on the story with how many people left it, busiest first. */
+  reactions?: StoryReactionCount[];
+  /** What the reader themselves left, in the order they picked it. */
+  my_reactions?: string[];
 }
 
 export function listStories() {
@@ -55,8 +61,10 @@ export type StoryViewer = {
   display_name?: string;
   avatar_uri?: string;
   viewed_at: string;
-  /** Absent when the viewer left no reaction. */
+  /** The first of `emojis`. Kept by the server for older clients. */
   emoji?: string;
+  /** Every emoji this viewer left, oldest first. Absent when they left none. */
+  emojis?: string[];
 };
 
 /**
@@ -73,8 +81,26 @@ export function viewStory(id: string) {
   return api.post<StoryDTO>(`/api/stories/${id}/view`);
 }
 
-export function reactStory(id: string, emoji: string) {
-  return api.post<void>(`/api/stories/${id}/react`, { emoji });
+/**
+ * Set the whole set of reactions the reader leaves on a story, replacing
+ * whatever they left before. An empty array takes them all back.
+ *
+ * Returns the story with the counts as they now stand, so the bar can settle
+ * on the server's numbers rather than keeping its own guess.
+ */
+export function reactStory(id: string, emojis: readonly string[]) {
+  return api.post<StoryDTO>(`/api/stories/${id}/react`, { reactions: emojis });
+}
+
+/**
+ * The emoji the server accepts as reactions.
+ *
+ * The app ships its own copy in `data/story-reactions.ts` so the bar draws
+ * offline and on the first frame; this is here to check that copy against the
+ * server rather than to render from.
+ */
+export function storyReactionCatalogue() {
+  return api.get<{ standard: string[]; extended: string[] }>('/api/stories/reactions');
 }
 
 export function deleteStory(id: string) {
@@ -107,6 +133,10 @@ export function mapStoryDTO(s: StoryDTO): import('@/data/mock').Story {
     allowComments: s.allow_comments !== false,
     allowAnonymousReplies: s.allow_anonymous_replies !== false,
     viewers: s.viewers,
+    // Absent on a server that predates multi-emoji reactions; empty reads
+    // the same as "nobody reacted", which is what that server means.
+    reactions: s.reactions ?? [],
+    myReactions: s.my_reactions ?? [],
     replies: 0,
     isViewed: s.is_viewed,
     isOwn: s.is_own,
