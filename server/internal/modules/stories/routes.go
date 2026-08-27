@@ -6,6 +6,8 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	g := rg.Group("/stories")
 	g.POST("", c.PostCreate)
 	g.GET("", c.GetFeed)
+	// Before /:id so the literal path wins over the parameter.
+	g.GET("/reactions", c.GetReactionCatalogue)
 	g.GET("/:id", c.GetOne)
 	g.POST("/:id/view", c.PostView)
 	// Author only — who watched is as private as what they watched.

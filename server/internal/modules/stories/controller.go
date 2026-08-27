@@ -97,11 +97,19 @@ func (c *Controller) PostReact(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
-	if err := c.svc.React(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), req.Emoji); err != nil {
+	st, err := c.svc.React(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), req)
+	if err != nil {
 		writeErr(ctx, err)
 		return
 	}
-	ctx.Status(http.StatusNoContent)
+	// The story, not 204: the caller wants the new counts, and it just
+	// changed them.
+	ctx.JSON(http.StatusOK, st)
+}
+
+// GetReactionCatalogue lists the emoji a reaction may be.
+func (c *Controller) GetReactionCatalogue(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, c.svc.ReactionCatalogue())
 }
 
 func writeErr(ctx *gin.Context, err error) {
@@ -118,6 +126,7 @@ func writeErr(ctx *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidKind), errors.Is(err, ErrInvalidVis),
 		errors.Is(err, ErrNeedMedia), errors.Is(err, ErrEmptyCaption),
 		errors.Is(err, ErrEmptyBody), errors.Is(err, ErrOwnStory),
+		errors.Is(err, ErrInvalidEmoji),
 		errors.Is(err, ErrCommentsDisabled), errors.Is(err, ErrAnonNotAllowed):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
