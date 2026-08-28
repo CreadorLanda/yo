@@ -382,6 +382,7 @@ export default {
     edited: 'edited',
     deleted_self: 'You deleted this message',
     deleted_other: 'This message was deleted',
+    retry_send: 'Not sent. Tap to retry.',
     view_once: 'View once',
     view_once_tap: 'Tap to view',
     view_once_consumed: 'Opened',

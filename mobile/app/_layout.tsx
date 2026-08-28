@@ -19,6 +19,7 @@ import {
 } from '@/data/push';
 import { bootstrapAuth } from '@/data/auth-store';
 import { ensureKeysPublished } from '@/data/crypto';
+import { ensureOutboxRunning } from '@/data/outbox';
 import { registerPushWithServer } from '@/data/push';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -62,6 +63,10 @@ export default function RootLayout() {
           registerPushWithServer().catch(() => {});
           // Generate / publish Signal-style pre-key material for E2EE.
           ensureKeysPublished().catch(() => {});
+          // Resume any message queued offline before the app was closed,
+          // and again on every foreground — not just on reopening the one
+          // chat that queued it.
+          ensureOutboxRunning();
         } else {
           // Send signed-out users to onboarding explicitly rather than
           // relying on the anchor to resolve "/". A standalone build opens
