@@ -46,6 +46,28 @@ type Story struct {
 	Viewers               int       `json:"viewers"`
 	IsViewed              bool      `json:"is_viewed"`
 	IsOwn                 bool      `json:"is_own"`
+	// Every emoji left on the story with how many people left it, busiest
+	// first. Always present, empty when nobody has reacted.
+	Reactions []Reaction `json:"reactions"`
+	// What the reader themselves left, in the order they picked it. Separate
+	// from the counts because the client needs both: which chips to fill in,
+	// and how big each number is.
+	MyReactions []string `json:"my_reactions"`
+}
+
+// Reaction is one emoji on a story and how many people left it.
+type Reaction struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+}
+
+// ReactionCatalogue is the set of emoji this server accepts, so a client
+// does not have to carry its own copy and drift from it.
+//
+// The split is presentation only — a client is free to show them as one row.
+type ReactionCatalogue struct {
+	Standard []string `json:"standard"`
+	Extended []string `json:"extended"`
 }
 
 type CreateRequest struct {
@@ -65,8 +87,19 @@ type CreateRequest struct {
 	TTLHours int `json:"ttl_hours"`
 }
 
+// ReactRequest sets the whole set of reactions the caller leaves on a story,
+// replacing whatever they left before.
+//
+// Replace rather than add: the client shows the reaction bar with the
+// caller's own picks filled in, so "these are my reactions now" is the state
+// it already holds. Adding would need a second call to take one back.
 type ReactRequest struct {
-	Emoji string `json:"emoji" binding:"required"`
+	// Emoji is the single-emoji form that shipped first, still sent by older
+	// clients. Reactions wins when both arrive.
+	Emoji string `json:"emoji"`
+	// A pointer so an absent field can be told from `[]`: absent is a
+	// malformed request, `[]` clears every reaction.
+	Reactions *[]string `json:"reactions"`
 }
 
 // Viewer is one row of the "seen by" list. Only the story's author can read
@@ -77,8 +110,11 @@ type Viewer struct {
 	DisplayName string    `json:"display_name,omitempty"`
 	AvatarURI   string    `json:"avatar_uri,omitempty"`
 	ViewedAt    time.Time `json:"viewed_at"`
-	// Empty when the viewer left no reaction.
+	// Emoji is the viewer's first reaction, kept for clients that predate
+	// multiple ones. Read Emojis instead.
 	Emoji string `json:"emoji,omitempty"`
+	// Every emoji this viewer left, oldest first. Empty when they left none.
+	Emojis []string `json:"emojis,omitempty"`
 }
 
 // How long a story may be kept alive, in hours.

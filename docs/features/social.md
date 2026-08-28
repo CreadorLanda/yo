@@ -162,53 +162,93 @@ interface AutoCropSettings {
 
 ### 1.5 Story Reactions
 
-React with multiple emojis from keyboard.
+Leave several emoji on the same story.
 
 **Supported Reactions:**
 
 ```
 Standard:    ❤️ 😂 😮 😢 😡 👍 👎 🔥 🎉 😍 👏
-Extended:    🙌 💪 🙏 😇 ❤️‍🔥 💯 ⭐ 🌟 ✨ 🆕 😁 😎 🥳 😍
-Custom:     [your custom emojis]
+Extended:    🙌 💪 🙏 😇 ❤️‍🔥 💯 ⭐ 🌟 ✨ 🆕 😁 😎 🥳
 ```
 
-**Reacting (Single):**
+The set is closed — a reaction outside it comes back `400 invalid_emoji`.
+Two differences are folded away rather than refused, because keyboards
+disagree about them and the sender cannot see them: the variation selector
+(`❤` is stored as `❤️`) and a skin tone (`👍🏽` counts as `👍`).
+
+Read the list instead of hardcoding it:
 
 ```http
-POST /api/stories/:id/reactions
-{
-  "reaction": "🔥"
-}
+GET /api/stories/reactions
 ```
-
-**Reacting (Multiple):**
-
-```http
-POST /api/stories/:id/reactions
-{
-  "reactions": ["🔥", "❤️", "🎉"]  // array for multiple
-}
-```
-
-**Response:**
 
 ```json
 {
-  "reactions": {
-    "🔥": 5,
-    "❤️": 12,
-    "🎉": 3
-  },
-  "user_reactions": ["🔥", "❤️"]
+  "standard": ["❤️", "😂", "..."],
+  "extended": ["🙌", "💪", "..."]
 }
 ```
 
-**From Keyboard:**
+**Reacting:**
 
-1. Long-press story
-2. Reaction bar appears
-3. Tap multiple emojis to react with all at once
-4. Or use custom emoji picker
+One call sets the caller's whole set, replacing what they left before. The
+array form is the one to send; the single field is what older clients send
+and still works.
+
+```http
+POST /api/stories/:id/react
+{
+  "reactions": ["🔥", "❤️", "🎉"]
+}
+```
+
+```http
+POST /api/stories/:id/react
+{
+  "emoji": "🔥"
+}
+```
+
+`"reactions": []` takes them all back. A body with neither field is a
+`400` rather than a clear, so a client bug cannot wipe someone's reactions.
+
+**Response:** the story, with the counts as they now stand.
+
+```json
+{
+  "id": "…",
+  "reactions": [
+    { "emoji": "❤️", "count": 12 },
+    { "emoji": "🔥", "count": 5 },
+    { "emoji": "🎉", "count": 3 }
+  ],
+  "my_reactions": ["🔥", "❤️"]
+}
+```
+
+`reactions` is everyone's, busiest first. `my_reactions` is only the
+reader's own, in the order they picked them — the client needs both: which
+chips to fill in, and how big each number is. Both are present and empty
+rather than absent when nobody has reacted.
+
+The same two fields come back on `GET /api/stories` and
+`GET /api/stories/:id`, so the feed draws counts without a second call.
+
+The story's author also sees who left what, on the viewer list:
+
+```http
+GET /api/stories/:id/viewers
+```
+
+```json
+[{ "user_id": "…", "username": "ana", "emojis": ["🔥", "❤️"] }]
+```
+
+**From the app:**
+
+1. The reaction bar sits under the story
+2. Tap emoji to add them, tap again to take one back
+3. The full set opens from the bar
 
 ---
 
