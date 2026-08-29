@@ -50,6 +50,7 @@ import { AttachmentBubble } from '@/components/chat/attachment-bubbles';
 import { MediaEditor, type EditorAsset, type EditorResult } from '@/components/chat/media-editor';
 import { appAlert } from '@/data/dialog-store';
 import { ApiError } from '@/data/api/client';
+import { AppIcon } from '@/components/ui/app-icon';
 import { CachedImage } from '@/components/ui/cached-image';
 import { ForwardPicker } from '@/components/chat/forward-picker';
 import { MediaViewer, type ViewerItem } from '@/components/chat/media-viewer';
@@ -2166,6 +2167,36 @@ export default function ChatScreen() {
     setQuery('');
   };
 
+  /**
+   * Attach and camera, as one group so the theme can put them on either side
+   * of the input. `attachSide` was a knob the creator offered and the composer
+   * ignored — the icons were hardcoded to the right whatever it said.
+   */
+  const attachControls = (
+    <>
+      {canCompose ? (
+        <Pressable
+          hitSlop={8}
+          style={layout.attachSide === 'left' ? styles.composerLeft : styles.composerRight}
+          onPress={() => setShowAttach(true)}
+          accessibilityLabel={t('chat.attach')}
+        >
+          <AppIcon slot="attach" size={22} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+      {canCompose && !hasDraft ? (
+        <Pressable
+          hitSlop={8}
+          style={layout.attachSide === 'left' ? styles.composerLeft : styles.composerRight}
+          onPress={openCamera}
+          accessibilityLabel={t('chat.camera')}
+        >
+          <AppIcon slot="camera" size={22} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+    </>
+  );
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -2630,6 +2661,7 @@ export default function ChatScreen() {
                       color={canCompose ? colors.textSecondary : colors.textMuted}
                     />
                   </Pressable>
+                  {layout.attachSide === 'left' ? attachControls : null}
                   <TextInput
                     ref={composerInputRef}
                     value={draft}
@@ -2650,26 +2682,7 @@ export default function ChatScreen() {
                     editable={canCompose}
                     style={[styles.composerInput, { color: canCompose ? colors.text : colors.textMuted }]}
                   />
-                  {canCompose ? (
-                    <Pressable
-                      hitSlop={8}
-                      style={styles.composerRight}
-                      onPress={() => setShowAttach(true)}
-                      accessibilityLabel={t('chat.attach')}
-                    >
-                      <Ionicons name="attach" size={22} color={colors.textSecondary} />
-                    </Pressable>
-                  ) : null}
-                  {canCompose && !hasDraft ? (
-                    <Pressable
-                      hitSlop={8}
-                      style={styles.composerRight}
-                      onPress={openCamera}
-                      accessibilityLabel={t('chat.camera')}
-                    >
-                      <Ionicons name="camera-outline" size={22} color={colors.textSecondary} />
-                    </Pressable>
-                  ) : null}
+                  {layout.attachSide === 'right' ? attachControls : null}
                 </View>
               ) : (
                 <RecordingStrip
@@ -2692,7 +2705,7 @@ export default function ChatScreen() {
                     ]}
                     accessibilityLabel={t('chat.send')}
                   >
-                    <Ionicons name="arrow-up" size={22} color={colors.onPrimary} />
+                    <AppIcon slot="send" size={22} color={colors.onPrimary} />
                   </Pressable>
                 ) : hasDraft ? (
                   <Pressable
@@ -2704,7 +2717,7 @@ export default function ChatScreen() {
                     ]}
                     accessibilityLabel={t('chat.send')}
                   >
-                    <Ionicons name="arrow-up" size={22} color={colors.onPrimary} />
+                    <AppIcon slot="send" size={22} color={colors.onPrimary} />
                   </Pressable>
                 ) : (
                   <View style={styles.micWrap}>
@@ -2719,7 +2732,7 @@ export default function ChatScreen() {
                           micStyle,
                         ]}
                       >
-                        <Ionicons name="mic" size={22} color={colors.onPrimary} />
+                        <AppIcon slot="mic" size={22} color={colors.onPrimary} />
                       </Animated.View>
                     </GestureDetector>
                   </View>

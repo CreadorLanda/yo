@@ -2,6 +2,38 @@ import { useSyncExternalStore } from 'react';
 
 import { Colors } from '@/constants/theme';
 
+import {
+  deleteStoredPack,
+  listStoredPacks,
+  readThemePrefs,
+  saveStoredPack,
+  writeThemePrefs,
+} from './db/themes';
+import { pruneThemeImages } from './theme-assets';
+import { EMPTY_ICONS, type ThemeIcons } from './theme-icons';
+import {
+  DEFAULT_LAYOUT,
+  defaultChatChrome,
+  type BubbleShape,
+  type ChatChrome,
+  type ComposerStyle,
+  type CreateThemeInput,
+  type HeaderStyle,
+  type MessageDensity,
+  type SchemePreference,
+  type SendButtonStyle,
+  type ThemeCategory,
+  type ThemeLayout,
+  type ThemeMode,
+  type ThemePack,
+  type ThemeTokens,
+} from './theme-model';
+import {
+  DEFAULT_PACK_ID,
+  hydrateThemeState,
+  serializeThemePrefs,
+} from './theme-persistence';
+
 /**
  * Theme marketplace + GB-style creator.
  *
@@ -11,388 +43,16 @@ import { Colors } from '@/constants/theme';
  *   3. Personal overrides (always-on tweaks for the user)
  */
 
-export type ThemeMode = 'light' | 'dark';
-
-/** App-wide semantic colors a pack can override. */
-export type ThemeTokens = {
-  primary: string;
-  onPrimary: string;
-  background: string;
-  surface: string;
-  surfaceElevated: string;
-  surfaceMuted: string;
-  text: string;
-  textSecondary: string;
-  textMuted: string;
-  border: string;
-  divider: string;
-  tint: string;
-  icon: string;
-  tabIconDefault: string;
-  tabIconSelected: string;
-  success: string;
-  warning: string;
-  danger: string;
-  info: string;
-};
-
-/** Chat-thread chrome — classic GBWhatsApp-style knobs. */
-export type ChatChrome = {
-  /** Thread background (wallpaper solid). Empty = use surfaceMuted. */
-  wallpaper: string;
-  /** Local/remote image URI for photo wallpaper. */
-  wallpaperImage: string;
-  bubbleMine: string;
-  bubbleTheirs: string;
-  textMine: string;
-  textTheirs: string;
-  metaMine: string;
-  metaTheirs: string;
-  datePillBg: string;
-  datePillText: string;
-  composerBg: string;
-  inputBg: string;
-  linkMine: string;
-  linkTheirs: string;
-  headerBg: string;
-  headerFg: string;
-  sendBtnBg: string;
-  replyBarBg: string;
-  replyBarAccent: string;
-  selectionBg: string;
-  typingDot: string;
-  systemBg: string;
-  systemText: string;
-  unreadBadge: string;
-};
-
-export type BubbleShape = 'rounded' | 'tail' | 'square' | 'pill';
-export type BubbleSide = 'right' | 'left';
-export type HeaderStyle = 'brand' | 'minimal' | 'colored';
-export type TabBarPosition = 'top' | 'bottom';
-export type AvatarPosition = 'left' | 'right' | 'hidden';
-export type MessageDensity = 'compact' | 'cozy' | 'roomy';
-export type ComposerStyle = 'rounded' | 'flat' | 'floating';
-export type CheckPosition = 'left' | 'right';
-export type DatePillStyle = 'pill' | 'text' | 'hidden';
-export type ReplyStyle = 'quote' | 'bar' | 'minimal';
-export type SendButtonStyle = 'circle' | 'pill' | 'icon';
-export type SystemMsgStyle = 'pill' | 'plain' | 'banner';
-export type UnreadBadgeStyle = 'dot' | 'count' | 'none';
-
-/** Positions, shapes & ~40 GB-style knobs. */
-export type ThemeLayout = {
-  /** Which side YOUR messages sit on (swap = WA-GB classic). */
-  myBubbleSide: BubbleSide;
-  bubbleShape: BubbleShape;
-  /** Corner radius 4–28 when shape is rounded/tail. */
-  bubbleRadius: number;
-  showTails: boolean;
-  /** Message text scale 0.85–1.35 */
-  fontScale: number;
-  density: MessageDensity;
-  avatarPosition: AvatarPosition;
-  selectionCheckSide: CheckPosition;
-  headerStyle: HeaderStyle;
-  tabBarPosition: TabBarPosition;
-  composerStyle: ComposerStyle;
-  /** Pattern overlay on wallpaper */
-  wallpaperPattern: boolean;
-  /** Max bubble width 60–92 (% of row) */
-  bubbleMaxWidth: number;
-  // ── Extra personalization knobs ──────────────────────────────────────────
-  bubblePaddingH: number;
-  bubblePaddingV: number;
-  emojiScale: number;
-  letterSpacing: number;
-  lineHeightExtra: number;
-  bubbleShadow: boolean;
-  bubbleShadowStrength: number;
-  timestampInside: boolean;
-  datePillStyle: DatePillStyle;
-  replyStyle: ReplyStyle;
-  sendButtonStyle: SendButtonStyle;
-  attachSide: CheckPosition;
-  inputRadius: number;
-  listAvatarSize: number;
-  showOnlineDot: boolean;
-  showHeaderBorder: boolean;
-  /** 0–80 darken overlay on photo wallpaper */
-  wallpaperDim: number;
-  wallpaperBlur: boolean;
-  reactionScale: number;
-  swipeReply: boolean;
-  selectionHighlight: boolean;
-  systemMsgStyle: SystemMsgStyle;
-  chatHeaderCompact: boolean;
-  fullWidthBubbles: boolean;
-  groupSenderBold: boolean;
-  metaSize: number;
-  enterSends: boolean;
-  hapticsOnReact: boolean;
-  squircleCorners: boolean;
-  linkUnderline: boolean;
-  unreadBadgeStyle: UnreadBadgeStyle;
-  showTypingDots: boolean;
-  boldOutgoing: boolean;
-  dimIncoming: boolean;
-  largeTimestamps: boolean;
-  centerDatePills: boolean;
-  gapAfterGroup: number;
-};
-
-export type ThemeCategory =
-  | 'all'
-  | 'official'
-  | 'neon'
-  | 'pastel'
-  | 'minimal'
-  | 'nature'
-  | 'midnight'
-  | 'mine';
-
-export type ThemePack = {
-  id: string;
-  name: string;
-  author: string;
-  description: string;
-  category: Exclude<ThemeCategory, 'all' | 'mine'>;
-  downloads: number;
-  likes: number;
-  price: 0 | number;
-  swatches: string[];
-  tokens: {
-    light?: Partial<ThemeTokens>;
-    dark?: Partial<ThemeTokens>;
-  };
-  /** Per-scheme chat chrome overrides. */
-  chat?: {
-    light?: Partial<ChatChrome>;
-    dark?: Partial<ChatChrome>;
-  };
-  layout?: Partial<ThemeLayout>;
-  /** Advanced CSS vars (parsed on apply / edit). */
-  customCss?: string;
-  /** Last AI prompt used to generate this pack. */
-  aiPrompt?: string;
-  isOfficial?: boolean;
-  isOwned?: boolean;
-  /** Forked from another pack id. */
-  forkedFrom?: string;
-};
-
-export type SchemePreference = 'system' | 'light' | 'dark';
-
-export type CreateThemeInput = {
-  name: string;
-  description?: string;
-  category: ThemePack['category'];
-  mode: ThemeMode | 'both';
-  primary: string;
-  background: string;
-  surface: string;
-  text: string;
-  secondary?: string;
-  chat?: Partial<ChatChrome>;
-  layout?: Partial<ThemeLayout>;
-  customCss?: string;
-  aiPrompt?: string;
-  /** Update existing owned pack instead of creating. */
-  editId?: string;
-  /** Fork source id (becomes forkedFrom). */
-  forkFromId?: string;
-};
+/**
+ * The theme vocabulary — types, defaults, geometry — lives in [theme-model]
+ * and is re-exported here so every screen keeps one import for "themes".
+ */
+export * from './theme-model';
 
 // ── Defaults ────────────────────────────────────────────────────────────────
 
 const baseLight = Colors.light as unknown as ThemeTokens;
 const baseDark = Colors.dark as unknown as ThemeTokens;
-
-export const DEFAULT_LAYOUT: ThemeLayout = {
-  myBubbleSide: 'right',
-  bubbleShape: 'tail',
-  bubbleRadius: 16,
-  showTails: true,
-  fontScale: 1,
-  density: 'cozy',
-  avatarPosition: 'left',
-  selectionCheckSide: 'left',
-  headerStyle: 'brand',
-  tabBarPosition: 'top',
-  composerStyle: 'rounded',
-  wallpaperPattern: false,
-  bubbleMaxWidth: 82,
-  bubblePaddingH: 11,
-  bubblePaddingV: 7,
-  emojiScale: 1,
-  letterSpacing: 0,
-  lineHeightExtra: 0,
-  bubbleShadow: true,
-  bubbleShadowStrength: 0.35,
-  timestampInside: true,
-  datePillStyle: 'pill',
-  replyStyle: 'quote',
-  sendButtonStyle: 'circle',
-  attachSide: 'left',
-  inputRadius: 22,
-  listAvatarSize: 48,
-  showOnlineDot: true,
-  showHeaderBorder: true,
-  wallpaperDim: 35,
-  wallpaperBlur: false,
-  reactionScale: 1,
-  swipeReply: true,
-  selectionHighlight: true,
-  systemMsgStyle: 'pill',
-  chatHeaderCompact: false,
-  fullWidthBubbles: false,
-  groupSenderBold: true,
-  metaSize: 11,
-  enterSends: true,
-  hapticsOnReact: true,
-  squircleCorners: false,
-  linkUnderline: true,
-  unreadBadgeStyle: 'count',
-  showTypingDots: true,
-  boldOutgoing: false,
-  dimIncoming: false,
-  largeTimestamps: false,
-  centerDatePills: true,
-  gapAfterGroup: 8,
-};
-
-export function defaultChatChrome(scheme: ThemeMode, primary: string): ChatChrome {
-  if (scheme === 'dark') {
-    return {
-      wallpaper: '#131419',
-      wallpaperImage: '',
-      bubbleMine: primary,
-      bubbleTheirs: '#191A21',
-      textMine: '#FFFFFF',
-      textTheirs: '#ECEDF2',
-      metaMine: 'rgba(255,255,255,0.72)',
-      metaTheirs: '#6C6E7A',
-      datePillBg: '#191A21',
-      datePillText: '#9A9CA8',
-      composerBg: '#131419',
-      inputBg: '#191A21',
-      linkMine: '#BFDBFE',
-      linkTheirs: primary,
-      headerBg: '#191A21',
-      headerFg: '#ECEDF2',
-      sendBtnBg: primary,
-      replyBarBg: '#23242D',
-      replyBarAccent: primary,
-      selectionBg: `${primary}22`,
-      typingDot: '#6C6E7A',
-      systemBg: '#191A21',
-      systemText: '#9A9CA8',
-      unreadBadge: primary,
-    };
-  }
-  return {
-    wallpaper: '#EEF1F6',
-    wallpaperImage: '',
-    bubbleMine: primary,
-    bubbleTheirs: '#FFFFFF',
-    textMine: '#FFFFFF',
-    textTheirs: '#111827',
-    metaMine: 'rgba(255,255,255,0.78)',
-    metaTheirs: '#9AA3B2',
-    datePillBg: '#FFFFFF',
-    datePillText: '#6B7280',
-    composerBg: '#EEF1F6',
-    inputBg: '#FFFFFF',
-    linkMine: '#DBEAFE',
-    linkTheirs: primary,
-    headerBg: primary,
-    headerFg: '#FFFFFF',
-    sendBtnBg: primary,
-    replyBarBg: '#F0F4FF',
-    replyBarAccent: primary,
-    selectionBg: `${primary}18`,
-    typingDot: '#9AA3B2',
-    systemBg: '#FFFFFF',
-    systemText: '#6B7280',
-    unreadBadge: primary,
-  };
-}
-
-function densityGap(d: MessageDensity): number {
-  if (d === 'compact') return 2;
-  if (d === 'roomy') return 10;
-  return 6;
-}
-
-export function layoutMetrics(layout: ThemeLayout) {
-  const baseFont = Math.round(15 * layout.fontScale);
-  return {
-    rowGap: densityGap(layout.density) + Math.max(0, layout.gapAfterGroup - 8) * 0.25,
-    groupedGap: layout.density === 'compact' ? 1 : 2,
-    fontSize: baseFont,
-    lineHeight: Math.round(20 * layout.fontScale) + layout.lineHeightExtra,
-    maxWidthPct: layout.fullWidthBubbles ? 94 : layout.bubbleMaxWidth,
-    bubblePaddingH: layout.bubblePaddingH,
-    bubblePaddingV: layout.bubblePaddingV,
-    letterSpacing: layout.letterSpacing,
-    metaSize: layout.largeTimestamps ? layout.metaSize + 2 : layout.metaSize,
-    emojiScale: layout.emojiScale,
-    reactionScale: layout.reactionScale,
-    shadowOpacity: layout.bubbleShadow ? 0.04 + layout.bubbleShadowStrength * 0.12 : 0,
-    inputRadius: layout.inputRadius,
-  };
-}
-
-/** Border radii for a bubble given shape + mine + last-in-group. */
-export function bubbleRadii(
-  layout: ThemeLayout,
-  mine: boolean,
-  isLast: boolean,
-  mySide: BubbleSide,
-): {
-  borderTopLeftRadius: number;
-  borderTopRightRadius: number;
-  borderBottomLeftRadius: number;
-  borderBottomRightRadius: number;
-} {
-  const r = layout.bubbleRadius;
-  if (layout.bubbleShape === 'square') {
-    return {
-      borderTopLeftRadius: 4,
-      borderTopRightRadius: 4,
-      borderBottomLeftRadius: 4,
-      borderBottomRightRadius: 4,
-    };
-  }
-  if (layout.bubbleShape === 'pill') {
-    const p = Math.max(r, 22);
-    return {
-      borderTopLeftRadius: p,
-      borderTopRightRadius: p,
-      borderBottomLeftRadius: p,
-      borderBottomRightRadius: p,
-    };
-  }
-  // rounded / tail
-  const tail = layout.showTails && layout.bubbleShape === 'tail' && isLast ? 4 : r;
-  // Tail sits on the outer edge of the bubble relative to alignment.
-  const mineOnRight = mySide === 'right';
-  if (mine) {
-    return {
-      borderTopLeftRadius: r,
-      borderTopRightRadius: r,
-      borderBottomLeftRadius: mineOnRight ? r : tail,
-      borderBottomRightRadius: mineOnRight ? tail : r,
-    };
-  }
-  // theirs — opposite outer corner
-  return {
-    borderTopLeftRadius: r,
-    borderTopRightRadius: r,
-    borderBottomLeftRadius: mineOnRight ? tail : r,
-    borderBottomRightRadius: mineOnRight ? r : tail,
-  };
-}
 
 // ── Pack helpers ────────────────────────────────────────────────────────────
 
@@ -426,11 +86,13 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'official-default',
     name: 'Socialize Blue',
-    author: 'Socialize',
+    author: 'Yo',
     description: 'The default royal blue — calm, clear, on-brand.',
     category: 'official',
-    downloads: 128400,
-    likes: 9420,
+    // Bundled, so there is nothing to count. The 128,400 installs this used
+    // to claim were invented, and a made-up number is worse than none.
+    downloads: 0,
+    likes: 0,
     price: 0,
     isOfficial: true,
     tokens: {},
@@ -753,25 +415,480 @@ const MARKETPLACE: ThemePack[] = [
       bubbleRadius: 12,
     },
   }),
+  // ── Bundled packs ─────────────────────────────────────────────────────────
+  //
+  // These ship with the app: authored by the project, and with no install or
+  // like counts to invent. Each one sets shape as well as colour — a theme
+  // that only repaints the palette is a filter, not a theme, and the point of
+  // the layout knobs is that applying a pack can move the furniture too.
+  pack({
+    id: 'infinite-blue',
+    name: 'Infinite Blue',
+    author: 'Yo',
+    description: 'Electric blue over a white void. Sharp icons, deep dark.',
+    category: 'midnight',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      dark: {
+        primary: '#3FA9FF',
+        tint: '#3FA9FF',
+        tabIconSelected: '#3FA9FF',
+        background: '#05070D',
+        surface: '#0C1119',
+        surfaceElevated: '#131A26',
+        surfaceMuted: '#080C13',
+        text: '#EAF4FF',
+        textSecondary: '#8FA6C0',
+        textMuted: '#5C7391',
+        border: '#1B2634',
+        divider: '#121A25',
+        onPrimary: '#03080F',
+        info: '#7CC4FF',
+      },
+      light: {
+        primary: '#0A84FF',
+        tint: '#0A84FF',
+        tabIconSelected: '#0A84FF',
+        background: '#F7FAFF',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#EDF3FC',
+        text: '#0A1220',
+        textSecondary: '#4B5C72',
+        textMuted: '#8496AC',
+        border: '#DCE6F4',
+        divider: '#EAF1FA',
+        onPrimary: '#FFFFFF',
+      },
+    },
+    chat: {
+      dark: {
+        wallpaper: '#05070D',
+        bubbleTheirs: '#0F1622',
+        bubbleMine: '#0A6ED1',
+        textMine: '#F2F9FF',
+        headerBg: '#080C13',
+        headerFg: '#EAF4FF',
+      },
+      light: {
+        wallpaper: '#EEF4FD',
+        bubbleTheirs: '#FFFFFF',
+        bubbleMine: '#0A84FF',
+      },
+    },
+    layout: {
+      bubbleShape: 'rounded',
+      bubbleRadius: 20,
+      showTails: false,
+      iconSet: 'sharp',
+      iconScale: 1.05,
+      tabBarLabels: 'both',
+      headerStyle: 'minimal',
+      density: 'roomy',
+      bubbleShadow: false,
+    },
+  }),
+  pack({
+    id: 'luanda-sunset',
+    name: 'Luanda Sunset',
+    author: 'Yo',
+    description: 'Amber and terracotta over sand. Tailed bubbles, filled icons.',
+    category: 'nature',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      light: {
+        primary: '#E2622B',
+        tint: '#E2622B',
+        tabIconSelected: '#E2622B',
+        background: '#FFF7EF',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#FBEBDA',
+        text: '#241408',
+        textSecondary: '#7C5233',
+        textMuted: '#B08A66',
+        border: '#EFD9C1',
+        divider: '#F7E7D6',
+        onPrimary: '#FFFFFF',
+        warning: '#D98A17',
+      },
+      dark: {
+        primary: '#F5854A',
+        tint: '#F5854A',
+        tabIconSelected: '#F5854A',
+        background: '#150C06',
+        surface: '#22150C',
+        surfaceElevated: '#2D1D11',
+        surfaceMuted: '#1A0F07',
+        text: '#FBEEE2',
+        textSecondary: '#C79E7C',
+        textMuted: '#8E6D53',
+        border: '#3A2618',
+        divider: '#241609',
+        onPrimary: '#1A0C03',
+      },
+    },
+    chat: {
+      light: {
+        wallpaper: '#F6E3CE',
+        bubbleMine: '#E2622B',
+        bubbleTheirs: '#FFFFFF',
+      },
+      dark: {
+        wallpaper: '#160D06',
+        bubbleMine: '#B44A1C',
+        bubbleTheirs: '#241609',
+      },
+    },
+    layout: {
+      bubbleShape: 'tail',
+      showTails: true,
+      bubbleRadius: 14,
+      iconSet: 'filled',
+      density: 'cozy',
+      headerStyle: 'colored',
+    },
+  }),
+  pack({
+    id: 'phosphor',
+    name: 'Phosphor',
+    author: 'Yo',
+    description: 'Green on black, square corners, no shadows. A terminal.',
+    category: 'neon',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      dark: {
+        primary: '#31E981',
+        tint: '#31E981',
+        tabIconSelected: '#31E981',
+        background: '#000000',
+        surface: '#080B08',
+        surfaceElevated: '#0D120D',
+        surfaceMuted: '#050705',
+        text: '#CFF5DF',
+        textSecondary: '#5FA97C',
+        textMuted: '#3C7355',
+        border: '#12291C',
+        divider: '#0C1B12',
+        onPrimary: '#00160A',
+        success: '#31E981',
+      },
+      light: {
+        primary: '#0F7A45',
+        tint: '#0F7A45',
+        tabIconSelected: '#0F7A45',
+        background: '#F2F7F3',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#E4EFE8',
+        text: '#06120B',
+        textSecondary: '#3D5A48',
+        textMuted: '#7A9686',
+        border: '#CFE2D6',
+        divider: '#E1EDE5',
+        onPrimary: '#FFFFFF',
+      },
+    },
+    chat: {
+      dark: {
+        wallpaper: '#000000',
+        bubbleMine: '#0B3B22',
+        bubbleTheirs: '#0A0F0B',
+        textMine: '#8CF3B8',
+        textTheirs: '#CFF5DF',
+        headerBg: '#000000',
+        headerFg: '#31E981',
+        typingDot: '#31E981',
+      },
+      light: {
+        wallpaper: '#E9F2EC',
+        bubbleMine: '#0F7A45',
+        bubbleTheirs: '#FFFFFF',
+      },
+    },
+    layout: {
+      bubbleShape: 'square',
+      showTails: false,
+      bubbleShadow: false,
+      iconSet: 'sharp',
+      density: 'compact',
+      letterSpacing: 0.3,
+      headerStyle: 'minimal',
+      composerStyle: 'flat',
+      datePillStyle: 'text',
+      systemMsgStyle: 'plain',
+    },
+  }),
+  pack({
+    id: 'sakura-milk',
+    name: 'Sakura Milk',
+    author: 'Yo',
+    description: 'Soft pink on cream. Pill bubbles, roomy spacing, big type.',
+    category: 'pastel',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      light: {
+        primary: '#E86FA0',
+        tint: '#E86FA0',
+        tabIconSelected: '#E86FA0',
+        background: '#FFF6F9',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#FCE7EF',
+        text: '#2A1520',
+        textSecondary: '#8A5C72',
+        textMuted: '#BE94A6',
+        border: '#F5D8E3',
+        divider: '#FBE9F0',
+        onPrimary: '#FFFFFF',
+      },
+      dark: {
+        primary: '#F58FB8',
+        tint: '#F58FB8',
+        tabIconSelected: '#F58FB8',
+        background: '#160B11',
+        surface: '#22131B',
+        surfaceElevated: '#2C1A24',
+        surfaceMuted: '#1B0E15',
+        text: '#FBEAF1',
+        textSecondary: '#CE9FB4',
+        textMuted: '#96697C',
+        border: '#3A2130',
+        divider: '#26141D',
+        onPrimary: '#1A0910',
+      },
+    },
+    chat: {
+      light: {
+        wallpaper: '#FBE8F0',
+        bubbleMine: '#E86FA0',
+        bubbleTheirs: '#FFFFFF',
+      },
+      dark: {
+        wallpaper: '#180C12',
+        bubbleMine: '#B4547B',
+        bubbleTheirs: '#241521',
+      },
+    },
+    layout: {
+      bubbleShape: 'pill',
+      showTails: false,
+      bubbleRadius: 24,
+      density: 'roomy',
+      fontScale: 1.08,
+      iconSet: 'outline',
+      iconScale: 1.1,
+      composerStyle: 'floating',
+      inputRadius: 26,
+    },
+  }),
+  pack({
+    id: 'amoled-void',
+    name: 'AMOLED Void',
+    author: 'Yo',
+    description: 'True black for OLED panels. Icons at the bottom, labels off.',
+    category: 'midnight',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      dark: {
+        primary: '#FFFFFF',
+        tint: '#FFFFFF',
+        tabIconSelected: '#FFFFFF',
+        background: '#000000',
+        surface: '#000000',
+        surfaceElevated: '#0A0A0A',
+        surfaceMuted: '#000000',
+        text: '#F5F5F5',
+        textSecondary: '#9A9A9A',
+        textMuted: '#5E5E5E',
+        border: '#1C1C1C',
+        divider: '#141414',
+        onPrimary: '#000000',
+      },
+      light: {
+        primary: '#111111',
+        tint: '#111111',
+        tabIconSelected: '#111111',
+        background: '#FFFFFF',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#F4F4F4',
+        text: '#0A0A0A',
+        textSecondary: '#5A5A5A',
+        textMuted: '#8E8E8E',
+        border: '#E4E4E4',
+        divider: '#EFEFEF',
+        onPrimary: '#FFFFFF',
+      },
+    },
+    chat: {
+      dark: {
+        wallpaper: '#000000',
+        bubbleMine: '#1C1C1C',
+        bubbleTheirs: '#0C0C0C',
+        textMine: '#F5F5F5',
+        headerBg: '#000000',
+        headerFg: '#F5F5F5',
+        composerBg: '#000000',
+        inputBg: '#0C0C0C',
+      },
+      light: {
+        wallpaper: '#F4F4F4',
+        bubbleMine: '#111111',
+        bubbleTheirs: '#FFFFFF',
+      },
+    },
+    layout: {
+      bubbleShape: 'rounded',
+      bubbleRadius: 12,
+      showTails: false,
+      bubbleShadow: false,
+      iconSet: 'material',
+      tabBarPosition: 'bottom',
+      tabBarLabels: 'icons',
+      headerStyle: 'minimal',
+      showHeaderBorder: false,
+    },
+  }),
 ];
 
 // ── State ───────────────────────────────────────────────────────────────────
 
 let catalog: ThemePack[] = MARKETPLACE;
-let installed = new Set<string>(['official-default']);
+let installed = new Set<string>([DEFAULT_PACK_ID]);
 let liked = new Set<string>();
-let activeThemeId = 'official-default';
+let activeThemeId = DEFAULT_PACK_ID;
 let schemePref: SchemePreference = 'system';
 /** Always-on personal tweaks (GB “customize current theme”). */
 let personalLayout: Partial<ThemeLayout> = {};
 let personalChat: { light?: Partial<ChatChrome>; dark?: Partial<ChatChrome> } = {};
+/** Icon images the person set outside any pack. */
+let personalIcons: ThemeIcons = {};
 /** Bumps on every store mutation so hooks re-render even when object identity is stable. */
 let storeRev = 0;
 const listeners = new Set<() => void>();
 
+/**
+ * Whether the stored state has been read back yet.
+ *
+ * Until it has, this module holds defaults that nobody chose — and writing
+ * those over the real ones is how a person loses their theme by opening the
+ * app and tapping nothing. Persistence stays off until there is something
+ * worth persisting.
+ */
+let hydrated = false;
+let booting: Promise<void> | null = null;
+
+function persistPrefs() {
+  if (!hydrated) return;
+  writeThemePrefs(
+    serializeThemePrefs({
+      activeThemeId,
+      installed: [...installed],
+      liked: [...liked],
+      schemePreference: schemePref,
+      personalLayout,
+      personalChat,
+      personalIcons,
+    }),
+  ).catch(() => {});
+}
+
+/** An owned pack, written whole. Bundled packs ship with the app and are not stored. */
+function persistPack(theme: ThemePack) {
+  if (!hydrated || !theme.isOwned) return;
+  saveStoredPack(theme.id, JSON.stringify(theme)).catch(() => {});
+}
+
+/**
+ * Every mutation goes through here, so persistence cannot be forgotten by
+ * whoever adds the next action — which is exactly how the previous version
+ * ended up storing nothing at all.
+ */
 function emit() {
   storeRev += 1;
+  persistPrefs();
   listeners.forEach((l) => l());
+}
+
+/**
+ * Read the stored theme back. Idempotent, and safe to call before login.
+ *
+ * A failure here is cosmetic — the app opens on the default theme rather than
+ * the chosen one — so it is warned about and swallowed. It must never be the
+ * reason a messenger will not start.
+ */
+export async function bootstrapThemes(): Promise<void> {
+  if (booting) return booting;
+  booting = (async () => {
+    try {
+      const [prefs, packs] = await Promise.all([readThemePrefs(), listStoredPacks()]);
+      const state = hydrateThemeState(
+        { prefs, packs },
+        {
+          layout: DEFAULT_LAYOUT,
+          chrome: {
+            light: defaultChatChrome('light', Colors.light.primary),
+            dark: defaultChatChrome('dark', Colors.dark.primary),
+          },
+          icons: EMPTY_ICONS,
+          bundledIds: MARKETPLACE.map((m) => m.id),
+        },
+      );
+      // Owned packs first: the person's own work is what they scroll for.
+      catalog = [...state.ownedPacks, ...MARKETPLACE];
+      installed = new Set(state.installed);
+      liked = new Set(state.liked);
+      activeThemeId = state.activeThemeId;
+      schemePref = state.schemePreference;
+      personalLayout = state.personalLayout;
+      personalChat = state.personalChat;
+      personalIcons = state.personalIcons;
+      hydrated = true;
+      emit();
+      // Now — and only now — is the full set of live image references known,
+      // so anything left over from a deleted theme can go. Sweeping earlier
+      // would delete the wallpaper of a pack that had not been read yet.
+      pruneThemeImages(referencedImages()).catch(() => {});
+    } catch (err) {
+      console.warn('themes: could not restore stored theme', err);
+    }
+  })();
+  return booting;
+}
+
+/** Every image any theme currently points at: wallpapers and custom icons. */
+function referencedImages(): string[] {
+  const uris: string[] = [];
+  const schemes: ThemeMode[] = ['light', 'dark'];
+  for (const theme of catalog) {
+    for (const scheme of schemes) {
+      const wallpaper = theme.chat?.[scheme]?.wallpaperImage;
+      if (wallpaper) uris.push(wallpaper);
+    }
+    for (const uri of Object.values(theme.icons ?? {})) if (uri) uris.push(uri);
+  }
+  for (const scheme of schemes) {
+    const wallpaper = personalChat[scheme]?.wallpaperImage;
+    if (wallpaper) uris.push(wallpaper);
+  }
+  for (const uri of Object.values(personalIcons)) if (uri) uris.push(uri);
+  return uris;
 }
 
 function subscribe(listener: () => void) {
@@ -879,6 +996,17 @@ export function getResolvedChat(scheme: ThemeMode): ChatChrome {
   };
 }
 
+/**
+ * The icon images in force: the active pack's, with the person's own on top.
+ *
+ * Same layering as colour, and for the same reason — someone who replaced the
+ * send icon expects it to stay replaced when they try on a new theme.
+ */
+export function getResolvedIcons(): ThemeIcons {
+  const packIcons = getActivePack()?.icons ?? {};
+  return { ...packIcons, ...personalIcons };
+}
+
 export function getResolvedLayout(): ThemeLayout {
   const packActive = getActivePack();
   const cssLayer: ParsedThemeCss = packActive?.customCss
@@ -912,9 +1040,15 @@ export function setPersonalChat(scheme: ThemeMode, patch: Partial<ChatChrome>) {
   emit();
 }
 
+export function setPersonalIcons(patch: ThemeIcons) {
+  personalIcons = { ...personalIcons, ...patch };
+  emit();
+}
+
 export function clearPersonalOverrides() {
   personalLayout = {};
   personalChat = {};
+  personalIcons = {};
   emit();
 }
 
@@ -924,11 +1058,11 @@ export function installTheme(id: string) {
 }
 
 export function uninstallTheme(id: string) {
-  if (id === 'official-default') return;
+  if (id === DEFAULT_PACK_ID) return;
   const next = new Set(installed);
   next.delete(id);
   installed = next;
-  if (activeThemeId === id) activeThemeId = 'official-default';
+  if (activeThemeId === id) activeThemeId = DEFAULT_PACK_ID;
   emit();
 }
 
@@ -1120,9 +1254,11 @@ export function createThemePack(input: CreateThemeInput): ThemePack {
         input.surface,
         input.text,
       ];
+      existing.icons = input.icons ?? existing.icons;
       catalog = [...catalog];
       activeThemeId = existing.id;
       installed = new Set(installed).add(existing.id);
+      persistPack(existing);
       emit();
       return existing;
     }
@@ -1154,6 +1290,7 @@ export function createThemePack(input: CreateThemeInput): ThemePack {
   catalog = [theme, ...catalog];
   installed = new Set(installed).add(id);
   activeThemeId = id;
+  persistPack(theme);
   emit();
   return theme;
 }
@@ -1190,6 +1327,7 @@ export function forkTheme(id: string, nameSuffix = ' (edit)'): ThemePack | null 
   catalog = [forked, ...catalog];
   installed = new Set(installed).add(newId);
   activeThemeId = newId;
+  persistPack(forked);
   emit();
   return forked;
 }
@@ -1204,6 +1342,7 @@ export function updateOwnedTheme(
     tokens?: ThemePack['tokens'];
     chat?: ThemePack['chat'];
     layout?: Partial<ThemeLayout>;
+    icons?: ThemeIcons;
     swatches?: string[];
   },
 ) {
@@ -1216,7 +1355,9 @@ export function updateOwnedTheme(
   if (patch.chat) p.chat = patch.chat;
   if (patch.layout) p.layout = { ...DEFAULT_LAYOUT, ...p.layout, ...patch.layout };
   if (patch.swatches) p.swatches = patch.swatches;
+  if (patch.icons) p.icons = { ...p.icons, ...patch.icons };
   catalog = [...catalog];
+  persistPack(p);
   emit();
 }
 
@@ -1225,6 +1366,7 @@ export function publishThemeToMarketplace(id: string) {
   if (!p || !p.isOwned) return;
   p.downloads = Math.max(p.downloads, 1);
   catalog = [...catalog];
+  persistPack(p);
   emit();
 }
 
@@ -1235,29 +1377,10 @@ export function deleteOwnedTheme(id: string) {
   const next = new Set(installed);
   next.delete(id);
   installed = next;
-  if (activeThemeId === id) activeThemeId = 'official-default';
+  if (activeThemeId === id) activeThemeId = DEFAULT_PACK_ID;
+  deleteStoredPack(id).catch(() => {});
   emit();
 }
-
-export const THEME_CATEGORIES: ThemeCategory[] = [
-  'all',
-  'official',
-  'neon',
-  'pastel',
-  'minimal',
-  'nature',
-  'midnight',
-  'mine',
-];
-
-export const BUBBLE_SHAPES: BubbleShape[] = ['tail', 'rounded', 'pill', 'square'];
-export const DENSITIES: MessageDensity[] = ['compact', 'cozy', 'roomy'];
-export const HEADER_STYLES: HeaderStyle[] = ['brand', 'minimal', 'colored'];
-export const COMPOSER_STYLES: ComposerStyle[] = ['rounded', 'flat', 'floating'];
-export const DATE_PILL_STYLES: DatePillStyle[] = ['pill', 'text', 'hidden'];
-export const REPLY_STYLES: ReplyStyle[] = ['quote', 'bar', 'minimal'];
-export const SEND_STYLES: SendButtonStyle[] = ['circle', 'pill', 'icon'];
-export const SYSTEM_STYLES: SystemMsgStyle[] = ['pill', 'plain', 'banner'];
 
 export const CSS_THEME_TEMPLATE = `/* Socialize theme CSS — custom properties */
 :root {

@@ -118,6 +118,33 @@ Theme tokens map raw palette → semantic role. Components must consume **semant
 
 Brand is lightened in dark mode (`brand.400`) so contrast against the dark surface stays comfortable.
 
+### 2.1 Themes on top of the tokens
+
+The tables above are the *base*. What a screen actually paints with is resolved
+at runtime by [`mobile/data/theme-store.ts`](../../mobile/data/theme-store.ts),
+which layers, bottom to top:
+
+1. base `Colors` (this document),
+2. the active theme pack — semantic tokens, chat chrome, layout, icons,
+3. the person's always-on personal overrides.
+
+Screens read the result through `useTheme()`; a hardcoded hex or a bare
+`<Ionicons>` is the one way to opt a surface out of theming. A theme may set:
+
+| Layer | Type | Examples |
+|---|---|---|
+| Tokens | `ThemeTokens` | `primary`, `surface`, `text`, `danger` — the semantic set |
+| Chat chrome | `ChatChrome` | bubble colours, wallpaper (solid or photo), header, composer |
+| Layout | `ThemeLayout` | bubble shape and radius, density, font scale, tab bar position and content, attach side, ~50 knobs |
+| Icons | `ThemeIcons` + `iconSet` | Ionicons outline / filled / sharp, MaterialIcons, or the person's own image per slot |
+
+The shapes and their defaults live in
+[`mobile/data/theme-model.ts`](../../mobile/data/theme-model.ts) — pure, no
+state — and every choice is stored on-device, so a theme survives a restart.
+Icon slots are a closed list in
+[`mobile/data/theme-icons.ts`](../../mobile/data/theme-icons.ts); a call site
+opts in by rendering `<AppIcon slot="…" />` instead of a literal glyph.
+
 ---
 
 ## 3. Spacing

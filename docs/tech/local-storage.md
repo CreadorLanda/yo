@@ -140,9 +140,27 @@ CREATE TABLE custom_filters (
   name TEXT NOT NULL,
   chat_ids TEXT NOT NULL                       -- JSON array
 );
+
+-- Themes the user made. Bundled packs ship with the app and are not stored.
+CREATE TABLE theme_packs (
+  id         TEXT PRIMARY KEY,
+  json       TEXT NOT NULL,                    -- tokens + chat chrome + layout + icons
+  created_at TEXT NOT NULL
+);
+
+-- Theme choices: active pack, installed and liked sets, light/dark preference,
+-- personal overrides. Here rather than in SecureStore, which does not reliably
+-- store values over 2048 bytes.
+CREATE TABLE theme_prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ```
 
-Migrations live in `mobile/db/migrations/*.sql`, applied at first launch and on app upgrade.
+Migrations live in [`mobile/data/db/schema.ts`](../../mobile/data/db/schema.ts),
+append-only and tracked by `user_version`, applied when the database is opened.
+
+Photo wallpapers and custom icons are files, not rows: the picker hands back a
+URI in the OS cache, so the bytes are copied into the app's document directory
+by [`mobile/data/theme-assets.ts`](../../mobile/data/theme-assets.ts) before the
+path is stored, and orphans are swept at launch.
 
 ---
 

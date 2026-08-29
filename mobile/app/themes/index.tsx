@@ -214,7 +214,13 @@ function ThemeHero({
               ) : null}
             </View>
             <Text style={[styles.author, { color: colors.textSecondary }]}>
-              {pack.author} · {formatCount(pack.downloads)} {t('themes.installs')}
+              {/* A pack that ships with the app has no install count to show,
+                  and inventing one — this card used to claim 128,400 — tells
+                  the reader something about popularity that is not true. */}
+              {pack.author} ·{' '}
+              {pack.isOfficial
+                ? t('themes.bundled')
+                : `${formatCount(pack.downloads)} ${t('themes.installs')}`}
             </Text>
           </View>
           <Pressable onPress={() => toggleLikeTheme(pack.id)} hitSlop={8}>
