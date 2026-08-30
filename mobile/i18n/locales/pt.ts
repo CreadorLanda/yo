@@ -793,6 +793,8 @@ export default {
     title: 'Filtros',
   },
   call: {
+    ongoing_title: 'Chamada a decorrer',
+    ongoing_body: 'Toca para voltar à chamada',
     unmute: 'Ativar som',
     no_answer_title: 'Sem resposta',
     no_answer_body: 'Não atenderam.',
