@@ -63,7 +63,7 @@ func (c *Controller) GetAvailability(ctx *gin.Context) {
 func (c *Controller) GetSearch(ctx *gin.Context) {
 	q := ctx.Query("q")
 	if q == "" || len(q) < 2 {
-		ctx.JSON(http.StatusOK, []User{})
+		ctx.JSON(http.StatusOK, []PublicView{})
 		return
 	}
 	users, err := c.svc.Search(ctx.Request.Context(), middleware.UserIDFrom(ctx), q)
@@ -72,13 +72,13 @@ func (c *Controller) GetSearch(ctx *gin.Context) {
 		return
 	}
 	if users == nil {
-		users = []User{}
+		users = []PublicView{}
 	}
 	ctx.JSON(http.StatusOK, users)
 }
 
 func (c *Controller) GetByUsername(ctx *gin.Context) {
-	u, err := c.svc.ByUsername(
+	u, err := c.svc.ByUsernamePublic(
 		ctx.Request.Context(),
 		middleware.UserIDFrom(ctx),
 		ctx.Param("username"),

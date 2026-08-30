@@ -15,8 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import type { ApiUser } from '@/data/api/auth';
-import { searchUsers } from '@/data/api/users';
+import { searchUsers, type PublicUser } from '@/data/api/users';
 import { getCurrentUser } from '@/data/auth-store';
 import { useChats } from '@/data/chat-store';
 import { useTheme } from '@/hooks/use-theme';
@@ -58,7 +57,7 @@ export function PeoplePicker({
   const me = getCurrentUser()?.id;
 
   const [query, setQuery] = useState('');
-  const [found, setFound] = useState<ApiUser[] | null>(null);
+  const [found, setFound] = useState<PublicUser[] | null>(null);
   const [picked, setPicked] = useState<PickablePerson[]>([]);
 
   useEffect(() => {
