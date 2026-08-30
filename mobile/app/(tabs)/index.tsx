@@ -36,6 +36,7 @@ import { listChannelInvites } from '@/data/api/channels';
 import { anonInbox, type AnonThread } from '@/data/api/stories';
 import { useRevealedChats } from '@/data/chat-lock';
 import { decryptMessageContent } from '@/data/message-map';
+import { isMachineText, previewShape } from '@/data/message-preview';
 import { bootstrapGroups } from '@/data/group-store';
 import {
   addCustomFilter,
@@ -147,40 +148,15 @@ export default function ChatsScreen() {
    * Label them instead — otherwise the list shows raw {"url":…} JSON.
    */
   const previewLabel = useCallback((c: ChatDTO): string | null => {
-    const mt = c.last_message?.message_type;
-
+    const shape = previewShape(c.last_message?.message_type);
+    if (shape.kind === 'text') return null;
     // A photo or video with a caption reads better as the caption itself —
-    // "Fotos e vídeos" tells you nothing you cannot see from the icon.
-    // The generic word is only a fallback for media sent without one.
-    const captioned = (icon: string, fallback: string) => {
+    // "Photos and videos" tells you nothing the icon does not.
+    if (shape.kind === 'captioned') {
       const caption = mediaCaption(c.last_message?.content);
-      return `${icon} ${caption || fallback}`;
-    };
-
-    switch (mt) {
-      case 'sticker':
-        return `\u{1F9E9} ${t('chat.sticker')}`;
-      case 'image':
-        return captioned('\u{1F4F7}', t('chat.photo'));
-      case 'video':
-        return captioned('\u{1F3A5}', t('chat.video'));
-      case 'audio':
-        return `\u{1F3B5} ${t('chat.attach_audio')}`;
-      case 'document':
-        return `\u{1F4C4} ${t('chat.attach_document')}`;
-      // Rich attachments are JSON payloads too — without these the list
-      // rendered the raw {"kind":"poll",…} blob.
-      case 'location':
-        return `\u{1F4CD} ${t('chat.attach_location')}`;
-      case 'contact':
-        return `\u{1F464} ${t('chat.attach_contact')}`;
-      case 'poll':
-        return `\u{1F4CA} ${t('chat.poll_label')}`;
-      case 'event':
-        return `\u{1F4C5} ${t('chat.event_label')}`;
-      default:
-        return null;
+      return `${shape.icon} ${caption || t(shape.key)}`;
     }
+    return `${shape.icon} ${t(shape.key)}`;
   }, []);
 
   // Decrypt the last-message previews. The server decrypts its own at-rest
@@ -211,6 +187,10 @@ export default function ChatsScreen() {
             me,
             c.peer_user_id,
           );
+          // The net. A type this build does not know about, or one added
+          // without a case, still must not put a record in front of anybody
+          // — which is exactly how {"kind":"poll",…} reached this list once.
+          if (isMachineText(text)) return [c.id, t('chat.message')] as const;
           return [c.id, text] as const;
         }),
       );
