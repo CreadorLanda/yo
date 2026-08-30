@@ -822,6 +822,8 @@ export default {
     title: 'Filters',
   },
   call: {
+    ongoing_title: 'Call in progress',
+    ongoing_body: 'Tap to return to the call',
     unmute: 'Unmute',
     no_answer_title: 'No answer',
     no_answer_body: 'They did not pick up.',
