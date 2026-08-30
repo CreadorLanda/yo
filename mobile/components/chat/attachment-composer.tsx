@@ -15,8 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import type { ApiUser } from '@/data/api/auth';
-import { searchUsers } from '@/data/api/users';
+import { searchUsers, type PublicUser } from '@/data/api/users';
 import { getCurrentUser } from '@/data/auth-store';
 import { useChats } from '@/data/chat-store';
 import { type MessageAttachment } from '@/data/mock';
@@ -219,7 +218,7 @@ function ContactSheet({
   const me = getCurrentUser()?.id;
 
   const [query, setQuery] = useState('');
-  const [found, setFound] = useState<ApiUser[] | null>(null);
+  const [found, setFound] = useState<PublicUser[] | null>(null);
 
   /**
    * Typing searches the server; an empty box offers the people you already
