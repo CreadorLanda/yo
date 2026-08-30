@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -15,6 +15,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { Text } from '@/components/ui/text';
 import { Spacing, Typography } from '@/constants/theme';
 
 /**

@@ -5,11 +5,10 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { dismissDialog, useDialog, type DialogButton } from '@/data/dialog-store';
 import { useTheme } from '@/hooks/use-theme';

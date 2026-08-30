@@ -11,7 +11,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import Animated, {
@@ -23,6 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { TabScene } from '@/components/ui/tab-scene';
+import { Text } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import type { Story } from '@/data/mock';
 import { useProfile } from '@/data/profile-store';

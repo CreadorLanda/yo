@@ -231,4 +231,31 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE messages ADD COLUMN views_left INTEGER;
     `,
   },
+  {
+    name: '009_themes',
+    sql: `
+      -- Themes, which until now lived only in memory: the active pack, the
+      -- installed set, and anything the person built themselves all died
+      -- with the process. The editor was real, the plumbing under it was
+      -- not.
+      --
+      -- Here rather than in SecureStore because a single custom pack is a
+      -- few kilobytes of tokens, chrome and layout — well past the 2048
+      -- bytes SecureStore stores reliably, and past it silently.
+      CREATE TABLE IF NOT EXISTS theme_packs (
+        id         TEXT PRIMARY KEY,
+        json       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      -- Everything that is a choice rather than a pack: active id, installed
+      -- and liked sets, light/dark preference, and the always-on personal
+      -- overrides. One row per key, JSON in the value, so a new knob needs
+      -- no migration of its own.
+      CREATE TABLE IF NOT EXISTS theme_prefs (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `,
+  },
 ];

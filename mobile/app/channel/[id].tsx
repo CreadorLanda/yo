@@ -10,8 +10,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type GestureResponderEvent,
 } from 'react-native';
@@ -27,6 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { formatCount } from '@/components/ui/follow-button';
 import { ReactionTray } from '@/components/ui/reaction-tray';
+import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { CachedImage } from '@/components/ui/cached-image';
 import { appAlert, appPrompt } from '@/data/dialog-store';
@@ -117,7 +116,7 @@ export default function ChannelScreen() {
   const [commentReplyTo, setCommentReplyTo] = useState<{ id: string; author: string } | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [commentFocused, setCommentFocused] = useState(false);
-  const commentInputRef = useRef<TextInput>(null);
+  const commentInputRef = useRef<TextInputHandle>(null);
   const commentScrollRef = useRef<ScrollView>(null);
   const [showNotifPrompt, setShowNotifPrompt] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);

@@ -1,5 +1,6 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, type PressableProps } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
 
+import { Text } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 

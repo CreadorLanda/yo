@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -7,6 +7,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 
+import { Text } from '@/components/ui/text';
 import { Spacing, Typography } from '@/constants/theme';
 
 /**

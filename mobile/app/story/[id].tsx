@@ -5,6 +5,7 @@ import { Image } from 'expo-image';
 import { AnonInbox } from '@/components/story/anon-inbox';
 import { ReactionBar } from '@/components/story/reaction-bar';
 import { StoryVideo } from '@/components/story/story-video';
+import { Text, TextInput } from '@/components/ui/text';
 import { appAlert } from '@/data/dialog-store';
 import { ViewersSheet } from '@/components/story/viewers-sheet';
 import { CachedImage } from '@/components/ui/cached-image';
@@ -21,8 +22,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';

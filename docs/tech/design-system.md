@@ -118,6 +118,87 @@ Theme tokens map raw palette → semantic role. Components must consume **semant
 
 Brand is lightened in dark mode (`brand.400`) so contrast against the dark surface stays comfortable.
 
+### 2.1 Themes on top of the tokens
+
+The tables above are the *base*. What a screen actually paints with is resolved
+at runtime by [`mobile/data/theme-store.ts`](../../mobile/data/theme-store.ts),
+which layers, bottom to top:
+
+1. base `Colors` (this document),
+2. the active theme pack — semantic tokens, chat chrome, layout, icons,
+3. the person's always-on personal overrides.
+
+Screens read the result through `useTheme()`; a hardcoded hex or a bare
+`<Ionicons>` is the one way to opt a surface out of theming. A theme may set:
+
+| Layer | Type | Examples |
+|---|---|---|
+| Tokens | `ThemeTokens` | `primary`, `surface`, `text`, `danger` — the semantic set |
+| Chat chrome | `ChatChrome` | bubble colours, wallpaper (solid or photo), header, composer |
+| Layout | `ThemeLayout` | bubble shape and radius, density, font scale, typeface, tab bar position and content, attach side, ~55 knobs |
+| Icons | `ThemeIcons` + `iconSet` | Ionicons outline / filled / sharp, MaterialIcons, or the person's own image per slot |
+
+The shapes and their defaults live in
+[`mobile/data/theme-model.ts`](../../mobile/data/theme-model.ts) — pure, no
+state — and every choice is stored on-device, so a theme survives a restart.
+Icon slots are a closed list in
+[`mobile/data/theme-icons.ts`](../../mobile/data/theme-icons.ts); a call site
+opts in by rendering `<AppIcon slot="…" />` instead of a literal glyph.
+
+### 2.2 Typeface, true black, glass and motion
+
+Four knobs reach past colour and shape. All four default to off, so an app
+nobody has configured looks exactly as it did.
+
+**`fontFamily`** — `system` (the default), `inter`, `nunito`, `lora`, `space`,
+`jetbrains`. The five named families are bundled as four weights each and load
+from disk, so they work offline; `system` is the only value that leaves
+`fontFamily` unset, which is what keeps iOS dynamic type working. React Native
+0.81 exposes `Text` through a getter with no setter, so there is no global
+patch point — screens import `Text` and `TextInput` from
+[`mobile/components/ui/text.tsx`](../../mobile/components/ui/text.tsx), which
+translates `fontWeight` into a named face (a bundled family does not respond
+to numeric weight) and drops the weight afterwards to stop iOS double-bolding
+an already-bold face. **A screen importing `Text` from `react-native` opts
+itself out of the theme's typeface** — that is the one thing to remember.
+
+**`amoledBlack`** — flattens dark backgrounds to `#000000` over whatever pack
+is active, keeping its `primary`, `text` and semantic accents. A switch, not a
+palette: someone on an OLED panel wants the power saving without giving up the
+colours they chose. Ignored in light mode. Surfaces above the ground are
+lifted to `#0A0A0A`/`#141414` so cards still have an edge.
+
+**`glassChrome`** / **`glassIntensity`** — the chat header and composer become
+frosted, via
+[`GlassSurface`](../../mobile/components/ui/glass-surface.tsx). The header
+floats over the thread rather than sitting above it, and the message list is
+padded by its measured height; blur over a flat colour is that same flat
+colour, so the content has to pass underneath for the effect to mean anything.
+`GlassSurface` is opaque when the knob is off, which is what keeps that one
+code path instead of two.
+
+**`wallpaperAnimation`** — `none`, `aurora`, `drift`, `pulse`. Soft blobs of
+the theme's own colours drifting behind the thread, on the Reanimated UI
+thread, no gradient library. `primary` and `info` are the two hues, so `info`
+is the handle a pack author has on what the aurora does. Suppressed when the
+OS asks for reduced motion.
+
+### 2.3 The launcher icon
+
+Deliberately *not* part of a pack. Applying a theme changes bubble colours;
+it must not quietly rearrange somebody's home screen. It is a preference of
+its own in
+[`mobile/data/theme-app-icons.ts`](../../mobile/data/theme-app-icons.ts), and
+the four alternates are recolourings of the same artwork, named for the packs
+they were drawn for.
+
+Changing it is not a repaint: it asks the OS to swap a component alias, needs
+the `expo-alternate-app-icons` plugin to have run through a prebuild, and on
+iOS shows a system dialog the person can decline. The store records the new
+icon only once the swap has actually happened, and the picker is hidden
+entirely where the native side is absent — Expo Go and web — because a row of
+tiles that silently does nothing is worse than no row.
+
 ---
 
 ## 3. Spacing

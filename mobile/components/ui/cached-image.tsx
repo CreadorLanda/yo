@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, type ImageContentFit, type ImageStyle } from 'expo-image';
 import { useEffect } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import type { MediaKey } from '@/data/crypto/media-crypto';
 import { ensureLocal, mediaIdFromURL, useCacheState } from '@/data/media-cache';

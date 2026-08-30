@@ -7,12 +7,12 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ChannelLogo } from '@/components/ui/channel-art';
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import {
   acceptChannelInvite,

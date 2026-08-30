@@ -23,8 +23,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type StyleProp,
   type TextStyle,
@@ -48,8 +46,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AttachmentBubble } from '@/components/chat/attachment-bubbles';
 import { MediaEditor, type EditorAsset, type EditorResult } from '@/components/chat/media-editor';
+import { AnimatedWallpaper } from '@/components/chat/animated-wallpaper';
+import { GlassSurface } from '@/components/ui/glass-surface';
+import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { appAlert } from '@/data/dialog-store';
 import { ApiError } from '@/data/api/client';
+import { AppIcon } from '@/components/ui/app-icon';
 import { CachedImage } from '@/components/ui/cached-image';
 import { ForwardPicker } from '@/components/chat/forward-picker';
 import { MediaViewer, type ViewerItem } from '@/components/chat/media-viewer';
@@ -364,7 +366,9 @@ export default function ChatScreen() {
   const recordPermRef = useRef(false);
   const dandaraTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<GroupedMessage>>(null);
-  const composerInputRef = useRef<TextInput>(null);
+  // Measured, not assumed — see the header block in the tree below.
+  const [headerH, setHeaderH] = useState(0);
+  const composerInputRef = useRef<TextInputHandle>(null);
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
   const recOriginX = useSharedValue(0);
@@ -2200,6 +2204,36 @@ export default function ChatScreen() {
     setQuery('');
   };
 
+  /**
+   * Attach and camera, as one group so the theme can put them on either side
+   * of the input. `attachSide` was a knob the creator offered and the composer
+   * ignored — the icons were hardcoded to the right whatever it said.
+   */
+  const attachControls = (
+    <>
+      {canCompose ? (
+        <Pressable
+          hitSlop={8}
+          style={layout.attachSide === 'left' ? styles.composerLeft : styles.composerRight}
+          onPress={() => setShowAttach(true)}
+          accessibilityLabel={t('chat.attach')}
+        >
+          <AppIcon slot="attach" size={22} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+      {canCompose && !hasDraft ? (
+        <Pressable
+          hitSlop={8}
+          style={layout.attachSide === 'left' ? styles.composerLeft : styles.composerRight}
+          onPress={openCamera}
+          accessibilityLabel={t('chat.camera')}
+        >
+          <AppIcon slot="camera" size={22} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+    </>
+  );
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -2207,182 +2241,205 @@ export default function ChatScreen() {
       {/* Selection-mode header replaces both the normal and the search header
           while messages are selected. Search and selection are mutually
           exclusive — entering selection cancels search. */}
-      {selectionMode ? (
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
-          <Pressable
-            onPress={clearSelection}
-            hitSlop={12}
-            style={({ pressed }) => [styles.backBtn, pressed && { backgroundColor: colors.surfaceMuted }]}
-            accessibilityLabel={t('chat.cancel')}
-          >
-            <Ionicons name="close" size={22} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.peerName, { color: colors.text, flex: 1 }]} numberOfLines={1}>
-            {t('chat.selected_count', { count: selectedIds.size })}
-          </Text>
-          <View style={styles.headerActions}>
-            <Pressable
-              hitSlop={8}
-              style={styles.iconBtn}
-              onPress={bulkCopy}
-              accessibilityLabel={t('chat.copy')}
-            >
-              <Ionicons name="copy-outline" size={20} color={colors.text} />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              style={styles.iconBtn}
-              onPress={bulkForward}
-              accessibilityLabel={t('chat.forward')}
-            >
-              <Ionicons name="arrow-redo-outline" size={20} color={colors.text} />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              style={styles.iconBtn}
-              onPress={bulkDelete}
-              accessibilityLabel={t('chat.delete')}
-            >
-              <Ionicons name="trash-outline" size={20} color={colors.danger} />
-            </Pressable>
-          </View>
-        </View>
-      ) : (
-      <StateTransition transitionKey={searchMode}>
-      {searchMode ? (
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
-          <Pressable
-            onPress={closeSearch}
-            hitSlop={12}
-            style={styles.backBtn}
-            accessibilityLabel={t('chat.close_search')}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
-          </Pressable>
-          <View style={[styles.searchField, { backgroundColor: colors.surfaceMuted }]}>
-            <Ionicons name="search" size={16} color={colors.textMuted} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder={t('chat.search_placeholder')}
-              placeholderTextColor={colors.textMuted}
-              autoFocus
-              style={[styles.searchInput, { color: colors.text }]}
-            />
-            {trimmedQuery.length > 0 ? (
-              <Pressable onPress={() => setQuery('')} hitSlop={8}>
-                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-      ) : (
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
-            style={({ pressed }) => [
-              styles.backBtn,
-              pressed && [styles.iconBtnPressed, { backgroundColor: colors.surfaceMuted }],
-            ]}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
-          </Pressable>
+      {/*
+        The header floats over the thread rather than sitting above it.
 
-          <Pressable
-            style={styles.peer}
-            hitSlop={6}
-            onPress={() => router.push(`/chat-info/${id!}`)}
-            accessibilityRole="button"
-            accessibilityLabel={isGroup ? t('chat_info.group_title') : t('chat_info.title')}
-          >
-            <View>
-              <Image
-                source={{ uri: chat?.avatarUri || apiChatInfo?.avatar_url }}
-                style={[styles.peerAvatar, { backgroundColor: colors.surfaceMuted }]}
-                contentFit="cover"
+        Glass is only worth anything over something that moves: a blur of a
+        flat colour is that same flat colour. So the messages scroll
+        underneath, and the list is padded by the height measured here —
+        which has to be measured rather than assumed, because the search and
+        selection headers are not the same height as the normal one.
+
+        The layout is the same whether or not glass is on. When it is off the
+        backdrop is opaque and covers the thread exactly as the old in-flow
+        header did, which is what keeps this one code path instead of two.
+      */}
+      <View
+        style={styles.headerFloat}
+        onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+      >
+        <GlassSurface
+          color={colors.surface}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        {selectionMode ? (
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+            <Pressable
+              onPress={clearSelection}
+              hitSlop={12}
+              style={({ pressed }) => [styles.backBtn, pressed && { backgroundColor: colors.surfaceMuted }]}
+              accessibilityLabel={t('chat.cancel')}
+            >
+              <Ionicons name="close" size={22} color={colors.text} />
+            </Pressable>
+            <Text style={[styles.peerName, { color: colors.text, flex: 1 }]} numberOfLines={1}>
+              {t('chat.selected_count', { count: selectedIds.size })}
+            </Text>
+            <View style={styles.headerActions}>
+              <Pressable
+                hitSlop={8}
+                style={styles.iconBtn}
+                onPress={bulkCopy}
+                accessibilityLabel={t('chat.copy')}
+              >
+                <Ionicons name="copy-outline" size={20} color={colors.text} />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                style={styles.iconBtn}
+                onPress={bulkForward}
+                accessibilityLabel={t('chat.forward')}
+              >
+                <Ionicons name="arrow-redo-outline" size={20} color={colors.text} />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                style={styles.iconBtn}
+                onPress={bulkDelete}
+                accessibilityLabel={t('chat.delete')}
+              >
+                <Ionicons name="trash-outline" size={20} color={colors.danger} />
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+        <StateTransition transitionKey={searchMode}>
+        {searchMode ? (
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+            <Pressable
+              onPress={closeSearch}
+              hitSlop={12}
+              style={styles.backBtn}
+              accessibilityLabel={t('chat.close_search')}
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
+            </Pressable>
+            <View style={[styles.searchField, { backgroundColor: colors.surfaceMuted }]}>
+              <Ionicons name="search" size={16} color={colors.textMuted} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={t('chat.search_placeholder')}
+                placeholderTextColor={colors.textMuted}
+                autoFocus
+                style={[styles.searchInput, { color: colors.text }]}
               />
-              {(chat?.online) && !isGroup ? (
-                <View
-                  style={[
-                    styles.peerOnlineDot,
-                    { backgroundColor: colors.success, borderColor: colors.surface },
-                  ]}
-                />
+              {trimmedQuery.length > 0 ? (
+                <Pressable onPress={() => setQuery('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                </Pressable>
               ) : null}
             </View>
-            <View style={styles.peerInfo}>
-              <Text style={[styles.peerName, { color: colors.text }]} numberOfLines={1}>
-                {chat?.name || apiChatInfo?.title || 'Chat'}
-              </Text>
-              <View style={styles.peerStatusRow}>
-                <Text style={[styles.peerStatus, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {isAIChat
-                    ? t('chat.ai_subtitle')
-                    : isGroup
-                      ? t('group.members_count', { count: memberCount })
-                      : chat?.online
-                        ? t('chats.online')
-                        : t('chats.last_seen')}
-                </Text>
-              </View>
-            </View>
-          </Pressable>
-
-          <View style={styles.headerActions}>
+          </View>
+        ) : (
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <Pressable
-              hitSlop={8}
-              style={styles.iconBtn}
-              onPress={() => setSearchMode(true)}
-              accessibilityLabel={t('chat.search')}
+              onPress={() => router.back()}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.backBtn,
+                pressed && [styles.iconBtnPressed, { backgroundColor: colors.surfaceMuted }],
+              ]}
             >
-              <Ionicons name="search" size={20} color={colors.text} />
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
             </Pressable>
-            {!isAIChat ? (
+
+            <Pressable
+              style={styles.peer}
+              hitSlop={6}
+              onPress={() => router.push(`/chat-info/${id!}`)}
+              accessibilityRole="button"
+              accessibilityLabel={isGroup ? t('chat_info.group_title') : t('chat_info.title')}
+            >
+              <View>
+                <Image
+                  source={{ uri: chat?.avatarUri || apiChatInfo?.avatar_url }}
+                  style={[styles.peerAvatar, { backgroundColor: colors.surfaceMuted }]}
+                  contentFit="cover"
+                />
+                {(chat?.online) && !isGroup ? (
+                  <View
+                    style={[
+                      styles.peerOnlineDot,
+                      { backgroundColor: colors.success, borderColor: colors.surface },
+                    ]}
+                  />
+                ) : null}
+              </View>
+              <View style={styles.peerInfo}>
+                <Text style={[styles.peerName, { color: colors.text }]} numberOfLines={1}>
+                  {chat?.name || apiChatInfo?.title || 'Chat'}
+                </Text>
+                <View style={styles.peerStatusRow}>
+                  <Text style={[styles.peerStatus, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {isAIChat
+                      ? t('chat.ai_subtitle')
+                      : isGroup
+                        ? t('group.members_count', { count: memberCount })
+                        : chat?.online
+                          ? t('chats.online')
+                          : t('chats.last_seen')}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+
+            <View style={styles.headerActions}>
               <Pressable
                 hitSlop={8}
                 style={styles.iconBtn}
-                onPress={() => router.push(`/call/${id!}?mode=voice`)}
-                accessibilityLabel={t('hangout.open')}
+                onPress={() => setSearchMode(true)}
+                accessibilityLabel={t('chat.search')}
               >
-                <Ionicons name="home" size={20} color={colors.text} />
+                <Ionicons name="search" size={20} color={colors.text} />
               </Pressable>
-            ) : null}
-            {isGroup ? (
-              <Pressable
-                hitSlop={8}
-                style={styles.iconBtn}
-                onPress={() => router.push(`/chat-info/${id!}`)}
-                accessibilityLabel={t('chat_info.group_title')}
-              >
-                <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
-              </Pressable>
-            ) : (
-              <>
-                <Pressable
-                  hitSlop={8}
-                  style={styles.iconBtn}
-                  onPress={() => router.push(`/call/${id!}?mode=video`)}
-                  accessibilityLabel={t('call.video_call')}
-                >
-                  <Ionicons name="videocam-outline" size={22} color={colors.text} />
-                </Pressable>
+              {!isAIChat ? (
                 <Pressable
                   hitSlop={8}
                   style={styles.iconBtn}
                   onPress={() => router.push(`/call/${id!}?mode=voice`)}
-                  accessibilityLabel={t('call.voice_call')}
+                  accessibilityLabel={t('hangout.open')}
                 >
-                  <Ionicons name="call-outline" size={20} color={colors.text} />
+                  <Ionicons name="home" size={20} color={colors.text} />
                 </Pressable>
-              </>
-            )}
+              ) : null}
+              {isGroup ? (
+                <Pressable
+                  hitSlop={8}
+                  style={styles.iconBtn}
+                  onPress={() => router.push(`/chat-info/${id!}`)}
+                  accessibilityLabel={t('chat_info.group_title')}
+                >
+                  <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+                </Pressable>
+              ) : (
+                <>
+                  <Pressable
+                    hitSlop={8}
+                    style={styles.iconBtn}
+                    onPress={() => router.push(`/call/${id!}?mode=video`)}
+                    accessibilityLabel={t('call.video_call')}
+                  >
+                    <Ionicons name="videocam-outline" size={22} color={colors.text} />
+                  </Pressable>
+                  <Pressable
+                    hitSlop={8}
+                    style={styles.iconBtn}
+                    onPress={() => router.push(`/call/${id!}?mode=voice`)}
+                    accessibilityLabel={t('call.voice_call')}
+                  >
+                    <Ionicons name="call-outline" size={20} color={colors.text} />
+                  </Pressable>
+                </>
+              )}
+            </View>
           </View>
-        </View>
-      )}
+        )}
 
-      </StateTransition>
-      )}
+        </StateTransition>
+        )}
+      </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <View style={[styles.thread, { backgroundColor: chrome.wallpaper || colors.surfaceMuted }]}>
@@ -2394,6 +2451,15 @@ export default function ChatScreen() {
               blurRadius={layout.wallpaperBlur ? 12 : 0}
             />
           ) : null}
+          {/* Over the photo, under the dim: the movement is part of the
+              wallpaper, so it gets darkened along with it. `info` is the
+              second hue on purpose — it is a token a pack can set, which is
+              the only handle a theme author has on what the aurora does. */}
+          <AnimatedWallpaper
+            animation={layout.wallpaperAnimation}
+            tint={colors.primary}
+            accent={colors.info}
+          />
           {chrome.wallpaperImage || layout.wallpaperDim > 0 ? (
             <View
               pointerEvents="none"
@@ -2453,7 +2519,7 @@ export default function ChatScreen() {
                 />
               )
             }
-            contentContainerStyle={styles.threadContent}
+            contentContainerStyle={[styles.threadContent, { paddingTop: headerH + Spacing.md }]}
             keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
               searchMode ? null : (
@@ -2517,15 +2583,24 @@ export default function ChatScreen() {
             style={[
               styles.composerWrap,
               {
-                backgroundColor: chrome.composerBg || colors.surfaceMuted,
                 ...(layout.composerStyle === 'floating'
                   ? { marginHorizontal: 10, marginBottom: 8, borderRadius: 20, overflow: 'hidden' as const }
                   : layout.composerStyle === 'flat'
                     ? { borderTopWidth: 0 }
                     : null),
+                // The backdrop is a sibling of the rows, so the bar has to do
+                // the clipping the background used to do for itself.
+                ...(layout.glassChrome ? { overflow: 'hidden' as const } : null),
               },
             ]}
           >
+            {/* Solid when glass is off — the composer never goes see-through
+                by accident, only when the theme asks for it. */}
+            <GlassSurface
+              color={chrome.composerBg || colors.surfaceMuted}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             {/* Pending / blocked friend-request banner */}
             {isBlocked ? (
               <View style={[styles.pendingBanner, { backgroundColor: colors.surface, borderTopColor: colors.divider }]}>
@@ -2665,6 +2740,7 @@ export default function ChatScreen() {
                       color={canCompose ? colors.textSecondary : colors.textMuted}
                     />
                   </Pressable>
+                  {layout.attachSide === 'left' ? attachControls : null}
                   <TextInput
                     ref={composerInputRef}
                     value={draft}
@@ -2685,26 +2761,7 @@ export default function ChatScreen() {
                     editable={canCompose}
                     style={[styles.composerInput, { color: canCompose ? colors.text : colors.textMuted }]}
                   />
-                  {canCompose ? (
-                    <Pressable
-                      hitSlop={8}
-                      style={styles.composerRight}
-                      onPress={() => setShowAttach(true)}
-                      accessibilityLabel={t('chat.attach')}
-                    >
-                      <Ionicons name="attach" size={22} color={colors.textSecondary} />
-                    </Pressable>
-                  ) : null}
-                  {canCompose && !hasDraft ? (
-                    <Pressable
-                      hitSlop={8}
-                      style={styles.composerRight}
-                      onPress={openCamera}
-                      accessibilityLabel={t('chat.camera')}
-                    >
-                      <Ionicons name="camera-outline" size={22} color={colors.textSecondary} />
-                    </Pressable>
-                  ) : null}
+                  {layout.attachSide === 'right' ? attachControls : null}
                 </View>
               ) : (
                 <RecordingStrip
@@ -2727,7 +2784,7 @@ export default function ChatScreen() {
                     ]}
                     accessibilityLabel={t('chat.send')}
                   >
-                    <Ionicons name="arrow-up" size={22} color={colors.onPrimary} />
+                    <AppIcon slot="send" size={22} color={colors.onPrimary} />
                   </Pressable>
                 ) : hasDraft ? (
                   <Pressable
@@ -2739,7 +2796,7 @@ export default function ChatScreen() {
                     ]}
                     accessibilityLabel={t('chat.send')}
                   >
-                    <Ionicons name="arrow-up" size={22} color={colors.onPrimary} />
+                    <AppIcon slot="send" size={22} color={colors.onPrimary} />
                   </Pressable>
                 ) : (
                   <View style={styles.micWrap}>
@@ -2754,7 +2811,7 @@ export default function ChatScreen() {
                           micStyle,
                         ]}
                       >
-                        <Ionicons name="mic" size={22} color={colors.onPrimary} />
+                        <AppIcon slot="mic" size={22} color={colors.onPrimary} />
                       </Animated.View>
                     </GestureDetector>
                   </View>
@@ -4409,6 +4466,14 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
+  headerFloat: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    // Above the thread, which is declared after it in the tree.
+    zIndex: 10,
+  },
   thread: { flex: 1 },
   threadContent: {
     paddingHorizontal: Spacing.md,

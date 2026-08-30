@@ -10,13 +10,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut, Layout } from 'react-native-reanimated';
 
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { CachedImage } from '@/components/ui/cached-image';
 import { appAlert } from '@/data/dialog-store';

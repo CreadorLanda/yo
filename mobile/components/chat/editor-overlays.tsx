@@ -1,11 +1,13 @@
 import { Image } from 'expo-image';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
+
+import { Text } from '@/components/ui/text';
 
 /**
  * Draggable overlays for the media editor.
