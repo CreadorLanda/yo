@@ -1,52 +1,44 @@
-import { getGroup } from '@/data/api/groups';
-import { listChats, sendMessage as apiSendMessage } from '@/data/api/messages';
-import {
-  E2EEUnavailable,
-  encryptForGroup,
-  encryptForPeerOrFail,
-  ensureKeysPublished,
-  groupEpoch,
-} from '@/data/crypto';
+import { bootstrapAuth } from '@/data/auth-store';
+import { queueTextMessage } from '@/data/outbox';
 
 /**
  * Send a reply typed into a notification, without opening the app.
  *
- * The hard part is not the sending — it is that this runs outside the chat
- * screen, where the encryption helper lives. Reusing the same primitives
- * rather than reaching for the plaintext send is the whole point: a reply
- * from the lock screen must be exactly as protected as one typed in the
- * conversation, or the notification becomes a way around the encryption.
+ * This used to encrypt and POST directly, and a failure was a `console.warn`.
+ * That is the wrong shape for where it runs. The reply arrives with the app
+ * backgrounded or freshly launched by the OS, which is precisely when the
+ * things a direct send needs are least likely to be there: no chat list
+ * cached, no keys fetched, possibly no network. When any of that was missing
+ * the message was gone — not failed, not pending, gone. The person had
+ * watched themselves type it.
  *
- * Everything it needs is fetched fresh: the chat's peer, or the group's
- * members and key epoch. That costs a round trip, but a quick reply happens
- * once in a while and correctness matters more than the millisecond.
+ * So it goes through the outbox instead, which was built for exactly this in
+ * #113: persisted before anything is attempted, retried in order, given up on
+ * only after five tries, and visible in the thread as pending the whole time.
+ * A reply that cannot be sent right now is a reply that sends later, which is
+ * what somebody typing into a lock screen expects.
+ *
+ * The encryption is unchanged and still not optional — the outbox seals with
+ * the same primitives the composer does, at the moment of actual send. A
+ * reply from the lock screen must be exactly as protected as one typed in the
+ * conversation, or the notification becomes a way around the encryption.
  */
 export async function sendQuickReply(chatId: string, text: string): Promise<void> {
   const body = text.trim();
   if (!body) return;
 
-  await ensureKeysPublished();
+  // Awaited, not read. On a cold start this runs beside the app's own
+  // bootstrap, and `bootstrapAuth` hands both callers the same in-flight
+  // promise rather than telling the second one there is no session.
+  const user = await bootstrapAuth();
+  if (!user) throw new Error('no_session');
 
-  // There is no single-chat endpoint, and inventing one for this would be a
-  // server change for a rare path. The list is small and already cached by
-  // the API layer's own semantics.
-  const chat = (await listChats()).find((c) => c.id === chatId);
-  if (!chat) throw new E2EEUnavailable('peer_unknown');
-
-  let payload: string;
-  if (chat.type === 'group') {
-    const members = ((await getGroup(chatId)).members ?? []).map((m) => ({
-      user_id: m.user_id,
-      username: m.username,
-    }));
-    if (members.length === 0) throw new E2EEUnavailable('peer_unknown');
-    payload = await encryptForGroup(chatId, body, members, await groupEpoch(chatId));
-  } else {
-    if (!chat.peer_user_id) throw new E2EEUnavailable('peer_unknown');
-    payload = await encryptForPeerOrFail(chat.peer_user_id, body, {
-      peerUsername: chat.peer_username,
-    });
-  }
-
-  await apiSendMessage(chatId, payload, 'text');
+  queueTextMessage({
+    // Same shape the composer uses, so a queued reply and a queued message
+    // are indistinguishable to everything downstream.
+    id: `tmp_${Date.now()}`,
+    chatId,
+    senderId: user.id,
+    text: body,
+  });
 }
