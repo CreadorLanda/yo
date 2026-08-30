@@ -91,7 +91,6 @@ export default {
     },
   },
   app_lock: {
-    section: 'Bloqueio da app',
     row: 'Bloquear a app',
     off: 'Desligado',
     timeout: 'Bloquear ao fim de',
@@ -1063,6 +1062,7 @@ export default {
     title: 'Definições',
     section_account: 'Conta',
     section_privacy: 'Privacidade',
+    section_security: 'Segurança',
     section_notifications: 'Notificações',
     section_appearance: 'Aparência',
     section_storage: 'Armazenamento',

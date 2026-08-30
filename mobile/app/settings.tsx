@@ -414,7 +414,7 @@ export default function SettingsScreen() {
           />
         </Group>
 
-        <Group title={t('app_lock.section')}>
+        <Group title={t('settings.section_security')}>
           <Row
             icon="lock-closed-outline"
             label={t('app_lock.row')}

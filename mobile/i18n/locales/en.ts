@@ -91,7 +91,6 @@ export default {
     },
   },
   app_lock: {
-    section: 'App lock',
     row: 'Lock the app',
     off: 'Off',
     timeout: 'Lock after',
@@ -1063,6 +1062,7 @@ export default {
     title: 'Settings',
     section_account: 'Account',
     section_privacy: 'Privacy',
+    section_security: 'Security',
     section_notifications: 'Notifications',
     section_appearance: 'Appearance',
     section_storage: 'Storage',
