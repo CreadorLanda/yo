@@ -5,22 +5,22 @@ import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/ui/avatar';
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { createChat } from '@/data/api/messages';
-import { searchUsers } from '@/data/api/users';
+import { searchUsers, type PublicUser } from '@/data/api/users';
 import { isValidCode, unlockWithCode, useRevealedChats } from '@/data/chat-lock';
 import { searchNotes } from '@/data/db/notes';
 import { useLockedChatIds } from '@/data/chat-prefs';
 import { useChats } from '@/data/chat-store';
-import type { ApiUser } from '@/data/api/auth';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
 export default function SearchScreen() {
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<ApiUser[]>([]);
+  const [results, setResults] = useState<PublicUser[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export default function SearchScreen() {
     (n) => !lockedIds.has(n.chatId) || revealed.has(n.chatId),
   );
 
-  const handleSelectUser = async (user: ApiUser) => {
+  const handleSelectUser = async (user: PublicUser) => {
     setBusy(true);
     try {
       const { chat_id } = await createChat(user.id);
@@ -153,13 +153,15 @@ export default function SearchScreen() {
               pressed && { backgroundColor: colors.surfaceMuted },
             ]}
           >
-            <View style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}>
-              {item.avatar_uri ? (
-                <Image source={{ uri: item.avatar_uri }} style={styles.avatarImg} contentFit="cover" />
-              ) : (
-                <Ionicons name="person" size={24} color={colors.textMuted} />
-              )}
-            </View>
+            {/* A person icon told you nothing about who this is. The
+                generated face is the one they actually have. */}
+            <Avatar
+              uri={item.avatar_uri}
+              id={item.id}
+              username={item.username}
+              size={44}
+              style={styles.avatar}
+            />
             <View style={styles.text}>
               <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
                 {item.display_name || item.username}

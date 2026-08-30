@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 
+import { uploadMedia } from './api/media';
 import { patchMe, type UserPatch } from './api/users';
 import { useCurrentUser } from './auth-store';
 
@@ -35,7 +36,33 @@ export async function updateProfile(patch: {
   if (patch.name !== undefined) body.display_name = patch.name;
   if (patch.username !== undefined) body.username = patch.username;
   if (patch.bio !== undefined) body.bio = patch.bio;
-  if (patch.avatarUri !== undefined && patch.avatarUri !== null) body.avatar_uri = patch.avatarUri;
+  if (patch.avatarUri !== undefined && patch.avatarUri !== null) {
+    body.avatar_uri = await resolveAvatarUrl(patch.avatarUri);
+  }
   if (Object.keys(body).length === 0) return;
   await patchMe(body);
+}
+
+
+/**
+ * Turn whatever the picker handed back into something the server can serve.
+ *
+ * This used to send the picker's URI straight through, which is a path inside
+ * this app's own sandbox — `file:///data/user/0/…/ImagePicker/abc.jpg`. The
+ * server stored it, every other device was handed it, and none of them could
+ * open it; the owner lost it too, as soon as the OS cleared its cache. A
+ * profile photo that only exists on the phone that chose it is not a profile
+ * photo.
+ *
+ * The upload path has existed the whole time — `channel/create` has used it
+ * for channel avatars since channels shipped. This is the same call.
+ */
+async function resolveAvatarUrl(uri: string): Promise<string> {
+  // Already served by somebody: an earlier upload, or an avatar that came
+  // back from the API. Re-uploading it would make a second copy of a file
+  // this device may not even have.
+  if (/^https?:\/\//i.test(uri)) return uri;
+
+  const uploaded = await uploadMedia({ uri, mimeType: 'image/jpeg' });
+  return uploaded.url;
 }

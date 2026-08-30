@@ -1,6 +1,6 @@
 import { Canvas, ColorMatrix, Image as SkiaImage, Skia } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
-import { forwardRef, useImperativeHandle, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import {
@@ -48,12 +48,30 @@ export const FilteredCamera = forwardRef<
     zoom: number;
     isActive: boolean;
     onReady?: () => void;
+    /**
+     * Whether this device has a camera at all.
+     *
+     * Reported rather than swallowed. `useCameraDevice` returns undefined on
+     * hardware with no camera — an emulator, a container like Waydroid, some
+     * tablets — and the component below then has nothing to render. Left
+     * unsaid, that is indistinguishable from a lens still warming up, and it
+     * never stops looking that way.
+     */
+    onDeviceAvailability?: (available: boolean) => void;
   }
 >(function FilteredCamera(
-  { front, filter, video, torch, zoom, isActive, micGranted, onReady },
+  { front, filter, video, torch, zoom, isActive, micGranted, onReady, onDeviceAvailability },
   ref,
 ) {
   const device = useCameraDevice(front ? 'front' : 'back');
+
+  // Kept in a ref so a caller that passes an inline arrow does not re-run
+  // this on every render of the composer.
+  const availabilityRef = useRef(onDeviceAvailability);
+  availabilityRef.current = onDeviceAvailability;
+  useEffect(() => {
+    availabilityRef.current?.(!!device);
+  }, [device]);
   const matrix = filterById(filter).matrix;
 
   const photoOutput = usePhotoOutput({ qualityPrioritization: 'quality' });
@@ -129,6 +147,9 @@ export const FilteredCamera = forwardRef<
     [photoOutput, videoOutput, recorder],
   );
 
+  // Still just a blank here: what to say about a missing camera is the
+  // composer's decision, not this component's — it owns the chrome, and it
+  // is the one that can offer the gallery instead.
   if (!device) return <View style={styles.blank} />;
 
   // The frame output object is built on every render — a hook cannot be called

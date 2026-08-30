@@ -161,3 +161,38 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	return nil
 }
+
+// SharedChatIDs narrows a set of user ids to those the viewer has a chat
+// with — the closest thing this app has to a contact list.
+//
+// One query for the whole set, not one per result: a search returns twenty
+// rows and this decides whether each may show a photo, which is exactly the
+// shape that turns into twenty round trips if written the obvious way.
+func (r *Repository) SharedChatIDs(
+	ctx context.Context,
+	viewerID uuid.UUID,
+	candidates []uuid.UUID,
+) (map[uuid.UUID]bool, error) {
+	shared := make(map[uuid.UUID]bool, len(candidates))
+	if len(candidates) == 0 {
+		return shared, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT theirs.user_id
+		FROM chat_participants mine
+		JOIN chat_participants theirs ON theirs.chat_id = mine.chat_id
+		WHERE mine.user_id = $1 AND theirs.user_id = ANY($2)
+	`, viewerID, candidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		shared[id] = true
+	}
+	return shared, rows.Err()
+}

@@ -144,6 +144,13 @@ export default function CreateStoryScreen() {
   const { hasPermission: hasCam, requestPermission: askCam } = useCameraPermission();
   const { hasPermission: hasMic, requestPermission: askMic } = useMicrophonePermission();
   const [camReady, setCamReady] = useState(false);
+  /**
+   * This device has no camera at all — not "not yet", but never.
+   *
+   * Separate from `camReady` because they look identical on screen and mean
+   * opposite things: one resolves on its own, the other does not.
+   */
+  const [noCamera, setNoCamera] = useState(false);
   const [zoom, setZoom] = useState(0);
 
   const shutterScale = useSharedValue(1);
@@ -309,6 +316,15 @@ export default function CreateStoryScreen() {
       // A silent video is worth more than no video, so a refused microphone
       // does not stop the recording — it just records without sound.
       await askMic();
+    }
+
+    // No camera on this hardware: the shutter opens the library instead of
+    // reporting a capture failure. There is nothing to retry, and the gallery
+    // is the way a story actually gets made on a device like this — the same
+    // fall-back a refused permission already takes.
+    if (noCamera) {
+      await pickFromLibrary();
+      return;
     }
 
     const cam = cameraRef.current;
@@ -483,6 +499,7 @@ export default function CreateStoryScreen() {
               zoom={zoom}
               isActive={phase === 'capture'}
               onReady={() => setCamReady(true)}
+              onDeviceAvailability={(available) => setNoCamera(!available)}
             />
           ) : null}
           <View style={styles.viewfinderGrain} pointerEvents="none" />
@@ -509,12 +526,22 @@ export default function CreateStoryScreen() {
               {hasCam && camReady ? null : (
                 <>
               <Ionicons
-                name={frontCamera ? 'person-outline' : 'camera-outline'}
+                name={
+                  noCamera
+                    ? 'camera-reverse-outline'
+                    : frontCamera
+                      ? 'person-outline'
+                      : 'camera-outline'
+                }
                 size={36}
                 color="rgba(255,255,255,0.22)"
               />
               <Text style={styles.viewfinderHintText}>
-                {recording ? t('stories.recording') : t('stories.tap_to_capture')}
+                {noCamera
+                  ? t('stories.no_camera')
+                  : recording
+                    ? t('stories.recording')
+                    : t('stories.tap_to_capture')}
               </Text>
                 </>
               )}

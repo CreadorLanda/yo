@@ -1,0 +1,30 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!--
+    A foreground service is the only way a call survives leaving the app.
+
+    Since Android 9 the microphone is cut off in the background without one,
+    and since Android 12 the process itself is frozen. The app targets API 35,
+    so both apply: pressing home during a call silenced it and then killed it,
+    and nothing in the app noticed.
+
+    `@livekit/react-native` declares FOREGROUND_SERVICE but ships no service —
+    only `MediaProjectionService`, which is for screen sharing. This is the
+    missing piece, not a duplicate of it.
+  -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <!--
+    Mandatory from Android 14 (API 34). Starting a microphone foreground
+    service without this throws SecurityException — the permission and the
+    service have to arrive together, which is why they are in one file.
+  -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+
+  <application>
+    <service
+        android:name=".CallForegroundService"
+        android:exported="false"
+        android:foregroundServiceType="microphone|camera" />
+  </application>
+</manifest>

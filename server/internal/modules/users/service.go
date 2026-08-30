@@ -68,11 +68,66 @@ func (s *Service) CheckAvailability(ctx context.Context, callerID uuid.UUID, use
 
 // Search finds users by username or display_name. Only returns users who
 // have username_public = true. The caller is excluded from results.
-func (s *Service) Search(ctx context.Context, callerID uuid.UUID, query string) ([]User, error) {
+//
+// Returns PublicView, never User: the wide struct carries privacy settings,
+// and a search that reports whether somebody has ghost mode on has handed
+// over the very thing ghost mode is for.
+func (s *Service) Search(ctx context.Context, callerID uuid.UUID, query string) ([]PublicView, error) {
 	if len(query) < 2 {
 		return nil, nil
 	}
-	return s.repo.Search(ctx, query, callerID)
+	found, err := s.repo.Search(ctx, query, callerID)
+	if err != nil {
+		return nil, err
+	}
+	return s.publicViews(ctx, callerID, found)
+}
+
+// ByUsernamePublic is the same narrowing for a single lookup.
+//
+// Goes through ByUsername rather than the repository, so the private-username
+// rule and the not-found mapping stay in one place. Reaching past it here
+// would have quietly re-exposed anybody with username_public = false.
+func (s *Service) ByUsernamePublic(
+	ctx context.Context,
+	callerID uuid.UUID,
+	username string,
+) (*PublicView, error) {
+	u, err := s.ByUsername(ctx, callerID, username)
+	if err != nil {
+		return nil, err
+	}
+	views, err := s.publicViews(ctx, callerID, []User{*u})
+	if err != nil || len(views) == 0 {
+		return nil, err
+	}
+	return &views[0], nil
+}
+
+// publicViews resolves "do we share a chat" once for the whole set, then
+// renders each row through it — a search returns twenty people and asking per
+// row is twenty round trips.
+func (s *Service) publicViews(
+	ctx context.Context,
+	callerID uuid.UUID,
+	found []User,
+) ([]PublicView, error) {
+	ids := make([]uuid.UUID, 0, len(found))
+	for i := range found {
+		ids = append(ids, found[i].ID)
+	}
+	shared, err := s.repo.SharedChatIDs(ctx, callerID, ids)
+	if err != nil {
+		// A failed lookup must not become "everyone is a contact". Falling
+		// closed shows fewer photos than it could; falling open shows photos
+		// somebody asked to keep for their contacts.
+		shared = map[uuid.UUID]bool{}
+	}
+	views := make([]PublicView, 0, len(found))
+	for i := range found {
+		views = append(views, found[i].PublicViewFor(shared[found[i].ID]))
+	}
+	return views, nil
 }
 
 // Patch applies a profile patch. Validates the username (when supplied)

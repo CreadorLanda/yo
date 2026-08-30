@@ -37,8 +37,28 @@ function subscribe(l: () => void) {
 
 // One-time load at app startup so screens that mount before bootstrap
 // finishes don't flash a logged-out view. Safe to call multiple times.
+/**
+ * In flight, so a second caller waits for the answer instead of being told
+ * there is no session.
+ *
+ * The flag alone was a race: `booted` was set before the `await`, so anything
+ * that called this while the keychain read was still running got `cachedUser`
+ * — still null — and concluded the person was signed out. A reply typed into
+ * a notification does exactly that on a cold start, which is how it silently
+ * sent nothing.
+ */
+let booting: Promise<ApiUser | null> | null = null;
+
 export async function bootstrapAuth(): Promise<ApiUser | null> {
   if (booted) return cachedUser;
+  if (booting) return booting;
+  booting = restoreSession().finally(() => {
+    booting = null;
+  });
+  return booting;
+}
+
+async function restoreSession(): Promise<ApiUser | null> {
   booted = true;
   try {
     // The keychain read is inside the try too: on Android it throws outright

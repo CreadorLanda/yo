@@ -18,6 +18,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PeoplePicker, type PickablePerson } from '@/components/ui/people-picker';
+import { startCallKeepAlive, stopCallKeepAlive } from '@/modules/call-keepalive';
 import { Text } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { callToken, hangupCall, inviteToCall, type CallGrant } from '@/data/api/calls';
@@ -98,12 +99,25 @@ export default function CallScreen() {
 
   // The audio session has to be running before the room connects, or the
   // first seconds arrive with nowhere to play.
+  //
+  // The keep-alive goes up with it and comes down with it, because the two
+  // answer the same question from opposite ends: LiveKit's session routes the
+  // audio, and this stops the OS from taking the process away mid-call. On
+  // Android that is a foreground service; on iOS it is holding the
+  // AVAudioSession active. Without it, pressing home silenced the call and
+  // then ended it, and nothing here noticed — see #160.
   useEffect(() => {
     void AudioSession.startAudioSession();
+    startCallKeepAlive({
+      video: callMode === 'video',
+      title: t('call.ongoing_title'),
+      body: t('call.ongoing_body'),
+    });
     return () => {
+      stopCallKeepAlive();
       void AudioSession.stopAudioSession();
     };
-  }, []);
+  }, [callMode]);
 
   if (failure) {
     return (
