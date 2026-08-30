@@ -382,6 +382,7 @@ export default {
     edited: 'editada',
     deleted_self: 'Apagaste esta mensagem',
     deleted_other: 'Esta mensagem foi apagada',
+    retry_send: 'Não enviada. Toca para tentar novamente.',
     view_once: 'Ver uma vez',
     view_once_tap: 'Toca para ver',
     view_once_consumed: 'Vista',

@@ -123,11 +123,13 @@ import {
 import { linkReplies } from '@/data/reply-link';
 import { ensureLocal, mediaIdFromURL, useCacheState } from '@/data/media-cache';
 import {
+  listPendingSends,
   loadCachedMessages,
   markCachedMessageOpened,
   saveCachedMessages,
   trimCachedChat,
 } from '@/data/db/messages';
+import { queueTextMessage, retrySend, subscribeOutbox } from '@/data/outbox';
 import {
   E2EEUnavailable,
   encryptForGroup,
@@ -405,14 +407,38 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!id || !meId) return;
     let cancelled = false;
-    loadCachedMessages(id, 50)
-      .then((cached) => {
+    Promise.all([loadCachedMessages(id, 50), listPendingSends(id)])
+      .then(([cached, pending]) => {
         // Seed only — the network result replaces this wholesale, and
         // overwriting live messages with stale rows would be a regression.
-        if (cancelled || cached.length === 0) return;
+        // Pending sends are the exception: nothing else will ever paint
+        // them, since the server has never heard of them.
+        if (cancelled || (cached.length === 0 && pending.length === 0)) return;
         // Quotes reconstructed here too: the cache stores the decrypted DTO,
         // which carries reply_to_id but no quoted text.
-        setMessages(linkReplies(cached.map((m) => mapApiMessage(m, meId))));
+        const cachedMapped = cached.map((m) => mapApiMessage(m, meId));
+        const pendingMapped: Message[] = pending.map((p) => {
+          const replyToMsg = p.replyToId
+            ? cachedMapped.find((m) => serverMessageId(m.id) === Number(p.replyToId))
+            : undefined;
+          return {
+            id: p.id,
+            text: p.text,
+            fromMe: true,
+            timestamp: new Date(p.createdAt).toLocaleTimeString(),
+            status: p.status === 'failed' ? 'failed' : 'sending',
+            replyTo: replyToMsg
+              ? {
+                  id: replyToMsg.id,
+                  text: replySnippet(replyToMsg),
+                  fromMe: replyToMsg.fromMe,
+                  senderName: replyToMsg.senderName,
+                  icon: replyIcon(replyToMsg),
+                }
+              : undefined,
+          };
+        });
+        setMessages(linkReplies([...cachedMapped, ...pendingMapped]));
       })
       .catch((err) => {
         // Loud on purpose. Swallowing this is how a completely dead local
@@ -424,6 +450,42 @@ export default function ChatScreen() {
     return () => {
       cancelled = true;
     };
+  }, [id, meId]);
+
+  // Reconcile the outbox: a queued send lands, retries, or gives up, on its
+  // own schedule — this only paints whatever it decided. Matched against
+  // the bubble already on screen rather than the DTO's own id, since the
+  // whole point of the optimistic id is that the server has never seen it.
+  useEffect(() => {
+    if (!id) return;
+    return subscribeOutbox(id, (event) => {
+      if (event.outcome !== 'sent') {
+        const nextStatus = event.outcome === 'gave_up' ? 'failed' : 'sending';
+        setMessages((prev) =>
+          prev.map((m) => (m.id === event.messageId ? { ...m, status: nextStatus } : m)),
+        );
+        return;
+      }
+      const mapped = mapApiMessage(event.dto, meId);
+      setMessages((prev) => {
+        const existing = prev.find((m) => m.id === event.messageId);
+        // The server cannot echo back what it never decrypted, and the
+        // quote it returns is only an id — both are already right on the
+        // bubble that has been sitting on screen since submit.
+        if (existing?.text) mapped.text = existing.text;
+        if (existing?.replyTo) mapped.replyTo = existing.replyTo;
+        if (prev.some((m) => m.id === mapped.id)) {
+          return prev.filter((m) => m.id !== event.messageId);
+        }
+        const idx = prev.findIndex((m) => m.id === event.messageId);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = mapped;
+          return next;
+        }
+        return [...prev, mapped];
+      });
+    });
   }, [id, meId]);
 
   // Reconcile with the API.
@@ -802,7 +864,10 @@ export default function ChatScreen() {
   const grouped = useMemo(() => groupMessages(filtered), [filtered]);
 
   const appendMessage = (
-    msg: Omit<Message, 'id' | 'timestamp' | 'fromMe' | 'status'> & { id?: string },
+    msg: Omit<Message, 'id' | 'timestamp' | 'fromMe' | 'status'> & {
+      id?: string;
+      status?: Message['status'];
+    },
   ) => {
     setMessages((prev) => [
       ...prev,
@@ -1352,6 +1417,15 @@ export default function ChatScreen() {
     setReplyTarget(msg);
   };
 
+  /** Re-arm a message the outbox gave up on. Flips back to the clock icon
+   * immediately — waiting for the retry itself to resolve would leave the
+   * tap looking like it did nothing. */
+  const handleRetry = (msgId: string) => {
+    if (!id) return;
+    setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: 'sending' } : m)));
+    retrySend(id, msgId);
+  };
+
   /** Absolute media URL back to the stored server path. */
   const stripApiBase = (uri: string) =>
     uri.startsWith('http') ? uri.replace(/^https?:\/\/[^/]+/, '') : uri;
@@ -1404,68 +1478,28 @@ export default function ChatScreen() {
           icon: replyIcon(replyTarget),
         }
       : undefined;
+    // Queued (not 'sent') for anything that goes through the outbox: the
+    // bubble is on screen but the network has not confirmed it yet, and
+    // WhatsApp's clock icon — not a checkmark — is what that means.
     appendMessage({
       id: tempId,
       text,
       replyTo: reply,
+      status: id && !isAIChat ? 'sending' : 'sent',
     });
     setReplyTarget(null);
     if (isAIChat || /@dandara/i.test(text)) triggerDandara(text);
 
     if (id && !isAIChat) {
+      // Persist first, network after: this is the whole fix for a message
+      // that used to vanish if the app closed before the send finished.
+      // Direct chats are end-to-end encrypted or they do not send — groups
+      // are exempt because they have no E2EE yet, not because encryption is
+      // optional. Encryption itself happens inside the outbox, at the moment
+      // of actual send, not here: sealing now would spend a ratchet step on
+      // a message that has not even tried the network yet.
       const replyTo = reply ? serverMessageId(reply.id) ?? undefined : undefined;
-      (async () => {
-        let payload: string;
-        // Direct chats are end-to-end encrypted or they do not send.
-        //
-        // This used to fall back to plaintext on any failure, silently: the
-        // sender's screen looked identical whether the message went out
-        // encrypted or in the clear, so the one promise the app makes about
-        // messages was broken precisely when nobody could tell. Groups are
-        // excluded because they have no E2EE yet — blocking there would stop
-        // group messaging outright, which is a different decision.
-        //
-        // One path for every chat and every message kind. This branch used
-        // to read `type !== 'group'`, so a group's text messages skipped
-        // encryption altogether — the most common message in the app was the
-        // one left in the clear, while its photos were sealed.
-        try {
-          payload = await encryptBody(text);
-        } catch (err) {
-          // Nothing goes to the server. The bubble comes back off the thread
-          // and the text returns to the box, so the message is not lost and
-          // the failure is not mistaken for a delivery.
-          setMessages((prev) => prev.filter((m) => m.id !== tempId));
-          setDraft((d) => (d ? d : text));
-          reportE2EEBlocked(err);
-          return;
-        }
-        try {
-          const dto = await apiSendMessage(id, payload, 'text', replyTo ?? undefined);
-          const mapped = mapApiMessage(dto, meId);
-          // Show plaintext in UI even if wire was encrypted.
-          mapped.text = text;
-          // Keep the quote the optimistic bubble was showing. The server
-          // returns only reply_to_id — it cannot return the quoted text,
-          // which is encrypted — so dropping this made the quote blink out
-          // the instant the message was confirmed.
-          if (reply) mapped.replyTo = reply;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === mapped.id)) {
-              return prev.filter((m) => m.id !== tempId);
-            }
-            const idx = prev.findIndex((m) => m.id === tempId);
-            if (idx >= 0) {
-              const next = [...prev];
-              next[idx] = mapped;
-              return next;
-            }
-            return [...prev, mapped];
-          });
-        } catch {
-          // Keep optimistic bubble; failed sync surfaces on next open/reload.
-        }
-      })();
+      queueTextMessage({ id: tempId, chatId: id, senderId: meId ?? '', text, replyToId: replyTo });
     }
   };
 
@@ -2481,6 +2515,7 @@ export default function ChatScreen() {
                   onPlay={handlePlayGame}
                   onViewOnce={handleViewOnce}
                   revealed={revealed}
+                  onRetry={handleRetry}
                 />
               )
             }
@@ -3083,7 +3118,15 @@ function relativeRemaining(iso?: string): string | null {
   return `${Math.floor(h / 24)}d`;
 }
 
-function MetaRow({ msg, onMedia }: { msg: GroupedMessage; onMedia?: boolean }) {
+function MetaRow({
+  msg,
+  onMedia,
+  onRetry,
+}: {
+  msg: GroupedMessage;
+  onMedia?: boolean;
+  onRetry?: () => void;
+}) {
   const { colors, chat } = useTheme();
   const mine = msg.fromMe;
   const dim = onMedia
@@ -3114,19 +3157,46 @@ function MetaRow({ msg, onMedia }: { msg: GroupedMessage; onMedia?: boolean }) {
         {msg.timestamp}
       </Text>
       {mine ? (
-        <Ionicons
-          name={msg.status === 'read' ? 'checkmark-done' : 'checkmark'}
-          size={14}
-          color={
-            onMedia
-              ? '#FFFFFF'
-              : msg.status === 'read'
-                ? '#9DC1FF'
-                : dim
-          }
-        />
+        <MessageTick msg={msg} onMedia={onMedia} dim={dim} onRetry={onRetry} />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The checkmark, but also everything a still-queued send needs: a clock
+ * while it waits its turn (not a checkmark — nothing has confirmed it yet),
+ * and a tap-to-retry once the outbox has given up on it. See data/outbox.ts
+ * for what "sending" and "failed" actually mean here.
+ */
+function MessageTick({
+  msg,
+  onMedia,
+  dim,
+  onRetry,
+}: {
+  msg: GroupedMessage;
+  onMedia?: boolean;
+  dim: string;
+  onRetry?: () => void;
+}) {
+  const { colors } = useTheme();
+  if (msg.status === 'failed') {
+    return (
+      <Pressable onPress={onRetry} hitSlop={8} accessibilityLabel={t('chat.retry_send')}>
+        <Ionicons name="alert-circle" size={14} color={colors.danger} />
+      </Pressable>
+    );
+  }
+  if (msg.status === 'sending') {
+    return <Ionicons name="time-outline" size={14} color={onMedia ? '#FFFFFF' : dim} />;
+  }
+  return (
+    <Ionicons
+      name={msg.status === 'read' ? 'checkmark-done' : 'checkmark'}
+      size={14}
+      color={onMedia ? '#FFFFFF' : msg.status === 'read' ? '#9DC1FF' : dim}
+    />
   );
 }
 
@@ -3527,6 +3597,7 @@ function BubbleBody({
   revealed,
   onOpenMedia,
   onLongPressMedia,
+  onRetry,
 }: {
   msg: GroupedMessage;
   mine: boolean;
@@ -3539,6 +3610,7 @@ function BubbleBody({
   revealed?: Set<string>;
   onOpenMedia?: (msg: Message) => void;
   onLongPressMedia?: () => void;
+  onRetry?: (msgId: string) => void;
 }) {
   const { colors, chat, metrics, layout } = useTheme();
   const isAudio = msg.media?.type === 'audio';
@@ -3559,7 +3631,7 @@ function BubbleBody({
         <Text style={[styles.deletedText, { color: dim }]}>
           {mine ? t('chat.deleted_self') : t('chat.deleted_other')}
         </Text>
-        <MetaRow msg={msg} />
+        <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
       </View>
     );
   }
@@ -3587,7 +3659,7 @@ function BubbleBody({
             {spent ? t('chat.view_once_opened_hint') : t('chat.view_once_tap')}
           </Text>
         </View>
-        <MetaRow msg={msg} />
+        <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
       </>
     );
     // Nothing to tap once it is spent: an affordance that only ever produces
@@ -3759,13 +3831,13 @@ function BubbleBody({
               },
             ]}
           />
-          <MetaRow msg={msg} />
+          <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
         </View>
       ) : null}
 
-      {(isAudio || hasAttachment) && !hasText ? <MetaRow msg={msg} /> : null}
+      {(isAudio || hasAttachment) && !hasText ? <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} /> : null}
 
-      {mediaOnly ? <MetaRow msg={msg} onMedia /> : null}
+      {mediaOnly ? <MetaRow msg={msg} onMedia onRetry={() => onRetry?.(msg.id)} /> : null}
     </>
   );
 }
@@ -3786,6 +3858,7 @@ function Bubble({
   onViewOnce,
   revealed,
   onOpenMedia,
+  onRetry,
 }: {
   msg: GroupedMessage;
   isGroup: boolean;
@@ -3802,6 +3875,7 @@ function Bubble({
   onViewOnce: (msgId: string) => void;
   revealed: Set<string>;
   onOpenMedia: (msg: Message) => void;
+  onRetry?: (msgId: string) => void;
 }) {
   const { colors, chat: chrome, layout, metrics } = useTheme();
   const mine = msg.fromMe;
@@ -3965,6 +4039,7 @@ function Bubble({
               revealed={revealed}
               onOpenMedia={onOpenMedia}
               onLongPressMedia={handleLongPress}
+              onRetry={onRetry}
             />
           </Pressable>
 

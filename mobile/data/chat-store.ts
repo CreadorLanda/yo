@@ -153,6 +153,20 @@ export async function removeChat(chatId: string): Promise<void> {
   }
 }
 
+/**
+ * A synchronous, cache-only lookup — no fetch, no loading state.
+ *
+ * For code that runs outside a component (the outbox drain, in particular):
+ * it needs a chat's peer/group identity to encrypt a queued message, but it
+ * runs on its own schedule, not React's, so a hook is the wrong shape here.
+ * Returns undefined before the first successful `refreshChats()` — callers
+ * that can't proceed without it should treat that as "try again later", not
+ * fall back to fetching, or every drain tick would cost a request.
+ */
+export function getCachedChat(chatId: string): ChatDTO | undefined {
+  return chats.find((c) => c.id === chatId);
+}
+
 export function useChats(): { chats: ChatDTO[]; loaded: boolean } {
   const list = useSyncExternalStore(
     subscribe,

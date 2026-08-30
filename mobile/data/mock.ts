@@ -214,7 +214,7 @@ export type Message = {
   text: string;
   fromMe: boolean;
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read';
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   media?: MediaAttachment;
   /** Display name of the sender — shown in group threads for incoming messages. */
   senderName?: string;
