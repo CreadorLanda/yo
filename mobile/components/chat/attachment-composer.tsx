@@ -12,9 +12,14 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EmptyState } from '@/components/ui/empty-state';
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import { CHATS, type MessageAttachment } from '@/data/mock';
+import type { ApiUser } from '@/data/api/auth';
+import { searchUsers } from '@/data/api/users';
+import { getCurrentUser } from '@/data/auth-store';
+import { useChats } from '@/data/chat-store';
+import { type MessageAttachment } from '@/data/mock';
 import { useTheme } from '@/hooks/use-theme';
 import { getLocale, t } from '@/i18n';
 
@@ -210,8 +215,63 @@ function ContactSheet({
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { chats } = useChats();
+  const me = getCurrentUser()?.id;
+
   const [query, setQuery] = useState('');
-  const list = CHATS.filter((c) => !c.isGroup && c.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const [found, setFound] = useState<ApiUser[] | null>(null);
+
+  /**
+   * Typing searches the server; an empty box offers the people you already
+   * talk to.
+   *
+   * This used to filter the `CHATS` demo fixture, so the sheet offered
+   * ninani.eth and Samuel Garu — sample data from before there was a server —
+   * and would happily send a card for someone who was never born into a real
+   * conversation. The shape below is the one `people-picker` already uses.
+   */
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setFound(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchUsers(q)
+        .then((list) => {
+          if (!cancelled) setFound(list ?? []);
+        })
+        .catch(() => {
+          if (!cancelled) setFound([]);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  // A group has no single peer, so a group chat is not a contact to share.
+  const known = chats
+    .filter((c) => c.type === 'direct' && c.peer_user_id)
+    .map((c) => ({
+      id: c.peer_user_id!,
+      name: c.title ?? c.peer_username ?? '',
+      username: c.peer_username ?? '',
+      avatarUri: c.avatar_url ?? '',
+    }));
+
+  const list = (
+    found
+      ? found.map((u) => ({
+          id: u.id,
+          name: u.display_name || u.username,
+          username: u.username,
+          avatarUri: u.avatar_uri ?? '',
+        }))
+      : known
+  ).filter((p) => p.id !== me);
 
   return (
     <SheetShell title={t('chat.contact_share')} onClose={onClose}>
@@ -231,6 +291,19 @@ function ContactSheet({
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, Spacing.md) }}
         keyboardShouldPersistTaps="handled"
       >
+        {/*
+          Two different empties, because they call for two different answers:
+          a search that found nobody is not the same as an account that has
+          not spoken to anyone yet, and telling the second person "nobody
+          found" would be blaming them for the app being new.
+        */}
+        {list.length === 0 ? (
+          <EmptyState
+            icon={found ? 'search-outline' : 'people-outline'}
+            title={found ? t('chat.contact_none_found') : t('chat.contact_none_yet')}
+            description={found ? undefined : t('chat.contact_none_yet_hint')}
+          />
+        ) : null}
         {list.map((c) => (
           <Pressable
             key={c.id}
