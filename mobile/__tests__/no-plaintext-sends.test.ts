@@ -9,7 +9,7 @@ import { expect, test } from 'bun:test';
  * going out in the clear — the branch read `type !== 'group'`, so the most
  * common message in the app was the one left unencrypted.
  */
-const FILES = ['app/chat/[id].tsx', 'app/channel/[id].tsx'];
+const FILES = ['app/chat/[id].tsx', 'app/channel/[id].tsx', 'data/outbox.ts'];
 const ENCRYPTORS = /encryptBody\(|encryptForChat\(|encryptForGroup\(|encryptForPeerOrFail\(/;
 
 test('nenhum envio parte de texto simples', async () => {
