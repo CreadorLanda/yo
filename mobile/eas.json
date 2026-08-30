@@ -21,7 +21,7 @@
       "channel": "preview",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease --stacktrace"
+        "gradleCommand": ":app:assembleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://yo.alexandrelanda.com",
