@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider, type Theme } from '@react-navig
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import 'react-native-reanimated';
@@ -10,6 +10,8 @@ import 'react-native-reanimated';
 import { AppToast } from '@/components/ui/app-toast';
 import { DialogHost } from '@/components/ui/dialog-host';
 import { IncomingCallHost } from '@/components/ui/incoming-call';
+import { AppLockGate } from '@/components/ui/app-lock-gate';
+import { ScreenPrivacy } from '@/components/ui/screen-privacy';
 import { AnimatedSplash } from '@/components/ui/splash';
 import {
   listenForForegroundMessages,
@@ -17,6 +19,7 @@ import {
   registerBackgroundMessageHandler,
   registerNotificationActions,
 } from '@/data/push';
+import { bootstrapAppLock, noteBackgrounded, noteForegrounded } from '@/data/app-lock';
 import { bootstrapAuth } from '@/data/auth-store';
 import { ensureKeysPublished } from '@/data/crypto';
 import { ensureOutboxRunning } from '@/data/outbox';
@@ -60,7 +63,7 @@ export default function RootLayout() {
     // first frame is drawn in the default palette and then visibly flips to
     // the one the person actually chose. It never rejects — a theme that
     // cannot be read falls back to the default inside the store.
-    Promise.all([bootstrapAuth(), bootstrapThemes()])
+    Promise.all([bootstrapAuth(), bootstrapThemes(), bootstrapAppLock()])
       .then(([user]) => {
         if (!mounted) return;
         if (user) {
@@ -94,6 +97,17 @@ export default function RootLayout() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  // The lock's clock. `inactive` counts as leaving: on iOS it is the state
+  // the app passes through on the way out, and treating only `background` as
+  // "gone" means a fast app switch never starts the timer at all.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') noteForegrounded();
+      else noteBackgrounded();
+    });
+    return () => sub.remove();
   }, []);
 
   // Bind the navigation theme to the app palette so every scene's container is
@@ -215,6 +229,12 @@ export default function RootLayout() {
           {!splashGone ? (
             <AnimatedSplash done={booted} onDone={() => setSplashGone(true)} />
           ) : null}
+          {/*
+            Above the navigator and above the splash: a locked app must not
+            show a frame of itself, and the switcher preview must not either.
+          */}
+          <AppLockGate />
+          <ScreenPrivacy />
           {/* Global toast for background story publish, etc. */}
           <AppToast />
           {/* One dialog host for the whole app — see data/dialog-store. */}
