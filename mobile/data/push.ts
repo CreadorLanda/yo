@@ -187,9 +187,10 @@ export function listenForNotificationReplies(): () => void {
       const text = (response as { userText?: string }).userText ?? '';
       if (!text.trim()) return;
       void sendQuickReply(chatId, text).catch((err) => {
-        // Nothing to show — the app may not be open. Logged so a failure is
-        // findable rather than a message that silently never sent.
-        console.warn('[push] quick reply failed:', err);
+        // Reaching here now means the reply was never even queued — no
+        // session, or the local database would not open. A send that merely
+        // fails is the outbox's problem, and it keeps the message.
+        console.warn('[push] quick reply not queued:', err);
       });
       return;
     }
