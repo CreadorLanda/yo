@@ -902,6 +902,7 @@ export default {
     mode_handsfree: 'Hands-free',
     mode_audio: 'Audio',
     mode_live: 'Live',
+    no_camera: 'No camera on this device — tap to choose from your gallery',
     tap_to_capture: 'Tap to capture',
     tap_to_record: 'Tap to record audio',
     recording: 'Recording…',
