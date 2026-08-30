@@ -5,6 +5,7 @@ import { resetBlocks } from './block-store';
 import { resetLives } from './live-store';
 import { unregisterPushWithServer } from './push';
 import { resetDialogs } from './dialog-store';
+import { resetAppLock } from './app-lock';
 import { relockAll } from './chat-lock';
 import { clearE2EEState } from './crypto';
 import { wipeLocalHistory } from './db/messages';
@@ -42,6 +43,7 @@ export async function resetAllStores(): Promise<void> {
     ['chats', resetChatStore],
     ['chat prefs', resetChatPrefsCache],
     ['locks', relockAll],
+    ['app-lock', resetAppLock],
     ['filters', resetFilterStore],
     ['groups', resetGroupStore],
     ['stickers', resetStickerStore],

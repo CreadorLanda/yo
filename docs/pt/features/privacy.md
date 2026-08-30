@@ -31,16 +31,49 @@
 
 ## 2. Bloqueio de App
 
-### Métodos de Bloqueio
+Um código para abrir o Yo de todo, por cima do bloqueio por conversa da §3.
 
-| Método | Descrição | Configuração |
-|--------|-------------|-------|
-| **PIN** | Código de 4-6 dígitos | Crie PIN |
-| **Padrão** | Desenhe padrão | Desenhe padrão |
-| **Digital** | Usar digital | Cadastre digital |
-| **Face ID** | Reconhecimento facial | Escaneie rosto |
+**Há um código, não dois.** O bloqueio da app verifica o mesmo segredo que o
+bloqueio de conversa guarda — `data/chat-lock.ts` — porque dois códigos para
+decorar é como se acaba a escolher `0000` para ambos.
 
----
+| Definição | Valores | Omissão |
+|---|---|---|
+| Bloquear a app | ligado / desligado | desligado |
+| Bloquear ao fim de | imediatamente, 1, 5, 15 ou 60 minutos em segundo plano | 1 minuto |
+| Face ID / impressão digital | ligado / desligado, só onde o aparelho tem uma registada | desligado |
+
+**Desligar** o bloqueio pede o código, tal como ligar. Sem isso, quem tiver o
+telemóvel desbloqueado na mão contorna-o abrindo as definições e mexendo no
+interruptor.
+
+### O que protege, e o que não protege
+
+O código controla o *chegar* à app. O conteúdo das mensagens já está cifrado em
+repouso pelo SQLCipher; isto é sobre quem pega no teu telemóvel desbloqueado,
+que é a ameaça de que um bloqueio realmente trata.
+
+- A tolerância conta-se **em segundo plano**, não desde que a app abriu.
+- Um relógio do aparelho que ande para trás tranca em vez de abrir — um
+  bloqueio que se contorna a mexer na hora não é um bloqueio.
+- Ao terminar sessão o bloqueio volta a armar-se. O código é do aparelho, não
+  da conta.
+- **Não há recuperação.** O código é guardado como hash com sal e iterações;
+  esquecê-lo significa reinstalar.
+
+### Capturas de ecrã e o alternador de apps
+
+São dois buracos diferentes, e não têm uma solução comum:
+
+- **Android** — o `expo-screen-capture` põe `FLAG_SECURE`, que bloqueia
+  capturas e gravação de ecrã e apaga a miniatura no alternador.
+- **iOS** — o sistema não deixa deliberadamente uma app bloquear uma captura,
+  por isso essa metade não existe. O instantâneo do alternador é tratado
+  cobrindo o ecrã no estado `inactive`, por onde o iOS passa *antes* de tirar
+  a fotografia.
+
+Ambos só se aplicam com o bloqueio da app ligado.
+
 
 ## 3. Bloqueio de Chat
 
@@ -74,12 +107,29 @@ Quando ativado, mensagens são preservadas mesmo quando o remetente tenta exclui
 
 ## 6. Autenticação Biométrica
 
-| Plataforma | Métodos |
+Através do `expo-local-authentication`, por cima do código — nunca em vez dele.
+
+| Plataforma | O que o sistema oferece |
 |----------|---------|
 | **iOS** | Face ID, Touch ID |
-| **Android** | Digital, Face Unlock, Íris |
+| **Android** | O que o `BiometricPrompt` expuser: digital, desbloqueio facial, íris |
 
----
+A app só recebe um sim ou não. Nenhum dado facial ou de impressão digital chega
+a este processo, e o Yo não guarda nenhum — o template vive no Secure Enclave
+ou no TEE do Android e nunca sai de lá. **É exactamente por isso que este
+trabalho é do sistema operativo e não nosso:** uma verificação facial feita por
+nós com a câmara frontal veria uma imagem RGB plana, seria enganada por uma
+fotografia impressa, e obrigar-nos-ia a guardar dados biométricos que não temos
+nada que ter.
+
+O código do aparelho é deliberadamente **não** aceite como alternativa
+(`disableDeviceFallback`). O PIN do telemóvel não é o código desta app, e
+aceitá-lo significaria que desbloquear o telemóvel desbloqueia o Yo. A saída
+para uma digital falhada é o código da própria app.
+
+O interruptor só aparece onde o aparelho tem mesmo uma biometria registada;
+caso contrário a linha di-lo, em vez de mostrar um botão que não faz nada.
+
 
 ## 7. Criptografia E2E (，端到端加密 )
 
