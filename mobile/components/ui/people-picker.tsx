@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/ui/avatar';
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { searchUsers, type PublicUser } from '@/data/api/users';
@@ -208,10 +208,12 @@ export function PeoplePicker({
                     accessibilityRole={multiple ? 'checkbox' : 'button'}
                     accessibilityState={{ checked: on }}
                   >
-                    <Image
-                      source={{ uri: item.avatarUri }}
-                      style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}
-                      contentFit="cover"
+                    <Avatar
+                      uri={item.avatarUri}
+                      id={item.id}
+                      username={item.username || item.name}
+                      size={44}
+                      style={styles.avatar}
                     />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>

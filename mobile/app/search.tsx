@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/ui/avatar';
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { createChat } from '@/data/api/messages';
@@ -152,13 +153,15 @@ export default function SearchScreen() {
               pressed && { backgroundColor: colors.surfaceMuted },
             ]}
           >
-            <View style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}>
-              {item.avatar_uri ? (
-                <Image source={{ uri: item.avatar_uri }} style={styles.avatarImg} contentFit="cover" />
-              ) : (
-                <Ionicons name="person" size={24} color={colors.textMuted} />
-              )}
-            </View>
+            {/* A person icon told you nothing about who this is. The
+                generated face is the one they actually have. */}
+            <Avatar
+              uri={item.avatar_uri}
+              id={item.id}
+              username={item.username}
+              size={44}
+              style={styles.avatar}
+            />
             <View style={styles.text}>
               <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
                 {item.display_name || item.username}

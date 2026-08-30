@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
@@ -7,17 +7,17 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/ui/avatar';
 import { PrimaryButton } from '@/components/ui/primary-button';
 import { StepHeader } from '@/components/ui/step-header';
 import { TextField } from '@/components/ui/text-field';
 import { Palette, Radii, Spacing } from '@/constants/theme';
-import { patchMe } from '@/data/api/users';
+import { me } from '@/data/api/users';
 import { setUser } from '@/data/auth-store';
+import { updateProfile } from '@/data/profile-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 import { useRegistration } from '@/store/registration';
-
-const alex = require('@/assets/images/alex.png');
 
 export default function ProfileScreen() {
   const { data, set } = useRegistration();
@@ -28,8 +28,31 @@ export default function ProfileScreen() {
 
   const isValid = useMemo(() => name.trim().length >= 2, [name]);
 
-  const handlePickAvatar = () => {
-    setAvatar((curr) => (curr ? null : 'local:alex'));
+  /**
+   * Optional, and it always was — the button just never did anything.
+   *
+   * It used to toggle the string 'local:alex' and render a bundled fixture,
+   * so signing up appeared to offer a photo and gave everybody the same
+   * stock face. Skipping it now means the generated avatar stands, which is
+   * a real answer rather than an empty circle.
+   */
+  const handlePickAvatar = async () => {
+    if (avatar) {
+      setAvatar(null);
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) setAvatar(result.assets[0].uri);
+    } catch {
+      // A refused library is not a reason to block sign-up: the photo is
+      // optional and the generated avatar is already there.
+    }
   };
 
   const handleContinue = async () => {
@@ -38,9 +61,12 @@ export default function ProfileScreen() {
     set('avatarUri', avatar);
     setBusy(true);
     try {
-      // Send the chosen display name to the server. Avatar URI stays local
-      // for now — real upload lands with the media module.
-      const updated = await patchMe({ display_name: display });
+      // The photo goes with the name, through the same upload path the rest
+      // of the app uses. It used to stay on the device under a comment saying
+      // the real upload would land later — the media module it was waiting
+      // for has existed since channels shipped.
+      await updateProfile({ name: display, avatarUri: avatar ?? undefined });
+      const updated = await me();
       await setUser(updated);
     } catch {
       // Non-fatal — the user can edit later from Settings. Move on.
@@ -69,17 +95,18 @@ export default function ProfileScreen() {
 
         <View style={styles.body}>
           <Pressable onPress={handlePickAvatar} style={styles.avatarWrap} accessibilityRole="button">
-            <View
-              style={[
-                styles.avatar,
-                { backgroundColor: colors.surfaceMuted, borderColor: colors.surface },
-              ]}
-            >
-              {avatar ? (
-                <Image source={alex} style={styles.avatarImage} contentFit="cover" />
-              ) : (
-                <Ionicons name="person" size={48} color={colors.textMuted} />
-              )}
+            {/*
+              Not a person icon when there is no photo. The generated avatar
+              is what they will actually have if they skip this, so it is what
+              the preview should show — seeded on the name they are typing, so
+              it settles into a face as they choose one.
+            */}
+            <View style={[styles.avatar, { borderColor: colors.surface }]}>
+              <Avatar
+                uri={avatar}
+                username={name.trim() || undefined}
+                size={104}
+              />
             </View>
             <View
               style={[
