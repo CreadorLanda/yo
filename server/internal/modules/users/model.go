@@ -27,6 +27,15 @@ type User struct {
 	// The wider switch: no read receipts, no typing, no recording indicator.
 	// Reciprocal on the same terms — see migration 0042.
 	GhostMode bool `json:"ghost_mode"`
+	// Pinned at the moment it was switched on — see migration 0043.
+	LastSeenFrozen bool `json:"last_seen_frozen"`
+	// Buys the exception to reciprocity: freeze yours, still see theirs.
+	// Read-only over the API — a client that could set this would be
+	// granting itself the entitlement.
+	IsPremium bool `json:"is_premium"`
+	// NULL until they have been seen at all, which a fresh account genuinely
+	// has not been. Not the same as hidden.
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 }
 
 // Visibility is who may see a given detail.
@@ -55,6 +64,7 @@ type PatchRequest struct {
 	PhotoVisibility    *Visibility `json:"photo_visibility,omitempty"`
 	ReadReceipts       *bool       `json:"read_receipts,omitempty"`
 	GhostMode          *bool       `json:"ghost_mode,omitempty"`
+	LastSeenFrozen     *bool       `json:"last_seen_frozen,omitempty"`
 }
 
 type AvailabilityResponse struct {

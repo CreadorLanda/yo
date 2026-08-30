@@ -24,6 +24,14 @@ type Event struct {
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[uuid.UUID]map[*client]struct{}
+
+	// OnPresenceChange, when set, is called as a user's *first* connection
+	// opens and as their *last* one closes — not once per socket. A phone
+	// and a laptop are one person being present.
+	//
+	// Called outside the lock: it reaches a database, and holding the hub's
+	// mutex across that would stall every publish in the process.
+	OnPresenceChange func(userID uuid.UUID, online bool)
 }
 
 type client struct {
@@ -100,24 +108,39 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, userID uuid.UUID) 
 
 func (h *Hub) register(c *client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if h.clients[c.userID] == nil {
 		h.clients[c.userID] = make(map[*client]struct{})
 	}
+	first := len(h.clients[c.userID]) == 0
 	h.clients[c.userID][c] = struct{}{}
+	cb := h.OnPresenceChange
+	h.mu.Unlock()
+
+	if first && cb != nil {
+		cb(c.userID, true)
+	}
 }
 
 func (h *Hub) unregister(c *client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	gone := false
 	if set, ok := h.clients[c.userID]; ok {
 		if _, present := set[c]; !present {
+			h.mu.Unlock()
 			return
 		}
 		delete(set, c)
 		if len(set) == 0 {
 			delete(h.clients, c.userID)
+			gone = true
 		}
+	}
+	cb := h.OnPresenceChange
+	h.mu.Unlock()
+
+	// Their last socket closed: this instant is what "last seen" means.
+	if gone && cb != nil {
+		cb(c.userID, false)
 	}
 	// Channel may already be closed if called twice; recover from panic.
 	func() {

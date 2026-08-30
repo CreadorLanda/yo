@@ -32,17 +32,12 @@ da escrita dos outros; uma confirmação de `read` é baixada para `delivered`
 antes de ser guardada. Um cliente modificado não consegue voltar a entrar, que
 é a única forma de isto significar alguma coisa.
 
-### O que não cobre
+### O que também cobre
 
-**Presença e visto por último.** Não por estarem excluídos — por não existirem.
-Não há nenhum valor de "visto por último" guardado para um utilizador em lado
-nenhum deste servidor, nenhum endpoint o serve, e `online` está fixo a `false`
-na app. Não há ali sinal nenhum para calar, e dizer o contrário seria o género
-de promessa que esta página costumava fazer.
-
-Construir a presença, e depois congelá-la, é o
-[#151](https://github.com/CreadorLanda/yo/issues/151).
-
+**Presença.** O modo ghost esconde por completo o ponto de online e a linha do
+"visto por último", e de forma recíproca — quem está em ghost também não vê a
+dos outros. A presença é um rasto, e este é o interruptor para não deixar
+nenhum.
 
 
 ## 2. Bloqueio de App
@@ -110,16 +105,50 @@ Quando ativado, mensagens são preservadas mesmo quando o remetente tenta exclui
 
 ---
 
-## 5. Controle de Visto pela Última Vez
+## 5. Presença e visto por último
 
-| Opção | Quem Pode Ver |
-|--------|------------|
-| **Todos** | Todos os usuários Yo |
-| **Meus contatos** | Apenas contatos salvos |
-| **Ninguém** | Completamente oculto |
-| **Personalizado** | Selecione contatos específicos |
+O "online" vem do hub de tempo real — é a única coisa que sabe quem está a
+segurar um socket neste momento. O "visto por último" é carimbado quando a
+**última** ligação de uma pessoa fecha, portanto um telemóvel e um portátil são
+uma só pessoa presente.
 
----
+Mostrado em baldes, nunca ao minuto: *agora mesmo*, *Nm*, *Nh*, *Nd*. Um
+mensageiro que reporta presença ao segundo é uma ferramenta de vigilância.
+
+### Quem pode ver
+
+O `last_seen_visibility` é coluna desde a migration 0029 e até à 0043 não
+governava nada — não havia valor nenhum para ser visível.
+
+| Definição | Quem |
+|---|---|
+| **Todos** | Qualquer pessoa |
+| **Os meus contactos** | Quem partilha uma conversa contigo — o mais próximo de uma lista de contactos que esta app tem |
+| **Ninguém** | Ninguém |
+
+Mais três portões, todos aplicados no servidor em `CanSeePresence`:
+
+- **Modo ghost** esconde-te por completo (§1).
+- **Reciprocidade** — congela o teu, ou vai para ghost, e deixas de ver o dos
+  outros. O mesmo acordo das confirmações de leitura (0029) e do ghost (0042).
+- **Premium** compra a excepção a essa reciprocidade, e *só* isso. Nunca se
+  sobrepõe à escolha de outra pessoa de se esconder.
+
+### Congelar
+
+Continuas visível, fixado no momento em que ligaste o interruptor.
+
+Aplicado na **escrita** — o `TouchLastSeen` recusa actualizar uma linha
+congelada — portanto o valor guardado simplesmente pára, e nenhum caminho de
+leitura se pode esquecer de o aplicar. O ponto de online também apaga:
+aparecer como "aqui agora" enquanto se diz congelado num momento anterior
+seria o contrário do que foi pedido.
+
+**O `is_premium` não é alterável por `PATCH /users/me`.** Um direito que o
+cliente se pode dar a si próprio não é um direito, e há um teste que falha se
+alguém acrescentar o campo. Nada o define ainda — não há faturação nesta app, e
+é aqui que ela vai aterrar quando houver
+([#132](https://github.com/CreadorLanda/yo/issues/132)).
 
 ## 6. Autenticação Biométrica
 

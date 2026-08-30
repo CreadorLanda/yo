@@ -31,17 +31,11 @@ everybody else's; a `read` receipt is downgraded to `delivered` before it is
 stored. A modified client cannot opt back in, which is the only way any of
 this means anything.
 
-### What it does not cover
+### What it also covers
 
-**Presence and last seen.** Not because they are excluded — because they do
-not exist. No last-seen value is stored for a user anywhere in this server,
-no endpoint serves one, and `online` is hardcoded `false` in the app. There is
-no signal there to suppress, and claiming otherwise would be the kind of
-promise this page used to make.
-
-Building presence, and then freezing it, is
-[#151](https://github.com/CreadorLanda/yo/issues/151).
-
+**Presence.** Ghost mode hides the online dot and the last-seen line
+entirely, and reciprocally — a ghost sees nobody else's either. Presence is a
+trace, and this is the switch for leaving none.
 
 
 ## 2. App Lock
@@ -150,28 +144,47 @@ interface AntiDeleteConfig {
 
 ---
 
-## 5. Last Seen Control
+## 5. Presence and last seen
 
-### Privacy Options
+Online comes from the realtime hub — it is the only thing that knows who is
+holding a socket right now. Last seen is stamped when a person's **last**
+connection closes, so a phone and a laptop are one person being present.
 
-| Option | Who Can See |
-|--------|------------|
-| **Everyone** | All Yo users |
-| **My contacts** | Only saved contacts |
-| **Nobody** | Completely hidden |
-| **Custom** | Select specific contacts |
+Shown in buckets, never to the minute: *just now*, *Nm*, *Nh*, *Nd*. A
+messenger that reports presence to the second is a tracking tool.
 
-### Configuration Screen
+### Who can see it
 
-```
-Last Seen
-├── 👥 Everyone         (o)
-├── 📱 My contacts      ( )
-├── 🚫 Nobody          ( )
-└── ✏️ Custom         [Manage]
-```
+`last_seen_visibility` has been a column since migration 0029 and until
+migration 0043 governed nothing — there was no value to be visible.
 
----
+| Setting | Who |
+|---|---|
+| **Everyone** | Anyone |
+| **My contacts** | People you share a chat with — the closest thing this app has to a contact list |
+| **Nobody** | No one |
+
+Three further gates, all enforced server-side in `CanSeePresence`:
+
+- **Ghost mode** hides you outright (§1).
+- **Reciprocity** — freeze yours, or go ghost, and you stop seeing everyone
+  else's. Same bargain as read receipts (0029) and ghost mode (0042).
+- **Premium** buys the exception to that reciprocity, and *only* that. It
+  never overrides somebody else's choice to hide.
+
+### Freeze
+
+You stay visible, pinned at the moment you switched it on.
+
+Enforced at the **write** — `TouchLastSeen` declines to update a frozen row —
+so the stored value simply stops moving, and no read path can forget to apply
+it. The online dot goes dark too: appearing as "here now" while claiming to be
+frozen at some earlier moment would be the opposite of what was asked for.
+
+**`is_premium` is not patchable through `PATCH /users/me`.** An entitlement a
+client can grant itself is not an entitlement, and there is a test that fails
+if someone adds the field. Nothing sets it yet — there is no billing in this
+app, and this is where it will land when there is ([#132](https://github.com/CreadorLanda/yo/issues/132)).
 
 ## 6. Biometric Authentication
 

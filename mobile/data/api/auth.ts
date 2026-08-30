@@ -22,6 +22,9 @@ export type ApiUser = {
   read_receipts?: boolean;
   /** The wider switch — see UserPatch in data/api/users.ts. */
   ghost_mode?: boolean;
+  last_seen_frozen?: boolean;
+  /** Read-only. Buys the exception to freeze reciprocity, nothing else. */
+  is_premium?: boolean;
 };
 
 export type StartResponse = {

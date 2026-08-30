@@ -47,6 +47,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AttachmentBubble } from '@/components/chat/attachment-bubbles';
 import { MediaEditor, type EditorAsset, type EditorResult } from '@/components/chat/media-editor';
 import { AnimatedWallpaper } from '@/components/chat/animated-wallpaper';
+import { presenceLabel } from '@/data/presence';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { appAlert } from '@/data/dialog-store';
@@ -293,7 +294,8 @@ export default function ChatScreen() {
       lastMessage: '',
       timestamp: '',
       unreadCount: apiChatInfo.unread_count,
-      online: false,
+      online: apiChatInfo.peer_online === true,
+      lastSeen: apiChatInfo.peer_last_seen,
       isGroup: apiChatInfo.type === 'group',
       isPending: apiChatInfo.status === 'pending',
       pinned: !!apiChatInfo.pinned_at,
@@ -2377,9 +2379,16 @@ export default function ChatScreen() {
                       ? t('chat.ai_subtitle')
                       : isGroup
                         ? t('group.members_count', { count: memberCount })
-                        : chat?.online
-                          ? t('chats.online')
-                          : t('chats.last_seen')}
+                        : (() => {
+                            // Nothing at all when the server declined to say.
+                            // The old code read "last seen recently" for
+                            // everybody, always — a fixed string with no
+                            // timestamp behind it.
+                            const p = presenceLabel(!!chat?.online, chat?.lastSeen);
+                            if (p.kind === 'online') return t('chats.online');
+                            if (p.kind === 'unknown') return '';
+                            return t(p.key, { n: p.value });
+                          })()}
                   </Text>
                 </View>
               </View>

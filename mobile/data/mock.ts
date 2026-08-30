@@ -15,6 +15,12 @@ export type ChatPreview = {
   timestamp: string;
   unreadCount: number;
   online: boolean;
+  /**
+   * ISO timestamp, when the server was willing to say. Absent means either
+   * "you may not know" or "never seen" — the two are the same to a screen
+   * that has nothing to draw either way.
+   */
+  lastSeen?: string;
   pinned?: boolean;
   /** Per-user mute — notifications suppressed for this chat. */
   muted?: boolean;

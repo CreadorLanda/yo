@@ -160,7 +160,12 @@ func (s *Service) notifyChatAccepted(ctx context.Context, chatID, requester uuid
 // round trips.
 func (s *Service) ListChats(ctx context.Context, userID uuid.UUID, opts ListChatsOptions) ([]Chat, error) {
 	opts.Normalize()
-	return s.repo.ListChats(ctx, userID, opts)
+	chats, err := s.repo.ListChats(ctx, userID, opts)
+	if err != nil {
+		return nil, err
+	}
+	s.fillPresence(ctx, userID, chats)
+	return chats, nil
 }
 
 // UpdateChatSettings toggles pin / mute / archive for the caller only.
@@ -594,7 +599,12 @@ func (s *Service) loadChat(ctx context.Context, chatID uuid.UUID, forUser uuid.U
 		}
 		return Chat{}, err
 	}
-	return *c, nil
+	// Same presence rules as the list. The chat screen's header is where a
+	// person actually reads "online" or "last seen", so leaving it out here
+	// would mean the dot lit in the list and nowhere else.
+	one := []Chat{*c}
+	s.fillPresence(ctx, forUser, one)
+	return one[0], nil
 }
 
 func (s *Service) getMessage(ctx context.Context, chatID uuid.UUID, msgID int64) (Message, error) {
@@ -808,4 +818,59 @@ func boolStr(b bool) string {
 		return "1"
 	}
 	return "0"
+}
+
+// fillPresence adds the peer's online state and last seen to direct chats,
+// as far as this viewer is allowed to know it.
+//
+// Done here rather than in SQL because two of the three gates are the
+// *viewer's* own settings, not the subject's: someone who froze their last
+// seen, or went ghost, stops seeing everyone else's, and premium buys the
+// exception. A join could express the subject's visibility; it could not
+// express a bargain.
+//
+// Online comes from the hub — it is the only thing that knows who is holding
+// a socket right now — and last seen from the row, which is what survives a
+// restart.
+func (s *Service) fillPresence(ctx context.Context, viewerID uuid.UUID, chats []Chat) {
+	if s.users == nil {
+		return
+	}
+	viewer, err := s.users.ByID(ctx, viewerID)
+	if err != nil {
+		return
+	}
+	// One early exit for the reciprocity case: a viewer who cannot see any
+	// presence should not cost a query per chat to be told so.
+	if (viewer.LastSeenFrozen || viewer.GhostMode) && !viewer.IsPremium {
+		return
+	}
+
+	for i := range chats {
+		peer := chats[i].PeerUserID
+		if peer == nil {
+			continue
+		}
+		subject, err := s.users.ByID(ctx, *peer)
+		if err != nil {
+			continue
+		}
+		// Sharing a chat is the closest thing this app has to being a
+		// contact, and this list is made of chats they share.
+		if !users.CanSeePresence(viewer, subject, true) {
+			continue
+		}
+		online := false
+		if s.hub != nil {
+			online = s.hub.Online(*peer)
+		}
+		// A frozen last seen must not be contradicted by a live dot. They
+		// asked to appear at one moment; being shown as here now is the
+		// opposite of that.
+		if subject.LastSeenFrozen {
+			online = false
+		}
+		chats[i].PeerOnline = &online
+		chats[i].PeerLastSeen = subject.LastSeenAt
+	}
 }

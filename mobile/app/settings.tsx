@@ -56,6 +56,8 @@ export default function SettingsScreen() {
   const [profilePhoto, setProfilePhoto] = useState<Visibility>('everyone');
   const [readReceipts, setReadReceipts] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
+  const [lastSeenFrozen, setLastSeenFrozen] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
   const [phone, setPhone] = useState('');
   const [privacyLoaded, setPrivacyLoaded] = useState(false);
 
@@ -68,6 +70,9 @@ export default function SettingsScreen() {
         setProfilePhoto(u.photo_visibility ?? 'everyone');
         setReadReceipts(u.read_receipts !== false);
         setGhostMode(u.ghost_mode === true);
+        setLastSeenFrozen(u.last_seen_frozen === true);
+        // Read-only: the server decides, and nothing here can set it.
+        setIsPremium(u.is_premium === true);
         // Not from the server: it holds a hash of the number, never the
         // number. The device is the only place that can answer this.
         void getSessionPhone().then(setPhone);
@@ -392,6 +397,38 @@ export default function SettingsScreen() {
             value={visibilityLabel(profilePhoto)}
             onPress={() => pickVisibility(t('settings.profile_photo'), profilePhoto, setProfilePhoto, 'photo_visibility')}
           />
+          <Row
+            icon="snow-outline"
+            label={t('settings.freeze_last_seen')}
+            value={lastSeenFrozen ? undefined : t('settings.ghost_mode_off')}
+            control={
+              <Switch
+                value={lastSeenFrozen}
+                onValueChange={(v) => {
+                  setLastSeenFrozen(v);
+                  savePrivacy({ last_seen_frozen: v }, () => setLastSeenFrozen(!v));
+                }}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            }
+          />
+          {/*
+            The bargain, said out loud rather than discovered. Without premium
+            freezing yours hides everyone else's from you; with it, it does
+            not. Nothing on this screen can grant premium — the server owns
+            that, and an entitlement a client can set is not an entitlement.
+          */}
+          {lastSeenFrozen ? (
+            <Row
+              icon={isPremium ? 'sparkles-outline' : 'information-circle-outline'}
+              label={
+                isPremium
+                  ? t('settings.freeze_premium_on')
+                  : t('settings.freeze_reciprocal')
+              }
+            />
+          ) : null}
           <Row
             icon="ban-outline"
             label={t('settings.blocked')}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -23,7 +24,8 @@ const userColumns = `id, username, display_name,
 	COALESCE(bio, '') AS bio,
 	COALESCE(avatar_uri, '') AS avatar_uri,
 	username_public, created_at,
-	last_seen_visibility, photo_visibility, read_receipts, ghost_mode`
+	last_seen_visibility, photo_visibility, read_receipts, ghost_mode,
+	last_seen_frozen, is_premium, last_seen_at`
 
 func scanUser(row pgx.Row) (*User, error) {
 	var u User
@@ -32,6 +34,7 @@ func scanUser(row pgx.Row) (*User, error) {
 		&u.Bio, &u.AvatarURI,
 		&u.UsernamePublic, &u.CreatedAt,
 		&u.LastSeenVisibility, &u.PhotoVisibility, &u.ReadReceipts, &u.GhostMode,
+		&u.LastSeenFrozen, &u.IsPremium, &u.LastSeenAt,
 	); err != nil {
 		return nil, err
 	}
@@ -95,6 +98,9 @@ func (r *Repository) Patch(ctx context.Context, id uuid.UUID, p PatchRequest) (*
 	}
 	if p.GhostMode != nil {
 		add("ghost_mode", *p.GhostMode)
+	}
+	if p.LastSeenFrozen != nil {
+		add("last_seen_frozen", *p.LastSeenFrozen)
 	}
 	if len(setters) == 0 {
 		return r.ByID(ctx, id)
@@ -160,4 +166,61 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// TouchLastSeen records that a user was here, unless they have frozen it.
+//
+// The freeze is applied in the WHERE clause rather than by the caller, so
+// there is no read path or write path that can forget it: a frozen row
+// simply stops moving, which is what "frozen at a chosen moment" means.
+func (r *Repository) TouchLastSeen(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users SET last_seen_at = NOW() WHERE id = $1 AND NOT last_seen_frozen`, id)
+	return err
+}
+
+// Presence is what one viewer may learn about one other person.
+//
+// `Online` and `LastSeenAt` are both nil when the viewer may not know — and
+// `LastSeenAt` is nil on its own for an account nobody has ever seen, which
+// is not the same thing and is why this is a struct rather than two loose
+// values.
+type Presence struct {
+	Online     *bool      `json:"online,omitempty"`
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
+}
+
+// CanSeePresence answers whether viewer may see subject's presence at all.
+//
+// Three gates, and they are all the subject's or the viewer's own doing:
+//
+//   - Ghost mode hides the subject outright. It is the switch for leaving no
+//     trace, and presence is a trace.
+//   - Reciprocity: a viewer who has frozen their own last seen, or gone
+//     ghost, stops seeing everyone else's. Premium buys the exception — that
+//     is the only thing it buys, and it is checked here rather than trusted
+//     from a client.
+//   - `last_seen_visibility`, which has been a column since 0029 and until
+//     now governed nothing.
+//
+// `contacts` is read as "someone I have a chat with", which is the closest
+// thing this app has to a contact list.
+func CanSeePresence(viewer, subject *User, share bool) bool {
+	if viewer == nil || subject == nil {
+		return false
+	}
+	if subject.GhostMode {
+		return false
+	}
+	if (viewer.LastSeenFrozen || viewer.GhostMode) && !viewer.IsPremium {
+		return false
+	}
+	switch subject.LastSeenVisibility {
+	case VisNobody:
+		return false
+	case VisContacts:
+		return share
+	default:
+		return true
+	}
 }

@@ -40,6 +40,11 @@ type Chat struct {
 	// Direct-chat peer (client E2EE session establishment).
 	PeerUserID   *uuid.UUID `json:"peer_user_id,omitempty"`
 	PeerUsername *string    `json:"peer_username,omitempty"`
+	// Presence, and only what this viewer is allowed to know. Both nil when
+	// they may not know at all; PeerLastSeen nil on its own for someone who
+	// has never been seen, which is a different thing.
+	PeerOnline   *bool      `json:"peer_online,omitempty"`
+	PeerLastSeen *time.Time `json:"peer_last_seen,omitempty"`
 	// Per-user settings. Two participants can disagree on all three.
 	PinnedAt   *time.Time `json:"pinned_at,omitempty"`
 	MutedUntil *time.Time `json:"muted_until,omitempty"`

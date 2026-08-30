@@ -24,6 +24,13 @@ export interface ChatDTO {
   /** Direct chat peer — used for client-side E2EE. */
   peer_user_id?: string;
   peer_username?: string;
+  /**
+   * Presence, and only as much as the server decided this viewer may know.
+   * Both absent when they may not know at all; `peer_last_seen` absent on
+   * its own for someone who has never been seen, which is a different thing.
+   */
+  peer_online?: boolean;
+  peer_last_seen?: string;
   /** Per-user settings. Present only when set; two participants can differ. */
   pinned_at?: string;
   muted_until?: string;

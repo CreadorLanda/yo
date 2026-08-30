@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 
 	"github.com/CreadorLanda/yo/server/internal/config"
 	"github.com/CreadorLanda/yo/server/internal/middleware"
@@ -101,6 +102,23 @@ func New(cfg config.Config) (*Server, error) {
 
 	// Realtime hub (WebSocket fan-out for messaging events).
 	hub := realtime.NewHub()
+	// The hub knows who holds a socket; the database is where "when were they
+	// last holding one" has to live, so that it survives a restart. Only the
+	// closing edge is recorded — while they are connected they are online,
+	// and a last-seen for someone who is here now is not a fact anyone needs.
+	//
+	// A frozen last seen declines the write inside TouchLastSeen, so nothing
+	// here has to know about the setting.
+	hub.OnPresenceChange = func(userID uuid.UUID, online bool) {
+		if online {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := usersRepo.TouchLastSeen(ctx, userID); err != nil {
+			log.Warn().Err(err).Str("user", userID.String()).Msg("last seen not recorded")
+		}
+	}
 
 	// Notifications — device tokens, prefs, Redis push queue + worker.
 	notifRepo := notifications.NewRepository(pg)

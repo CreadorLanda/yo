@@ -24,6 +24,12 @@ export type UserPatch = Partial<{
    * simply does not send is defeated by a client that would rather.
    */
   ghost_mode: boolean;
+  /**
+   * Stay visible, pinned at the moment you switched it on. Reciprocal unless
+   * the account is premium — and `is_premium` is deliberately absent from
+   * this type, because it is not something a client may set.
+   */
+  last_seen_frozen: boolean;
 }>;
 
 export const me = () => api.get<ApiUser>('/api/users/me');

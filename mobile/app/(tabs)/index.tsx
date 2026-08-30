@@ -283,7 +283,9 @@ export default function ChatsScreen() {
         : previews[c.id] ?? (c.last_message ? '…' : ''),
       timestamp: c.last_message ? new Date(c.last_message.created_at).toLocaleTimeString() : '',
       unreadCount: c.unread_count,
-      online: false,
+      // Was hardcoded false since before the server had presence to report.
+      online: c.peer_online === true,
+      lastSeen: c.peer_last_seen,
       isPending: c.status === 'pending',
       isGroup: c.type === 'group',
       pinned: !!c.pinned_at,
