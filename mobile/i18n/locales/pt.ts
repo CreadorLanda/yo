@@ -1131,6 +1131,7 @@ export default {
     cat_minimal: 'Minimal',
     cat_nature: 'Natureza',
     cat_midnight: 'Meia-noite',
+    cat_retro: 'Retro',
     cat_mine: 'Meus',
     creator_title: 'Criar tema',
     creator_lead: 'Escolhe cores e vê o preview ao vivo. Guardar aplica em toda a app.',

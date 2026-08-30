@@ -10,8 +10,12 @@ did.
 
 ## Themes
 
-Sixteen bundled packs, eight of them built around something other than
-colour. A pack sets semantic tokens, chat chrome (bubbles, wallpaper, header,
+Nineteen bundled packs, eleven of them built around something other than
+colour. Three are pastiches of interfaces you already have muscle memory for —
+**Cupertino** (iOS 26), **Aero** (Windows 7) and **Butterfly** (MSN Messenger,
+2005), the last two filed under a new **Retro** category. Each names what it is
+imitating in its description rather than its title, so search finds them
+without the app shipping somebody else's trademark as a feature name. A pack sets semantic tokens, chat chrome (bubbles, wallpaper, header,
 composer), ~55 layout knobs and its icons; install one, apply it, or fork it
 in the editor and change anything.
 

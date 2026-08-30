@@ -1131,6 +1131,7 @@ export default {
     cat_minimal: 'Minimal',
     cat_nature: 'Nature',
     cat_midnight: 'Midnight',
+    cat_retro: 'Retro',
     cat_mine: 'Mine',
     creator_title: 'Create theme',
     creator_lead: 'Pick colors and see a live preview. Save applies it across the app.',

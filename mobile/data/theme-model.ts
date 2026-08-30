@@ -179,6 +179,7 @@ export type ThemeCategory =
   | 'minimal'
   | 'nature'
   | 'midnight'
+  | 'retro'
   | 'mine';
 
 export type ThemePack = {
@@ -549,6 +550,7 @@ export const THEME_CATEGORIES: ThemeCategory[] = [
   'minimal',
   'nature',
   'midnight',
+  'retro',
   'mine',
 ];
 

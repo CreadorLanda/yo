@@ -10,8 +10,12 @@ exactamente a app que tinha.
 
 ## Temas
 
-Dezasseis packs incluídos, oito deles construídos à volta de algo que não é
-só cor. Um pack define os tokens semânticos, o cromado da conversa (balões,
+Dezanove packs incluídos, onze deles construídos à volta de algo que não é só
+cor. Três são pastiches de interfaces que já conheces de cor — **Cupertino**
+(iOS 26), **Aero** (Windows 7) e **Butterfly** (MSN Messenger, 2005), os dois
+últimos numa categoria nova, **Retro**. Cada um diz o que está a imitar na
+descrição e não no título, para que a pesquisa os encontre sem a app trazer a
+marca de outros como nome de uma funcionalidade. Um pack define os tokens semânticos, o cromado da conversa (balões,
 fundo, cabeçalho, caixa de escrita), ~55 opções de layout e os seus ícones.
 Instala-se, aplica-se, ou faz-se um fork no editor e muda-se o que se quiser.
 

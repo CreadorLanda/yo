@@ -13,6 +13,7 @@ import {
 } from '@/data/theme-fonts';
 import {
   DEFAULT_LAYOUT,
+  THEME_CATEGORIES,
   amoledizeChat,
   amoledizeTokens,
   defaultChatChrome,
@@ -204,4 +205,15 @@ test('o ícone escolhido sobrevive ao restart, o inventado não', () => {
 
   const missing = hydrateThemeState({ prefs: {}, packs: [] }, defaults);
   expect(missing.appIcon).toBe('default');
+});
+
+// ── Categorias ──────────────────────────────────────────────────────────────
+
+test('as categorias são únicas e os dois filtros ficam nas pontas', () => {
+  expect(new Set(THEME_CATEGORIES).size).toBe(THEME_CATEGORIES.length);
+  // 'all' e 'mine' são filtros, não estilos: nenhum pack os pode declarar,
+  // e por isso ficam no princípio e no fim da lista.
+  expect(THEME_CATEGORIES[0]).toBe('all');
+  expect(THEME_CATEGORIES[THEME_CATEGORIES.length - 1]).toBe('mine');
+  expect(THEME_CATEGORIES).toContain('retro');
 });
