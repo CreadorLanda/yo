@@ -12,6 +12,8 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@dicebear/core": "^9",
+    "@dicebear/lorelei": "^9",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo-google-fonts/lora": "^0.4.2",

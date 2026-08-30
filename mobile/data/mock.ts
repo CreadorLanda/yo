@@ -15,6 +15,15 @@ export type ChatPreview = {
   timestamp: string;
   unreadCount: number;
   online: boolean;
+  /**
+   * The peer's user id, for a direct chat.
+   *
+   * Carried so a generated avatar is seeded on the *person* rather than the
+   * conversation: the same face in the chat list, in search and in a group
+   * member list. Seeding on the chat id would give somebody a different face
+   * in every place you met them.
+   */
+  peerUserId?: string;
   pinned?: boolean;
   /** Per-user mute — notifications suppressed for this chat. */
   muted?: boolean;

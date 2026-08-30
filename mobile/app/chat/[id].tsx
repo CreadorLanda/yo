@@ -47,6 +47,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AttachmentBubble } from '@/components/chat/attachment-bubbles';
 import { MediaEditor, type EditorAsset, type EditorResult } from '@/components/chat/media-editor';
 import { AnimatedWallpaper } from '@/components/chat/animated-wallpaper';
+import { Avatar } from '@/components/ui/avatar';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { appAlert } from '@/data/dialog-store';
@@ -2353,10 +2354,11 @@ export default function ChatScreen() {
               accessibilityLabel={isGroup ? t('chat_info.group_title') : t('chat_info.title')}
             >
               <View>
-                <Image
-                  source={{ uri: chat?.avatarUri || apiChatInfo?.avatar_url }}
-                  style={[styles.peerAvatar, { backgroundColor: colors.surfaceMuted }]}
-                  contentFit="cover"
+                <Avatar
+                  uri={chat?.avatarUri || apiChatInfo?.avatar_url}
+                  id={apiChatInfo?.peer_user_id}
+                  username={chat?.name || apiChatInfo?.title}
+                  size={40}
                 />
                 {(chat?.online) && !isGroup ? (
                   <View
