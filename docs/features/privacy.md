@@ -6,37 +6,43 @@
 
 ## 1. Ghost Mode
 
-> Complete invisibility - others cannot see you're online, typing, or read messages.
+One switch over every outbound signal, in **Settings → Privacy → Ghost mode**.
 
-### Ghost Levels
+| Signal | With ghost mode on |
+|---|---|
+| Read receipts | Not sent. Your reads are recorded as *delivered* |
+| Typing indicator | Not sent |
+| Recording indicator | Not sent |
 
-| Level | Online Status | Typing Status | Last Seen | Recording |
-|-------|-------------|-------------|----------|-----------|
-| **🔵 Light** | Hidden | Visible | Hidden | Visible |
-| **🟡 Medium** | Hidden | Hidden | Hidden | Visible |
-| **🔴 Full** | Hidden | Hidden | Hidden | Hidden |
+**Reciprocal**, on the same terms as read receipts (§ below and migration
+0029): with it on you neither send these signals nor see anyone else's. A
+switch that only hides your own is a way to take without giving.
 
-### Visual Representation
+It is the *wider* switch. Read receipts keep their own setting, but ghost mode
+overrides it — turning ghost mode on silences receipts even for someone who
+left that setting alone, and it also covers typing and the recording
+indicator, which were added later and were never part of it.
 
-```
-Normal Mode:     👤 Online   💬 typing...   Visto às 14:30
-Light Mode:     👤 Last seen recently    Visto às 14:30  
-Medium Mode:    👤 Last seen recently
-Full Mode:     👤 
-```
+### Enforced on the server
 
-### How to Activate
+Not by asking the client to hide things. Your typing is refused at
+`POST /chats/:id/typing`; a ghost is left out of the recipient list of
+everybody else's; a `read` receipt is downgraded to `delivered` before it is
+stored. A modified client cannot opt back in, which is the only way any of
+this means anything.
 
-**Quick Method:**
-1. Swipe down from top → Quick Settings
-2. Tap 👻 ghost icon
-3. Select ghost level
+### What it does not cover
 
-**Settings Method:**
-1. Settings → Privacy → Ghost Mode
-2. Activate → Choose level
+**Presence and last seen.** Not because they are excluded — because they do
+not exist. No last-seen value is stored for a user anywhere in this server,
+no endpoint serves one, and `online` is hardcoded `false` in the app. There is
+no signal there to suppress, and claiming otherwise would be the kind of
+promise this page used to make.
 
----
+Building presence, and then freezing it, is
+[#151](https://github.com/CreadorLanda/yo/issues/151).
+
+
 
 ## 2. App Lock
 

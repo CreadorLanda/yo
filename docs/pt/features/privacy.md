@@ -6,28 +6,44 @@
 
 ## 1. Modo Ghost
 
-> Invisibilidade completa - outros não podem ver você online, digitando ou lendo mensagens.
+Um interruptor sobre todos os sinais de saída, em **Definições → Privacidade →
+Modo ghost**.
 
-### Níveis de Ghost
+| Sinal | Com o modo ghost ligado |
+|---|---|
+| Confirmações de leitura | Não são enviadas. As tuas leituras ficam como *entregue* |
+| Indicador de escrita | Não é enviado |
+| Indicador de gravação | Não é enviado |
 
-| Nível | Status Online | Status Digitando | Visto pela Última Vez | Gravando |
-|-------|-------------|-------------|----------|-----------|
-| **🔵 Leve** | Ocultado | Visível | Ocultado | Visível |
-| **🟡 Médio** | Ocultado | Ocultado | Ocultado | Visível |
-| **🔴 Total** | Ocultado | Ocultado | Ocultado | Ocultado |
+**Recíproco**, nos mesmos termos das confirmações de leitura (migration 0029):
+com ele ligado não envias estes sinais nem vês os dos outros. Um interruptor
+que só esconde o teu é uma forma de tirar sem dar.
 
-### Como Ativar
+É o interruptor *mais largo*. As confirmações de leitura mantêm a sua própria
+definição, mas o modo ghost sobrepõe-se — ligá-lo cala as confirmações mesmo a
+quem nunca mexeu nessa definição, e cobre ainda a escrita e a gravação, que
+foram acrescentadas depois e nunca fizeram parte dela.
 
-**Método Rápido:**
-1. Deslize de cima → Configurações Rápidas
-2. Toque no ícone 👻 ghost
-3. Selecione o nível
+### Aplicado no servidor
 
-**Método Configurações:**
-1. Configurações → Privacidade → Modo Ghost
-2. Ative → Escolha o nível
+Não é pedir ao cliente que esconda. A tua escrita é recusada em
+`POST /chats/:id/typing`; quem está em ghost fica fora da lista de destinatários
+da escrita dos outros; uma confirmação de `read` é baixada para `delivered`
+antes de ser guardada. Um cliente modificado não consegue voltar a entrar, que
+é a única forma de isto significar alguma coisa.
 
----
+### O que não cobre
+
+**Presença e visto por último.** Não por estarem excluídos — por não existirem.
+Não há nenhum valor de "visto por último" guardado para um utilizador em lado
+nenhum deste servidor, nenhum endpoint o serve, e `online` está fixo a `false`
+na app. Não há ali sinal nenhum para calar, e dizer o contrário seria o género
+de promessa que esta página costumava fazer.
+
+Construir a presença, e depois congelá-la, é o
+[#151](https://github.com/CreadorLanda/yo/issues/151).
+
+
 
 ## 2. Bloqueio de App
 

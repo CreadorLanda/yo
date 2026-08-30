@@ -55,6 +55,7 @@ export default function SettingsScreen() {
   const [lastSeen, setLastSeen] = useState<Visibility>('everyone');
   const [profilePhoto, setProfilePhoto] = useState<Visibility>('everyone');
   const [readReceipts, setReadReceipts] = useState(true);
+  const [ghostMode, setGhostMode] = useState(false);
   const [phone, setPhone] = useState('');
   const [privacyLoaded, setPrivacyLoaded] = useState(false);
 
@@ -66,6 +67,7 @@ export default function SettingsScreen() {
         setLastSeen(u.last_seen_visibility ?? 'everyone');
         setProfilePhoto(u.photo_visibility ?? 'everyone');
         setReadReceipts(u.read_receipts !== false);
+        setGhostMode(u.ghost_mode === true);
         // Not from the server: it holds a hash of the number, never the
         // number. The device is the only place that can answer this.
         void getSessionPhone().then(setPhone);
@@ -405,6 +407,24 @@ export default function SettingsScreen() {
                 onValueChange={(v) => {
                   setReadReceipts(v);
                   savePrivacy({ read_receipts: v }, () => setReadReceipts(!v));
+                }}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            }
+          />
+          {/* Below read receipts on purpose: it is the wider switch, and
+              turning it on makes the one above it moot. */}
+          <Row
+            icon="eye-off-outline"
+            label={t('settings.ghost_mode')}
+            value={ghostMode ? undefined : t('settings.ghost_mode_off')}
+            control={
+              <Switch
+                value={ghostMode}
+                onValueChange={(v) => {
+                  setGhostMode(v);
+                  savePrivacy({ ghost_mode: v }, () => setGhostMode(!v));
                 }}
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
