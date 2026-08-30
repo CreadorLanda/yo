@@ -20,6 +20,8 @@ export type ApiUser = {
   last_seen_visibility?: 'everyone' | 'contacts' | 'nobody';
   photo_visibility?: 'everyone' | 'contacts' | 'nobody';
   read_receipts?: boolean;
+  /** The wider switch — see UserPatch in data/api/users.ts. */
+  ghost_mode?: boolean;
 };
 
 export type StartResponse = {

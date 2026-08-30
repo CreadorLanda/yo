@@ -1062,6 +1062,8 @@ export default {
     title: 'Settings',
     section_account: 'Account',
     section_privacy: 'Privacy',
+    ghost_mode: 'Ghost mode',
+    ghost_mode_off: 'Off',
     section_security: 'Security',
     section_notifications: 'Notifications',
     section_appearance: 'Appearance',

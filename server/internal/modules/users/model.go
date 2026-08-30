@@ -24,6 +24,9 @@ type User struct {
 	// else's. A setting that only hides your own is a way to take without
 	// giving.
 	ReadReceipts bool `json:"read_receipts"`
+	// The wider switch: no read receipts, no typing, no recording indicator.
+	// Reciprocal on the same terms — see migration 0042.
+	GhostMode bool `json:"ghost_mode"`
 }
 
 // Visibility is who may see a given detail.
@@ -51,6 +54,7 @@ type PatchRequest struct {
 	LastSeenVisibility *Visibility `json:"last_seen_visibility,omitempty"`
 	PhotoVisibility    *Visibility `json:"photo_visibility,omitempty"`
 	ReadReceipts       *bool       `json:"read_receipts,omitempty"`
+	GhostMode          *bool       `json:"ghost_mode,omitempty"`
 }
 
 type AvailabilityResponse struct {

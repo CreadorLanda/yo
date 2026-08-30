@@ -343,7 +343,7 @@ func (s *Service) ListMessages(ctx context.Context, chatID, userID uuid.UUID, li
 	// the client to hide them, because a setting the client enforces is a
 	// setting the client can decline to enforce.
 	hideRead := false
-	if u, err := s.users.ByID(ctx, userID); err == nil && !u.ReadReceipts {
+	if u, err := s.users.ByID(ctx, userID); err == nil && (!u.ReadReceipts || u.GhostMode) {
 		if chat, err := s.repo.ChatForUser(ctx, chatID, userID); err == nil && chat.Type == ChatDirect {
 			hideRead = true
 		}
@@ -445,7 +445,7 @@ func (s *Service) SetReceipts(ctx context.Context, chatID, userID uuid.UUID, req
 	// than about you, and hiding one person's would make the rest wrong.
 	if req.Status == ReceiptRead {
 		if chat, err := s.repo.ChatForUser(ctx, chatID, userID); err == nil && chat.Type == ChatDirect {
-			if u, err := s.users.ByID(ctx, userID); err == nil && !u.ReadReceipts {
+			if u, err := s.users.ByID(ctx, userID); err == nil && (!u.ReadReceipts || u.GhostMode) {
 				req.Status = ReceiptDelivered
 			}
 		}
@@ -501,11 +501,23 @@ func (s *Service) Typing(ctx context.Context, chatID, userID uuid.UUID, typing b
 	if kind != "recording" {
 		kind = "typing"
 	}
-	s.broadcast(ctx, chatID, "typing", map[string]any{
-		"user_id": userID,
-		"typing":  typing,
-		"kind":    kind,
-	})
+	// Ghost mode covers both halves of this signal. Sending nothing is the
+	// point of it; receiving nothing is the price, on the same terms read
+	// receipts have been on since 0029.
+	if u, err := s.users.ByID(ctx, userID); err == nil && u.GhostMode {
+		return nil
+	}
+	ids, err := s.repo.NonGhostParticipantIDs(ctx, chatID)
+	if err != nil || len(ids) == 0 {
+		return nil
+	}
+	if s.hub != nil {
+		s.hub.PublishJSON(ids, "typing", chatID.String(), map[string]any{
+			"user_id": userID,
+			"typing":  typing,
+			"kind":    kind,
+		})
+	}
 	return nil
 }
 

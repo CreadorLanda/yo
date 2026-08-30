@@ -18,6 +18,12 @@ export type UserPatch = Partial<{
   photo_visibility: Visibility;
   /** Reciprocal: off means you neither send nor see read receipts. */
   read_receipts: boolean;
+  /**
+   * The wider switch: no read receipts, no typing, no recording indicator.
+   * Reciprocal on the same terms, and enforced on the server — a client that
+   * simply does not send is defeated by a client that would rather.
+   */
+  ghost_mode: boolean;
 }>;
 
 export const me = () => api.get<ApiUser>('/api/users/me');

@@ -23,7 +23,7 @@ const userColumns = `id, username, display_name,
 	COALESCE(bio, '') AS bio,
 	COALESCE(avatar_uri, '') AS avatar_uri,
 	username_public, created_at,
-	last_seen_visibility, photo_visibility, read_receipts`
+	last_seen_visibility, photo_visibility, read_receipts, ghost_mode`
 
 func scanUser(row pgx.Row) (*User, error) {
 	var u User
@@ -31,7 +31,7 @@ func scanUser(row pgx.Row) (*User, error) {
 		&u.ID, &u.Username, &u.DisplayName,
 		&u.Bio, &u.AvatarURI,
 		&u.UsernamePublic, &u.CreatedAt,
-		&u.LastSeenVisibility, &u.PhotoVisibility, &u.ReadReceipts,
+		&u.LastSeenVisibility, &u.PhotoVisibility, &u.ReadReceipts, &u.GhostMode,
 	); err != nil {
 		return nil, err
 	}
@@ -92,6 +92,9 @@ func (r *Repository) Patch(ctx context.Context, id uuid.UUID, p PatchRequest) (*
 	}
 	if p.ReadReceipts != nil {
 		add("read_receipts", *p.ReadReceipts)
+	}
+	if p.GhostMode != nil {
+		add("ghost_mode", *p.GhostMode)
 	}
 	if len(setters) == 0 {
 		return r.ByID(ctx, id)
