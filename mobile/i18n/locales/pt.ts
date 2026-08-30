@@ -1062,6 +1062,8 @@ export default {
     title: 'Definições',
     section_account: 'Conta',
     section_privacy: 'Privacidade',
+    ghost_mode: 'Modo ghost',
+    ghost_mode_off: 'Desligado',
     section_security: 'Segurança',
     section_notifications: 'Notificações',
     section_appearance: 'Aparência',

@@ -540,6 +540,35 @@ const messageSelectBase = `
 	) rc ON TRUE
 `
 
+// NonGhostParticipantIDs is ParticipantIDs minus anyone in ghost mode.
+//
+// The other half of the ghost bargain, and it has to happen here: an
+// ephemeral signal like typing is fanned out to a chat, so "do not show me
+// theirs" cannot be a decision the recipient makes — by then it has already
+// been sent, and a client that would rather not honour it simply would not.
+func (r *Repository) NonGhostParticipantIDs(ctx context.Context, chatID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT cp.user_id
+		FROM chat_participants cp
+		JOIN users u ON u.id = cp.user_id
+		WHERE cp.chat_id = $1 AND NOT u.ghost_mode
+	`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // ListMessages returns a page of history.
 //
 // hideRead blanks the read counts, for a caller who has turned read receipts

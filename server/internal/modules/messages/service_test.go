@@ -918,3 +918,103 @@ func TestReactionsSurviveReload(t *testing.T) {
 		t.Fatalf("reaction attributed to %s, want bob", found.Reactions[0].UserID)
 	}
 }
+
+// TestGhostModeIsReciprocal holds ghost mode to the same bargain read
+// receipts have been on since 0029: with it on you neither send these
+// signals nor see anyone else's.
+//
+// It is the wider switch — read receipts, typing and the recording indicator
+// at once — so it has to imply the narrower one even for someone who left
+// read_receipts on.
+func TestGhostModeIsReciprocal(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+	usersRepo := users.NewRepository(pool)
+
+	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_"+uuid.NewString()[:8])
+
+	chat, err := svc.CreateDirectChat(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("CreateDirectChat: %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, chat.ID, bob); err != nil {
+		t.Fatalf("AcceptChat: %v", err)
+	}
+
+	sent, err := svc.SendMessage(ctx, chat.ID, alice, SendMessageRequest{Content: testDirectEnvelope("olá")})
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+
+	readBy := func(viewer uuid.UUID, id int64) int {
+		t.Helper()
+		msgs, err := svc.ListMessages(ctx, chat.ID, viewer, 50, 0)
+		if err != nil {
+			t.Fatalf("ListMessages: %v", err)
+		}
+		for _, m := range msgs {
+			if m.ID == id {
+				return m.ReadBy
+			}
+		}
+		t.Fatal("message missing")
+		return -1
+	}
+
+	if err := svc.SetReceipts(ctx, chat.ID, bob, ReceiptRequest{
+		MessageIDs: []int64{sent.ID}, Status: ReceiptRead,
+	}); err != nil {
+		t.Fatalf("SetReceipts: %v", err)
+	}
+	if got := readBy(alice, sent.ID); got != 1 {
+		t.Fatalf("read not recorded before ghost mode: %d", got)
+	}
+
+	// Alice goes ghost. Note she never touched read_receipts — the wider
+	// switch has to cover the narrower one on its own.
+	on := true
+	if _, err := usersRepo.Patch(ctx, alice, users.PatchRequest{GhostMode: &on}); err != nil {
+		t.Fatalf("patch alice: %v", err)
+	}
+
+	if got := readBy(alice, sent.ID); got != 0 {
+		t.Fatalf("ghost alice still sees read receipts: %d", got)
+	}
+	if got := readBy(bob, sent.ID); got != 1 {
+		t.Fatalf("bob lost a receipt he did not opt out of: %d", got)
+	}
+
+	// And her own reads stop being recorded as reads.
+	fromBob, err := svc.SendMessage(ctx, chat.ID, bob, SendMessageRequest{Content: testDirectEnvelope("e tu")})
+	if err != nil {
+		t.Fatalf("SendMessage(bob): %v", err)
+	}
+	if err := svc.SetReceipts(ctx, chat.ID, alice, ReceiptRequest{
+		MessageIDs: []int64{fromBob.ID}, Status: ReceiptRead,
+	}); err != nil {
+		t.Fatalf("SetReceipts(alice): %v", err)
+	}
+	if got := readBy(bob, fromBob.ID); got != 0 {
+		t.Fatalf("ghost alice sent a read receipt: %d", got)
+	}
+
+	// Typing is refused outright rather than broadcast to nobody, and a
+	// ghost is not among the recipients of anyone else's.
+	if err := svc.Typing(ctx, chat.ID, alice, true, "typing"); err != nil {
+		t.Fatalf("Typing(ghost alice): %v", err)
+	}
+	ids, err := svc.repo.NonGhostParticipantIDs(ctx, chat.ID)
+	if err != nil {
+		t.Fatalf("NonGhostParticipantIDs: %v", err)
+	}
+	for _, id := range ids {
+		if id == alice {
+			t.Fatal("ghost alice would still be delivered a typing indicator")
+		}
+	}
+	if len(ids) != 1 || ids[0] != bob {
+		t.Fatalf("typing recipients wrong: %v", ids)
+	}
+}
