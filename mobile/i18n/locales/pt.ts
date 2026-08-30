@@ -927,6 +927,7 @@ export default {
     mode_handsfree: 'Mãos livres',
     mode_audio: 'Áudio',
     mode_live: 'Live',
+    no_camera: 'Sem câmara neste aparelho — toca para escolher da galeria',
     tap_to_capture: 'Toca para capturar',
     tap_to_record: 'Toca para gravar áudio',
     recording: 'A gravar…',
