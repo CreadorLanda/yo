@@ -10,8 +10,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
@@ -19,6 +17,7 @@ import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { EmptyState } from '@/components/ui/empty-state';
 import { FollowButton, formatCount } from '@/components/ui/follow-button';
 import { TabScene } from '@/components/ui/tab-scene';
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { bootstrapChannels, useChannels } from '@/data/channel-store';
 import { CHANNEL_CATEGORIES, type Channel, type ChannelCategory } from '@/data/mock';

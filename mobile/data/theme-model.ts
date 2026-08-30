@@ -1,5 +1,4 @@
-import { Colors } from '@/constants/theme';
-
+import type { FontFamilyId } from './theme-fonts';
 import type { IconSet, ThemeIcons } from './theme-icons';
 
 /**
@@ -11,9 +10,10 @@ import type { IconSet, ThemeIcons } from './theme-icons';
  * owns the token set, the defaults everything falls back to, and the geometry
  * derived from them.
  *
- * Everything here is pure. That is the point: the same defaults the app boots
- * with are the ones the persistence tests check stored data against, rather
- * than a second copy that drifts.
+ * Everything here is pure, and — since the unused `constants/theme` import
+ * went — that is now load-bearing rather than aspirational: nothing in this
+ * file reaches react-native, so the tests exercise the real defaults instead
+ * of a second copy that drifts.
  */
 
 export type ThemeMode = 'light' | 'dark';
@@ -85,6 +85,8 @@ export type ReplyStyle = 'quote' | 'bar' | 'minimal';
 export type SendButtonStyle = 'circle' | 'pill' | 'icon';
 export type SystemMsgStyle = 'pill' | 'plain' | 'banner';
 export type UnreadBadgeStyle = 'dot' | 'count' | 'none';
+/** What the chat wallpaper does when nobody is touching it. */
+export type WallpaperAnimation = 'none' | 'aurora' | 'drift' | 'pulse';
 
 /** Positions, shapes & ~40 GB-style knobs. */
 export type ThemeLayout = {
@@ -108,6 +110,20 @@ export type ThemeLayout = {
   iconSet: IconSet;
   /** Icon size multiplier, 0.8–1.4. */
   iconScale: number;
+  /** Which typeface the app draws every string in. */
+  fontFamily: FontFamilyId;
+  /**
+   * Collapse dark surfaces to true black, whatever pack is active.
+   *
+   * Not a palette and not a pack — a switch that runs *over* the theme in
+   * force, because someone on an OLED panel wants the power saving without
+   * giving up the colours they chose. Ignored in light mode.
+   */
+  amoledBlack: boolean;
+  /** Blur the header, composer and tab bar over what scrolls beneath. */
+  glassChrome: boolean;
+  /** Blur strength 10–100 when glassChrome is on. */
+  glassIntensity: number;
   composerStyle: ComposerStyle;
   /** Pattern overlay on wallpaper */
   wallpaperPattern: boolean;
@@ -133,6 +149,7 @@ export type ThemeLayout = {
   /** 0–80 darken overlay on photo wallpaper */
   wallpaperDim: number;
   wallpaperBlur: boolean;
+  wallpaperAnimation: WallpaperAnimation;
   reactionScale: number;
   swipeReply: boolean;
   selectionHighlight: boolean;
@@ -235,6 +252,12 @@ export const DEFAULT_LAYOUT: ThemeLayout = {
   tabBarLabels: 'labels',
   iconSet: 'outline',
   iconScale: 1,
+  // 'system' is not one font among six — it is the only value that leaves
+  // `fontFamily` unset, and so the only one that keeps iOS dynamic type.
+  fontFamily: 'system',
+  amoledBlack: false,
+  glassChrome: false,
+  glassIntensity: 45,
   composerStyle: 'rounded',
   wallpaperPattern: false,
   bubbleMaxWidth: 82,
@@ -259,6 +282,7 @@ export const DEFAULT_LAYOUT: ThemeLayout = {
   showHeaderBorder: true,
   wallpaperDim: 35,
   wallpaperBlur: false,
+  wallpaperAnimation: 'none',
   reactionScale: 1,
   swipeReply: true,
   selectionHighlight: true,
@@ -334,6 +358,108 @@ export function defaultChatChrome(scheme: ThemeMode, primary: string): ChatChrom
     systemBg: '#FFFFFF',
     systemText: '#6B7280',
     unreadBadge: primary,
+  };
+}
+
+// ── Colour helpers ──────────────────────────────────────────────────────────
+
+/**
+ * The same colour at a given opacity.
+ *
+ * Themes store colour as whatever the person typed — `#0A0`, `#0A0F1E`, an
+ * eight-digit hex with alpha already on it, or an `rgb()/rgba()` string — so
+ * anything that wants to tint one has to cope with all four. Returns the
+ * input untouched when it cannot be parsed, because a slightly-too-opaque
+ * panel is a much better failure than a transparent one.
+ */
+export function withAlpha(color: string, alpha: number): string {
+  const a = Math.max(0, Math.min(1, alpha));
+  const c = color.trim();
+
+  const hex = /^#([0-9a-f]{3,8})$/i.exec(c);
+  if (hex) {
+    const h = hex[1];
+    let r: number, g: number, b: number;
+    if (h.length === 3 || h.length === 4) {
+      r = parseInt(h[0] + h[0], 16);
+      g = parseInt(h[1] + h[1], 16);
+      b = parseInt(h[2] + h[2], 16);
+    } else if (h.length === 6 || h.length === 8) {
+      r = parseInt(h.slice(0, 2), 16);
+      g = parseInt(h.slice(2, 4), 16);
+      b = parseInt(h.slice(4, 6), 16);
+    } else {
+      return color;
+    }
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  const rgb = /^rgba?\(([^)]+)\)$/i.exec(c);
+  if (rgb) {
+    const parts = rgb[1].split(',').map((v) => v.trim());
+    if (parts.length >= 3) return `rgba(${parts[0]},${parts[1]},${parts[2]},${a})`;
+  }
+  return color;
+}
+
+// ── AMOLED ──────────────────────────────────────────────────────────────────
+
+/**
+ * The three greys true black still needs.
+ *
+ * A panel saves power on `#000000` because the pixel is *off*; nothing below
+ * about #0A reads as lit. But an interface of nothing but off pixels has no
+ * edges — every card, input and bubble dissolves into the same void. So the
+ * background goes fully off and the things that sit on it are lifted just
+ * enough to have a boundary, which costs almost nothing and is the difference
+ * between a dark theme and an unusable one.
+ */
+const AMOLED_BLACK = '#000000';
+const AMOLED_SURFACE = '#0A0A0A';
+const AMOLED_ELEVATED = '#141414';
+const AMOLED_BORDER = '#1C1C1C';
+const AMOLED_DIVIDER = '#111111';
+
+/**
+ * Flatten a dark palette's surfaces to true black, keeping its colours.
+ *
+ * Only the *ground* is rewritten — background, surfaces, borders. Primary,
+ * text and the semantic accents are left exactly as the pack set them, which
+ * is what separates this from being a thirteenth pack: someone who likes
+ * Luanda Sunset and owns an OLED phone should get their oranges on black,
+ * not somebody else's monochrome.
+ */
+export function amoledizeTokens(tokens: ThemeTokens): ThemeTokens {
+  return {
+    ...tokens,
+    background: AMOLED_BLACK,
+    surfaceMuted: AMOLED_BLACK,
+    surface: AMOLED_SURFACE,
+    surfaceElevated: AMOLED_ELEVATED,
+    border: AMOLED_BORDER,
+    divider: AMOLED_DIVIDER,
+  };
+}
+
+/**
+ * The same flattening for chat chrome.
+ *
+ * `bubbleMine`, `sendBtnBg` and the link colours are deliberately untouched —
+ * they carry the theme's accent, and blacking them out would leave a thread
+ * with no colour in it at all. `wallpaperImage` survives too: a photo
+ * wallpaper is a thing somebody chose, not a surface to be flattened.
+ */
+export function amoledizeChat(chrome: ChatChrome): ChatChrome {
+  return {
+    ...chrome,
+    wallpaper: AMOLED_BLACK,
+    composerBg: AMOLED_BLACK,
+    headerBg: AMOLED_BLACK,
+    inputBg: AMOLED_SURFACE,
+    bubbleTheirs: AMOLED_SURFACE,
+    datePillBg: AMOLED_SURFACE,
+    systemBg: AMOLED_SURFACE,
+    replyBarBg: AMOLED_ELEVATED,
   };
 }
 
@@ -434,6 +560,8 @@ export const DATE_PILL_STYLES: DatePillStyle[] = ['pill', 'text', 'hidden'];
 export const REPLY_STYLES: ReplyStyle[] = ['quote', 'bar', 'minimal'];
 export const SEND_STYLES: SendButtonStyle[] = ['circle', 'pill', 'icon'];
 export const SYSTEM_STYLES: SystemMsgStyle[] = ['pill', 'plain', 'banner'];
+
+export const WALLPAPER_ANIMATIONS: WallpaperAnimation[] = ['none', 'aurora', 'drift', 'pulse'];
 
 export const TAB_BAR_POSITIONS: TabBarPosition[] = ['top', 'bottom'];
 export const TAB_BAR_LABEL_MODES: TabBarLabels[] = ['labels', 'icons', 'both'];

@@ -9,15 +9,16 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { appAlert } from '@/data/dialog-store';
 import { persistThemeImage } from '@/data/theme-assets';
+import { loadFontFamily } from '@/data/theme-font-assets';
+import { FONT_FAMILIES, type FontFamilyId } from '@/data/theme-fonts';
 import {
   ICON_SETS,
   ICON_SLOTS,
@@ -36,6 +37,7 @@ import {
   REPLY_STYLES,
   SEND_STYLES,
   SYSTEM_STYLES,
+  WALLPAPER_ANIMATIONS,
   bubbleRadii,
   createThemePack,
   forkTheme,
@@ -52,6 +54,7 @@ import {
   type ThemeLayout,
   type ThemeMode,
   type ThemePack,
+  type WallpaperAnimation,
 } from '@/data/theme-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -360,6 +363,7 @@ export default function ThemeCreatorScreen() {
             ]}
           >
             <Text
+              font={layout.fontFamily}
               style={{
                 color: textTheirs,
                 fontSize,
@@ -388,6 +392,7 @@ export default function ThemeCreatorScreen() {
             ]}
           >
             <Text
+              font={layout.fontFamily}
               style={{
                 color: textMine,
                 fontSize,
@@ -586,6 +591,19 @@ export default function ThemeCreatorScreen() {
               onChange={(v) => patchLayout('wallpaperBlur', v)}
               colors={colors}
             />
+            <Label color={colors.textSecondary}>{t('themes.wallpaper_animation')}</Label>
+            <ChipRow
+              options={WALLPAPER_ANIMATIONS.map((a) => ({
+                id: a,
+                label: t(`themes.wallpaper_anim_${a}`),
+              }))}
+              value={layout.wallpaperAnimation}
+              onChange={(v) => patchLayout('wallpaperAnimation', v as WallpaperAnimation)}
+              colors={colors}
+            />
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.wallpaper_animation_hint')}
+            </Text>
 
             <Label color={colors.textSecondary}>{t('themes.bubble_mine')}</Label>
             <ColorRow
@@ -648,6 +666,22 @@ export default function ThemeCreatorScreen() {
             <StepRow value={layout.bubblePaddingH} min={6} max={22} step={1} onChange={(v) => patchLayout('bubblePaddingH', v)} colors={colors} />
             <Label color={colors.textSecondary}>{t('themes.bubble_pad_v')}: {layout.bubblePaddingV}</Label>
             <StepRow value={layout.bubblePaddingV} min={4} max={18} step={1} onChange={(v) => patchLayout('bubblePaddingV', v)} colors={colors} />
+            <Label color={colors.textSecondary}>{t('themes.font_family')}</Label>
+            <ChipRow
+              options={FONT_FAMILIES.map((f) => ({ id: f.id, label: f.label }))}
+              value={layout.fontFamily}
+              onChange={(v) => {
+                const id = v as FontFamilyId;
+                // Register the faces now so the preview above changes on this
+                // tap rather than on the one after it.
+                loadFontFamily(id).catch(() => {});
+                patchLayout('fontFamily', id);
+              }}
+              colors={colors}
+            />
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.font_family_hint')}
+            </Text>
             <Label color={colors.textSecondary}>{t('themes.font_scale')}: {Math.round(layout.fontScale * 100)}%</Label>
             <StepRow value={Math.round(layout.fontScale * 100)} min={85} max={135} step={5} onChange={(v) => patchLayout('fontScale', v / 100)} colors={colors} />
             <Label color={colors.textSecondary}>{t('themes.letter_spacing')}: {layout.letterSpacing}</Label>
@@ -861,6 +895,20 @@ export default function ThemeCreatorScreen() {
             <Text style={[styles.sectionLead, { color: colors.textSecondary }]}>
               {t('themes.effects_lead')}
             </Text>
+            <ToggleRow label={t('themes.amoled')} value={layout.amoledBlack} onChange={(v) => patchLayout('amoledBlack', v)} colors={colors} />
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.amoled_hint')}
+            </Text>
+            <ToggleRow label={t('themes.glass')} value={layout.glassChrome} onChange={(v) => patchLayout('glassChrome', v)} colors={colors} />
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.glass_hint')}
+            </Text>
+            {layout.glassChrome ? (
+              <>
+                <Label color={colors.textSecondary}>{t('themes.glass_intensity')}: {layout.glassIntensity}</Label>
+                <StepRow value={layout.glassIntensity} min={10} max={100} step={5} onChange={(v) => patchLayout('glassIntensity', v)} colors={colors} />
+              </>
+            ) : null}
             <ToggleRow label={t('themes.bubble_shadow')} value={layout.bubbleShadow} onChange={(v) => patchLayout('bubbleShadow', v)} colors={colors} />
             <Label color={colors.textSecondary}>{t('themes.shadow_strength')}: {Math.round(layout.bubbleShadowStrength * 100)}%</Label>
             <StepRow value={Math.round(layout.bubbleShadowStrength * 100)} min={0} max={100} step={10} onChange={(v) => patchLayout('bubbleShadowStrength', v / 100)} colors={colors} />

@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
-  Text,
   View,
 } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -15,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/primary-button';
 import { StepHeader } from '@/components/ui/step-header';
+import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { ApiError } from '@/data/api/client';

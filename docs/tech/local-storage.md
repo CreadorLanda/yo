@@ -149,8 +149,8 @@ CREATE TABLE theme_packs (
 );
 
 -- Theme choices: active pack, installed and liked sets, light/dark preference,
--- personal overrides. Here rather than in SecureStore, which does not reliably
--- store values over 2048 bytes.
+-- personal overrides, launcher icon. Here rather than in SecureStore, which
+-- does not reliably store values over 2048 bytes.
 CREATE TABLE theme_prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ```
 
@@ -161,6 +161,11 @@ Photo wallpapers and custom icons are files, not rows: the picker hands back a
 URI in the OS cache, so the bytes are copied into the app's document directory
 by [`mobile/data/theme-assets.ts`](../../mobile/data/theme-assets.ts) before the
 path is stored, and orphans are swept at launch.
+
+The launcher icon is stored here too (`app_icon`), but the OS is the authority
+on it: a rebuild, or a restore onto a new device, can leave the stored value
+describing an icon that is not on the home screen. The store asks the native
+side on launch and falls back to the row only when there is nothing to ask.
 
 ---
 

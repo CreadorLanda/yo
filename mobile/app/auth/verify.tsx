@@ -4,8 +4,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/primary-button';
 import { StepHeader } from '@/components/ui/step-header';
+import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { authStart, authVerify, type Platform } from '@/data/api/auth';
 import { ApiError } from '@/data/api/client';
@@ -48,7 +47,7 @@ export default function VerifyScreen() {
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputs = useRef<Array<TextInput | null>>([]);
+  const inputs = useRef<(TextInputHandle | null)[]>([]);
   const { colors } = useTheme();
   const e164 = `${data.countryCode}${data.phoneNumber}`;
 
