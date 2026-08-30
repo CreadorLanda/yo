@@ -4,11 +4,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/primary-button';
 import { StateTransition } from '@/components/ui/state-transition';
+import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { updateProfile, useProfile } from '@/data/profile-store';

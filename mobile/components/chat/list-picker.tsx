@@ -7,11 +7,10 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import {
   addCustomFilter,

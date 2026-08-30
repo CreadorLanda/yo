@@ -3,12 +3,13 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ListPicker } from '@/components/chat/list-picker';
 import { PeoplePicker } from '@/components/ui/people-picker';
 import { NoteEditor } from '@/components/chat/note-editor';
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import {
   blockChat,

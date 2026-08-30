@@ -1,3 +1,8 @@
+import {
+  getAppIconName,
+  setAlternateAppIcon,
+  supportsAlternateIcons,
+} from 'expo-alternate-app-icons';
 import { useSyncExternalStore } from 'react';
 
 import { Colors } from '@/constants/theme';
@@ -12,7 +17,16 @@ import {
 import { pruneThemeImages } from './theme-assets';
 import { EMPTY_ICONS, type ThemeIcons } from './theme-icons';
 import {
+  appIconFromPluginName,
+  appIconSpec,
+  type AppIconId,
+} from './theme-app-icons';
+import { loadFontFamily, needsFontLoad } from './theme-font-assets';
+import { type FontFamilyId } from './theme-fonts';
+import {
   DEFAULT_LAYOUT,
+  amoledizeChat,
+  amoledizeTokens,
   defaultChatChrome,
   type BubbleShape,
   type ChatChrome,
@@ -22,7 +36,6 @@ import {
   type MessageDensity,
   type SchemePreference,
   type SendButtonStyle,
-  type ThemeCategory,
   type ThemeLayout,
   type ThemeMode,
   type ThemePack,
@@ -765,6 +778,577 @@ const MARKETPLACE: ThemePack[] = [
       showHeaderBorder: false,
     },
   }),
+  // The three below are the first packs that change the *typeface* as well as
+  // the colours, and the first to use glass, AMOLED and a moving wallpaper.
+  // Kept as packs rather than defaults so that everything added in this round
+  // is something a person opts into, one tap, and can leave.
+  pack({
+    id: 'blindfold',
+    name: 'Blindfold',
+    author: 'Yo',
+    description: 'Black, with an unreasonable amount of blue in it. Glass chrome, drifting aurora.',
+    category: 'midnight',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      dark: {
+        primary: '#3AB6FF',
+        tint: '#3AB6FF',
+        tabIconSelected: '#3AB6FF',
+        // `info` is the aurora's second hue — see the chat screen.
+        info: '#8B5CF6',
+        background: '#000000',
+        surface: '#0B0D14',
+        surfaceElevated: '#141824',
+        surfaceMuted: '#05060A',
+        text: '#EAF4FF',
+        textSecondary: '#8FA3BD',
+        textMuted: '#55637A',
+        border: '#1B2130',
+        divider: '#12161F',
+        onPrimary: '#00121F',
+      },
+      light: {
+        primary: '#1E6FD9',
+        tint: '#1E6FD9',
+        tabIconSelected: '#1E6FD9',
+        info: '#6D3BE0',
+        background: '#F4F8FF',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#E7EFFB',
+        text: '#0A1422',
+        textSecondary: '#4A5A72',
+        textMuted: '#8494AB',
+        border: '#D3E0F2',
+        divider: '#E7EFFB',
+        onPrimary: '#FFFFFF',
+      },
+    },
+    chat: {
+      dark: {
+        wallpaper: '#000000',
+        bubbleMine: '#12365C',
+        bubbleTheirs: '#0B0D14',
+        textMine: '#EAF4FF',
+        headerBg: '#05060A',
+        composerBg: '#000000',
+        inputBg: '#0B0D14',
+      },
+      light: {
+        wallpaper: '#E7EFFB',
+        bubbleMine: '#1E6FD9',
+        bubbleTheirs: '#FFFFFF',
+      },
+    },
+    layout: {
+      fontFamily: 'space',
+      amoledBlack: true,
+      glassChrome: true,
+      glassIntensity: 60,
+      wallpaperAnimation: 'aurora',
+      bubbleShape: 'rounded',
+      bubbleRadius: 18,
+      showTails: false,
+      bubbleShadow: false,
+      iconSet: 'sharp',
+      headerStyle: 'minimal',
+      showHeaderBorder: false,
+      composerStyle: 'floating',
+      letterSpacing: 0.2,
+    },
+  }),
+  pack({
+    id: 'paper-ink',
+    name: 'Paper & Ink',
+    author: 'Yo',
+    description: 'A serif, a warm page and no shadows. Reads like something printed.',
+    category: 'minimal',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      light: {
+        primary: '#8A6A3E',
+        tint: '#8A6A3E',
+        tabIconSelected: '#8A6A3E',
+        background: '#FBF6EC',
+        surface: '#FFFDF8',
+        surfaceElevated: '#FFFDF8',
+        surfaceMuted: '#F2EADA',
+        text: '#231D14',
+        textSecondary: '#6B5C46',
+        textMuted: '#9C8E77',
+        border: '#E4D8C2',
+        divider: '#EFE6D5',
+        onPrimary: '#FFFDF8',
+      },
+      dark: {
+        primary: '#D8B679',
+        tint: '#D8B679',
+        tabIconSelected: '#D8B679',
+        background: '#14110C',
+        surface: '#1D1913',
+        surfaceElevated: '#26211A',
+        surfaceMuted: '#100E09',
+        text: '#F2E9D8',
+        textSecondary: '#B0A48C',
+        textMuted: '#7A7060',
+        border: '#2E2820',
+        divider: '#221D17',
+        onPrimary: '#1A1509',
+      },
+    },
+    chat: {
+      light: {
+        wallpaper: '#F2EADA',
+        bubbleMine: '#8A6A3E',
+        bubbleTheirs: '#FFFDF8',
+      },
+      dark: {
+        wallpaper: '#100E09',
+        bubbleMine: '#4A3B22',
+        bubbleTheirs: '#1D1913',
+        textMine: '#F2E9D8',
+      },
+    },
+    layout: {
+      fontFamily: 'lora',
+      bubbleShape: 'square',
+      bubbleShadow: false,
+      showTails: false,
+      density: 'roomy',
+      iconSet: 'outline',
+      headerStyle: 'minimal',
+      composerStyle: 'flat',
+      lineHeightExtra: 3,
+      datePillStyle: 'text',
+      unreadBadgeStyle: 'dot',
+    },
+  }),
+  pack({
+    id: 'bubblegum',
+    name: 'Bubblegum',
+    author: 'Yo',
+    description: 'Round everything. Nunito, pastel glass, and a wallpaper that breathes.',
+    category: 'pastel',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      light: {
+        primary: '#C86BE0',
+        tint: '#C86BE0',
+        tabIconSelected: '#C86BE0',
+        info: '#6BC5E0',
+        background: '#FFF5FD',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#FCE9FA',
+        text: '#2C1B31',
+        textSecondary: '#6E5273',
+        textMuted: '#A78CAB',
+        border: '#F3D7EF',
+        divider: '#FAE6F7',
+        onPrimary: '#FFFFFF',
+      },
+      dark: {
+        primary: '#E79BF5',
+        tint: '#E79BF5',
+        tabIconSelected: '#E79BF5',
+        info: '#8ED8EF',
+        background: '#160F1A',
+        surface: '#211628',
+        surfaceElevated: '#2C1F34',
+        surfaceMuted: '#110B14',
+        text: '#F7E9FA',
+        textSecondary: '#BFA3C7',
+        textMuted: '#8A7191',
+        border: '#33243B',
+        divider: '#261A2D',
+        onPrimary: '#2A0F33',
+      },
+    },
+    chat: {
+      light: {
+        wallpaper: '#FCE9FA',
+        bubbleMine: '#C86BE0',
+        bubbleTheirs: '#FFFFFF',
+      },
+      dark: {
+        wallpaper: '#110B14',
+        bubbleMine: '#5C2E69',
+        bubbleTheirs: '#211628',
+        textMine: '#F7E9FA',
+      },
+    },
+    layout: {
+      fontFamily: 'nunito',
+      glassChrome: true,
+      glassIntensity: 35,
+      wallpaperAnimation: 'pulse',
+      bubbleShape: 'pill',
+      bubbleRadius: 24,
+      showTails: false,
+      bubbleShadow: true,
+      bubbleShadowStrength: 0.5,
+      iconSet: 'filled',
+      composerStyle: 'floating',
+      inputRadius: 26,
+      density: 'cozy',
+    },
+  }),
+  // Three pastiches. Each is a whole interface somebody already has muscle
+  // memory for, which is a harder brief than a palette: being wrong by a
+  // corner radius is the difference between "that's it" and "that's nearly
+  // it". The product each one evokes is named in the description rather than
+  // the title, so search finds them without the app shipping somebody else's
+  // trademark as the name of a feature.
+  pack({
+    id: 'cupertino',
+    name: 'Cupertino',
+    author: 'Yo',
+    description:
+      'iOS 26. Liquid glass chrome, iMessage blue, tall corners, and the system font it was drawn for.',
+    category: 'minimal',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      light: {
+        primary: '#007AFF',
+        onPrimary: '#FFFFFF',
+        background: '#F2F2F7',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#E5E5EA',
+        text: '#000000',
+        textSecondary: '#6C6C70',
+        textMuted: '#8E8E93',
+        border: '#C6C6C8',
+        divider: '#E5E5EA',
+        tint: '#007AFF',
+        icon: '#8E8E93',
+        tabIconDefault: '#8E8E93',
+        tabIconSelected: '#007AFF',
+        success: '#34C759',
+        warning: '#FF9500',
+        danger: '#FF3B30',
+        info: '#5856D6',
+      },
+      dark: {
+        primary: '#0A84FF',
+        onPrimary: '#FFFFFF',
+        background: '#000000',
+        surface: '#1C1C1E',
+        surfaceElevated: '#2C2C2E',
+        surfaceMuted: '#000000',
+        text: '#FFFFFF',
+        textSecondary: '#98989F',
+        textMuted: '#8E8E93',
+        border: '#38383A',
+        divider: '#2C2C2E',
+        tint: '#0A84FF',
+        icon: '#98989F',
+        tabIconDefault: '#8E8E93',
+        tabIconSelected: '#0A84FF',
+        success: '#30D158',
+        warning: '#FF9F0A',
+        danger: '#FF453A',
+        info: '#5E5CE6',
+      },
+    },
+    chat: {
+      light: {
+        wallpaper: '#FFFFFF',
+        bubbleMine: '#007AFF',
+        bubbleTheirs: '#E9E9EB',
+        textMine: '#FFFFFF',
+        textTheirs: '#000000',
+        metaTheirs: '#8E8E93',
+        headerBg: '#F2F2F7',
+        headerFg: '#000000',
+        composerBg: '#F2F2F7',
+        inputBg: '#FFFFFF',
+        systemBg: '#FFFFFF',
+        systemText: '#8E8E93',
+      },
+      dark: {
+        wallpaper: '#000000',
+        bubbleMine: '#0A84FF',
+        bubbleTheirs: '#26262A',
+        textMine: '#FFFFFF',
+        textTheirs: '#FFFFFF',
+        metaTheirs: '#8E8E93',
+        headerBg: '#1C1C1E',
+        headerFg: '#FFFFFF',
+        composerBg: '#000000',
+        inputBg: '#1C1C1E',
+        systemBg: '#000000',
+        systemText: '#8E8E93',
+      },
+    },
+    layout: {
+      // Not a bundled family, on purpose. On an iPhone the system font *is*
+      // the one this is imitating, so naming a face would swap San Francisco
+      // for a lookalike and lose dynamic type doing it.
+      fontFamily: 'system',
+      glassChrome: true,
+      glassIntensity: 75,
+      bubbleShape: 'tail',
+      bubbleRadius: 18,
+      showTails: true,
+      bubbleShadow: false,
+      squircleCorners: true,
+      composerStyle: 'rounded',
+      inputRadius: 20,
+      sendButtonStyle: 'circle',
+      tabBarPosition: 'bottom',
+      tabBarLabels: 'both',
+      headerStyle: 'minimal',
+      showHeaderBorder: false,
+      iconSet: 'outline',
+      datePillStyle: 'text',
+      centerDatePills: true,
+      listAvatarSize: 50,
+      density: 'cozy',
+      metaSize: 11,
+    },
+  }),
+  pack({
+    id: 'aero',
+    name: 'Aero',
+    author: 'Yo',
+    description:
+      'Windows 7. Translucent blue chrome, a glow on every edge, and corners barely rounded at all.',
+    category: 'retro',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      light: {
+        primary: '#1B72C4',
+        onPrimary: '#FFFFFF',
+        background: '#E8F1FB',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#D3E4F6',
+        text: '#10283F',
+        textSecondary: '#3F5F80',
+        textMuted: '#7593B2',
+        border: '#9FC0E0',
+        divider: '#D3E4F6',
+        tint: '#1B72C4',
+        icon: '#3F5F80',
+        tabIconDefault: '#7593B2',
+        tabIconSelected: '#1B72C4',
+        success: '#4E9A06',
+        warning: '#F0A30A',
+        danger: '#C42B1C',
+        info: '#00A2E8',
+      },
+      dark: {
+        primary: '#4FB3F0',
+        onPrimary: '#04141F',
+        background: '#0A1622',
+        surface: '#12283C',
+        surfaceElevated: '#1B3A54',
+        surfaceMuted: '#071019',
+        text: '#E4F1FB',
+        textSecondary: '#9FC0DC',
+        textMuted: '#6B8CA8',
+        border: '#224764',
+        divider: '#16324A',
+        tint: '#4FB3F0',
+        icon: '#9FC0DC',
+        tabIconDefault: '#6B8CA8',
+        tabIconSelected: '#4FB3F0',
+        success: '#73C936',
+        warning: '#FFC83D',
+        danger: '#FF6B5E',
+        info: '#33C7FF',
+      },
+    },
+    chat: {
+      light: {
+        wallpaper: '#D3E4F6',
+        bubbleMine: '#1B72C4',
+        bubbleTheirs: '#FFFFFF',
+        textMine: '#FFFFFF',
+        textTheirs: '#10283F',
+        headerBg: '#1B72C4',
+        headerFg: '#FFFFFF',
+        composerBg: '#E8F1FB',
+        inputBg: '#FFFFFF',
+        datePillBg: '#FFFFFF',
+        datePillText: '#3F5F80',
+      },
+      dark: {
+        wallpaper: '#071019',
+        bubbleMine: '#1B4E77',
+        bubbleTheirs: '#12283C',
+        textMine: '#E4F1FB',
+        textTheirs: '#E4F1FB',
+        headerBg: '#12283C',
+        headerFg: '#E4F1FB',
+        composerBg: '#0A1622',
+        inputBg: '#12283C',
+      },
+    },
+    layout: {
+      fontFamily: 'inter',
+      // Aero *was* the glass. Switch it off and what is left is a blue theme
+      // with nothing of the thing it is imitating.
+      glassChrome: true,
+      glassIntensity: 50,
+      // The light that used to sweep across the window chrome.
+      wallpaperAnimation: 'drift',
+      bubbleShape: 'rounded',
+      bubbleRadius: 6,
+      showTails: false,
+      bubbleShadow: true,
+      bubbleShadowStrength: 0.6,
+      squircleCorners: false,
+      composerStyle: 'flat',
+      inputRadius: 4,
+      sendButtonStyle: 'pill',
+      headerStyle: 'colored',
+      showHeaderBorder: true,
+      tabBarPosition: 'top',
+      tabBarLabels: 'both',
+      iconSet: 'filled',
+      density: 'compact',
+      listAvatarSize: 40,
+      linkUnderline: true,
+    },
+  }),
+  pack({
+    id: 'butterfly',
+    name: 'Butterfly',
+    author: 'Yo',
+    description:
+      'MSN Messenger, 2005. Green for online, a blue title bar, square corners, and a banner for every nudge.',
+    category: 'retro',
+    downloads: 0,
+    likes: 0,
+    price: 0,
+    isOfficial: true,
+    tokens: {
+      light: {
+        // Deeper than the green everybody remembers: that one is a logo
+        // colour, and it fails contrast the moment white text sits on it.
+        primary: '#4C8C00',
+        onPrimary: '#FFFFFF',
+        background: '#EDF4FB',
+        surface: '#FFFFFF',
+        surfaceElevated: '#FFFFFF',
+        surfaceMuted: '#DCE8F5',
+        text: '#14212E',
+        textSecondary: '#465A6E',
+        textMuted: '#7C8FA3',
+        border: '#A8C3DE',
+        divider: '#DCE8F5',
+        tint: '#4C8C00',
+        icon: '#465A6E',
+        tabIconDefault: '#7C8FA3',
+        tabIconSelected: '#4C8C00',
+        success: '#4C8C00',
+        warning: '#F08A00',
+        danger: '#CC3300',
+        info: '#0067B8',
+      },
+      dark: {
+        primary: '#8FD400',
+        onPrimary: '#132000',
+        background: '#0E1520',
+        surface: '#18222F',
+        surfaceElevated: '#22303F',
+        surfaceMuted: '#0A1018',
+        text: '#E8F0F8',
+        textSecondary: '#A3B6C8',
+        textMuted: '#6F8398',
+        border: '#2A3A4C',
+        divider: '#1D2836',
+        tint: '#8FD400',
+        icon: '#A3B6C8',
+        tabIconDefault: '#6F8398',
+        tabIconSelected: '#8FD400',
+        success: '#8FD400',
+        warning: '#FFA940',
+        danger: '#FF6B4A',
+        info: '#4CADFF',
+      },
+    },
+    chat: {
+      light: {
+        // The log was white, and the two of you were told apart by the colour
+        // of your name rather than by a shape drawn around the words.
+        wallpaper: '#FFFFFF',
+        bubbleMine: '#E4F0CF',
+        bubbleTheirs: '#FFFFFF',
+        textMine: '#14212E',
+        textTheirs: '#14212E',
+        metaMine: '#6F8A45',
+        metaTheirs: '#7C8FA3',
+        headerBg: '#0067B8',
+        headerFg: '#FFFFFF',
+        composerBg: '#EDF4FB',
+        inputBg: '#FFFFFF',
+        systemBg: '#FFF6E0',
+        systemText: '#8A6D00',
+        unreadBadge: '#F08A00',
+      },
+      dark: {
+        wallpaper: '#0A1018',
+        bubbleMine: '#2A3D14',
+        bubbleTheirs: '#18222F',
+        textMine: '#E8F0F8',
+        textTheirs: '#E8F0F8',
+        headerBg: '#18222F',
+        headerFg: '#E8F0F8',
+        composerBg: '#0E1520',
+        inputBg: '#18222F',
+        systemBg: '#2A2413',
+        systemText: '#FFC83D',
+        unreadBadge: '#FFA940',
+      },
+    },
+    layout: {
+      fontFamily: 'inter',
+      glassChrome: false,
+      bubbleShape: 'square',
+      bubbleRadius: 4,
+      showTails: false,
+      bubbleShadow: false,
+      squircleCorners: false,
+      // A log, not a thread: rows run nearly the full width and sit close
+      // together, and the sender's name does the work the bubble does now.
+      density: 'compact',
+      bubbleMaxWidth: 92,
+      groupSenderBold: true,
+      timestampInside: false,
+      datePillStyle: 'text',
+      systemMsgStyle: 'banner',
+      composerStyle: 'flat',
+      inputRadius: 4,
+      sendButtonStyle: 'pill',
+      headerStyle: 'colored',
+      showHeaderBorder: true,
+      tabBarPosition: 'top',
+      tabBarLabels: 'both',
+      iconSet: 'filled',
+      avatarPosition: 'left',
+      listAvatarSize: 40,
+      linkUnderline: true,
+      metaSize: 10,
+    },
+  }),
 ];
 
 // ── State ───────────────────────────────────────────────────────────────────
@@ -779,8 +1363,20 @@ let personalLayout: Partial<ThemeLayout> = {};
 let personalChat: { light?: Partial<ChatChrome>; dark?: Partial<ChatChrome> } = {};
 /** Icon images the person set outside any pack. */
 let personalIcons: ThemeIcons = {};
+/** The launcher icon. Not part of any pack — see [theme-app-icons]. */
+let appIcon: AppIconId = 'default';
 /** Bumps on every store mutation so hooks re-render even when object identity is stable. */
 let storeRev = 0;
+/**
+ * The typeface in force, cached rather than derived on read.
+ *
+ * Every `<Text>` in the app subscribes to this one value, so its getter runs
+ * on the order of a thousand times per screen. `getResolvedLayout()` builds a
+ * ~55-key object each call; doing that per text node per render is how a font
+ * picker turns into a frame-rate bug. It only changes when the store does, so
+ * it is recomputed there — once — in [emit].
+ */
+let resolvedFontFamily: FontFamilyId = DEFAULT_LAYOUT.fontFamily;
 const listeners = new Set<() => void>();
 
 /**
@@ -805,6 +1401,7 @@ function persistPrefs() {
       personalLayout,
       personalChat,
       personalIcons,
+      appIcon,
     }),
   ).catch(() => {});
 }
@@ -822,6 +1419,17 @@ function persistPack(theme: ThemePack) {
  */
 function emit() {
   storeRev += 1;
+  resolvedFontFamily = getResolvedLayout().fontFamily;
+  // A face has to be registered before a style may name it, and nothing
+  // re-renders on its own when one finishes loading. So: register on the way
+  // past, and emit again when it lands. The frame in between draws in the
+  // system font, which is the honest fallback and not a hole.
+  if (needsFontLoad(resolvedFontFamily)) {
+    const pending = resolvedFontFamily;
+    loadFontFamily(pending).then((ok) => {
+      if (ok) emit();
+    });
+  }
   persistPrefs();
   listeners.forEach((l) => l());
 }
@@ -859,7 +1467,23 @@ export async function bootstrapThemes(): Promise<void> {
       personalLayout = state.personalLayout;
       personalChat = state.personalChat;
       personalIcons = state.personalIcons;
+      // The OS is the authority on which icon is actually installed: a
+      // rebuild, or a restore onto a new device, can leave the stored value
+      // describing an icon that is not on the home screen. Ask, and only fall
+      // back to what was stored when there is nothing to ask.
+      appIcon = state.appIcon;
+      if (supportsAlternateIcons) {
+        try {
+          appIcon = appIconFromPluginName(getAppIconName());
+        } catch {
+          // Keep the stored value.
+        }
+      }
       hydrated = true;
+      // Before the first emit, not after. This is the one moment the splash
+      // is still up, so a stored typeface can be registered without anybody
+      // watching the app repaint in a font they did not choose.
+      await loadFontFamily(getResolvedLayout().fontFamily);
       emit();
       // Now — and only now — is the full set of live image references known,
       // so anything left over from a deleted theme can go. Sweeping earlier
@@ -927,6 +1551,17 @@ export function useThemeStoreRev(): number {
   return useSyncExternalStore(subscribe, () => storeRev);
 }
 
+/**
+ * The typeface every `<Text>` draws with.
+ *
+ * Its own selector rather than a read off [useTheme] so a text node
+ * subscribes to the one value it cares about, and is not re-rendered by
+ * somebody changing a bubble colour.
+ */
+export function useThemeFontFamily(): FontFamilyId {
+  return useSyncExternalStore(subscribe, () => resolvedFontFamily);
+}
+
 export function getActivePack(): ThemePack | undefined {
   return catalog.find((p) => p.id === activeThemeId);
 }
@@ -935,7 +1570,7 @@ export function getPackById(id: string): ThemePack | undefined {
   return catalog.find((p) => p.id === id);
 }
 
-export function getResolvedColors(scheme: ThemeMode): ThemeTokens {
+function packColors(scheme: ThemeMode): ThemeTokens {
   const base = scheme === 'dark' ? baseDark : baseLight;
   const packActive = getActivePack();
   if (!packActive) return { ...base };
@@ -951,7 +1586,7 @@ export function getResolvedColors(scheme: ThemeMode): ThemeTokens {
   return merged;
 }
 
-export function getResolvedChat(scheme: ThemeMode): ChatChrome {
+function packChrome(scheme: ThemeMode): ChatChrome {
   const colors = getResolvedColors(scheme);
   const base = defaultChatChrome(scheme, colors.primary);
   // Prefer token surfaces when pack doesn't set chrome.
@@ -997,6 +1632,25 @@ export function getResolvedChat(scheme: ThemeMode): ChatChrome {
 }
 
 /**
+ * The palette in force.
+ *
+ * AMOLED runs last and only in dark, because it is a switch over whatever
+ * theme is active rather than a theme of its own — see [amoledizeTokens].
+ */
+export function getResolvedColors(scheme: ThemeMode): ThemeTokens {
+  const colors = packColors(scheme);
+  if (scheme !== 'dark' || !getResolvedLayout().amoledBlack) return colors;
+  return amoledizeTokens(colors);
+}
+
+/** The chat chrome in force, with the same AMOLED pass over the top. */
+export function getResolvedChat(scheme: ThemeMode): ChatChrome {
+  const chrome = packChrome(scheme);
+  if (scheme !== 'dark' || !getResolvedLayout().amoledBlack) return chrome;
+  return amoledizeChat(chrome);
+}
+
+/**
  * The icon images in force: the active pack's, with the person's own on top.
  *
  * Same layering as colour, and for the same reason — someone who replaced the
@@ -1038,6 +1692,39 @@ export function setPersonalChat(scheme: ThemeMode, patch: Partial<ChatChrome>) {
     [scheme]: { ...personalChat[scheme], ...patch },
   };
   emit();
+}
+
+/** The launcher icon in force. */
+export function useAppIcon(): AppIconId {
+  return useSyncExternalStore(subscribe, () => appIcon);
+}
+
+/** Whether this build can change it at all — false in Expo Go and on web. */
+export function canChangeAppIcon(): boolean {
+  return supportsAlternateIcons;
+}
+
+/**
+ * Ask the OS to swap the launcher icon.
+ *
+ * Recorded only once the swap has actually happened. iOS puts a system
+ * dialog in front of this that the person can decline, and there is no
+ * alternate-icon support at all without a native build — in both cases the
+ * icon on the home screen is unchanged, so storing the new choice would
+ * leave the app claiming an icon nobody has.
+ */
+export async function setAppIcon(id: AppIconId): Promise<boolean> {
+  if (!supportsAlternateIcons) return false;
+  if (id === appIcon) return true;
+  try {
+    await setAlternateAppIcon(appIconSpec(id).pluginName);
+  } catch (err) {
+    console.warn('themes: could not change the app icon', err);
+    return false;
+  }
+  appIcon = id;
+  emit();
+  return true;
 }
 
 export function setPersonalIcons(patch: ThemeIcons) {

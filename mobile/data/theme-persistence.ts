@@ -1,3 +1,4 @@
+import { APP_ICON_IDS, type AppIconId } from './theme-app-icons';
 import type { ThemeIcons } from './theme-icons';
 import type {
   ChatChrome,
@@ -32,6 +33,7 @@ export type PersistedThemeState = {
   personalLayout: Partial<ThemeLayout>;
   personalChat: { light?: Partial<ChatChrome>; dark?: Partial<ChatChrome> };
   personalIcons: ThemeIcons;
+  appIcon: AppIconId;
   ownedPacks: ThemePack[];
 };
 
@@ -44,6 +46,7 @@ export const PREF_KEYS = {
   personalLayout: 'personal_layout',
   personalChat: 'personal_chat',
   personalIcons: 'personal_icons',
+  appIcon: 'app_icon',
 } as const;
 
 export const DEFAULT_PACK_ID = 'official-default';
@@ -198,6 +201,13 @@ export function hydrateThemeState(
       parse(raw.prefs[PREF_KEYS.personalIcons], {}),
       defaults.icons,
     ),
+    // An icon this build no longer ships falls back to the default rather
+    // than being handed to the native side, which would throw on a name it
+    // cannot resolve.
+    appIcon: (() => {
+      const stored = parse<AppIconId>(raw.prefs[PREF_KEYS.appIcon], 'default');
+      return APP_ICON_IDS.includes(stored) ? stored : 'default';
+    })(),
     ownedPacks,
   };
 }
@@ -214,5 +224,6 @@ export function serializeThemePrefs(
     [PREF_KEYS.personalLayout]: JSON.stringify(state.personalLayout),
     [PREF_KEYS.personalChat]: JSON.stringify(state.personalChat),
     [PREF_KEYS.personalIcons]: JSON.stringify(state.personalIcons),
+    [PREF_KEYS.appIcon]: JSON.stringify(state.appIcon),
   };
 }

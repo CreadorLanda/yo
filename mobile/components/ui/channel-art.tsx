@@ -1,7 +1,8 @@
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { ImageStyle } from 'expo-image';
 
 import { CachedImage } from '@/components/ui/cached-image';
+import { Text } from '@/components/ui/text';
 import { Radii, Typography } from '@/constants/theme';
 
 /**

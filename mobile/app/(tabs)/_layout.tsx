@@ -2,10 +2,11 @@ import { createMaterialTopTabNavigator } from '@react-navigation/material-top-ta
 import { Image } from 'expo-image';
 import { router, withLayoutContext } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/ui/app-icon';
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useProfile } from '@/data/profile-store';
 import { useTheme } from '@/hooks/use-theme';

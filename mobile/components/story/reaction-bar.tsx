@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -9,6 +9,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import {
   ALL_REACTIONS,

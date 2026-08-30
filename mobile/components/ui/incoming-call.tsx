@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { declineCall } from '@/data/api/calls';
 import { dismissIncoming, useIncomingCall } from '@/data/incoming-call';

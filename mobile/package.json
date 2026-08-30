@@ -12,6 +12,11 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/lora": "^0.4.2",
+    "@expo-google-fonts/nunito": "^0.4.2",
+    "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@livekit/react-native": "^2.12.0",
     "@livekit/react-native-webrtc": "^144.1.2",
@@ -23,6 +28,7 @@
     "@shopify/react-native-skia": "2.2.12",
     "babel-preset-expo": "~54.0.10",
     "expo": "~54.0.36",
+    "expo-alternate-app-icons": "^8.0.0",
     "expo-asset": "~12.0.13",
     "expo-audio": "~1.1.1",
     "expo-blur": "~15.0.8",

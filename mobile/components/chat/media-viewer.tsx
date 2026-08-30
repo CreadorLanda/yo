@@ -10,7 +10,6 @@ import {
   Pressable,
   StatusBar,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import {
@@ -26,6 +25,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { ensureLocal, mediaIdFromURL, useCacheState } from '@/data/media-cache';
 import { t } from '@/i18n';

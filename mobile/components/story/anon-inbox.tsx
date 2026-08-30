@@ -9,12 +9,11 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 
 import { CachedImage } from '@/components/ui/cached-image';
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { mediaFileURL } from '@/data/api/media';
 import {

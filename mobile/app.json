@@ -93,7 +93,44 @@
       ],
       "@config-plugins/react-native-webrtc",
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-alternate-app-icons",
+        [
+          {
+            "name": "Sunset",
+            "ios": "./assets/images/app-icons/sunset.png",
+            "android": {
+              "foregroundImage": "./assets/images/app-icons/sunset-foreground.png",
+              "backgroundColor": "#1A0E07"
+            }
+          },
+          {
+            "name": "Phosphor",
+            "ios": "./assets/images/app-icons/phosphor.png",
+            "android": {
+              "foregroundImage": "./assets/images/app-icons/phosphor-foreground.png",
+              "backgroundColor": "#000000"
+            }
+          },
+          {
+            "name": "Sakura",
+            "ios": "./assets/images/app-icons/sakura.png",
+            "android": {
+              "foregroundImage": "./assets/images/app-icons/sakura-foreground.png",
+              "backgroundColor": "#2A141E"
+            }
+          },
+          {
+            "name": "Void",
+            "ios": "./assets/images/app-icons/void.png",
+            "android": {
+              "foregroundImage": "./assets/images/app-icons/void-foreground.png",
+              "backgroundColor": "#000000"
+            }
+          }
+        ]
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

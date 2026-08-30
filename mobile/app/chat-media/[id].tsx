@@ -2,11 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { FlatList, Linking, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MediaViewer, type ViewerItem } from '@/components/chat/media-viewer';
 import { CachedImage } from '@/components/ui/cached-image';
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { listMessages } from '@/data/api/messages';
 import { getCurrentUser } from '@/data/auth-store';
