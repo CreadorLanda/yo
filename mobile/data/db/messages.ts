@@ -215,6 +215,162 @@ export async function trimCachedChat(chatId: string): Promise<void> {
   );
 }
 
+// ── Offline outbox ───────────────────────────────────────────────────────
+//
+// A message is written here the moment it is submitted, before the network
+// is involved at all: it survives the app being closed, and the outbox
+// (data/outbox.ts) is what actually retries the send and reconciles the
+// result. This file only does the mechanical persistence; retry policy
+// (when to give up, when to retry) lives in the outbox module so it can be
+// unit tested without a database.
+
+export type PendingSend = {
+  /** The optimistic local id — also messages.id until the send succeeds. */
+  id: string;
+  chatId: string;
+  senderId: string | null;
+  text: string;
+  replyToId: string | null;
+  createdAt: string;
+  attempts: number;
+  status: 'sending' | 'failed';
+};
+
+/** Persist a queued text send and its outbox job in one transaction. */
+export async function insertPendingMessage(input: {
+  id: string;
+  chatId: string;
+  senderId: string;
+  text: string;
+  replyToId: string | null;
+  createdAt: string;
+}): Promise<void> {
+  const db = await getDB();
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      `INSERT INTO messages
+         (id, server_id, chat_id, sender_id, body, message_type, reply_to_id,
+          created_at, status, pending)
+       VALUES (?, NULL, ?, ?, ?, 'text', ?, ?, 'sending', 1)`,
+      [input.id, input.chatId, input.senderId, input.text, input.replyToId, input.createdAt],
+    );
+    await tx.execute(
+      `INSERT INTO outbox (kind, chat_id, message_id, payload, attempts, created_at)
+       VALUES ('send_message', ?, ?, ?, 0, ?)`,
+      [input.chatId, input.id, JSON.stringify({ text: input.text }), input.createdAt],
+    );
+  });
+}
+
+type OutboxRow = {
+  message_id: string;
+  chat_id: string;
+  attempts: number;
+  sender_id: string | null;
+  body: string;
+  reply_to_id: string | null;
+  created_at: string;
+  status: string;
+};
+
+function toPendingSend(r: OutboxRow): PendingSend {
+  return {
+    id: r.message_id,
+    chatId: r.chat_id,
+    senderId: r.sender_id,
+    text: r.body,
+    replyToId: r.reply_to_id,
+    createdAt: r.created_at,
+    attempts: r.attempts,
+    status: r.status === 'failed' ? 'failed' : 'sending',
+  };
+}
+
+/**
+ * Every not-yet-sent message in a chat, oldest first — the order the
+ * outbox must drain in, and the order the chat screen renders in.
+ */
+export async function listPendingSends(chatId: string): Promise<PendingSend[]> {
+  const db = await getDB();
+  const res = await db.execute(
+    `SELECT o.id as outbox_id, o.message_id, o.chat_id, o.attempts,
+            m.sender_id, m.body, m.reply_to_id, m.created_at, m.status
+       FROM outbox o
+       JOIN messages m ON m.id = o.message_id
+      WHERE o.kind = 'send_message' AND o.chat_id = ?
+      ORDER BY o.id ASC`,
+    [chatId],
+  );
+  const rows = (res.rows ?? []) as unknown as OutboxRow[];
+  return rows.map(toPendingSend);
+}
+
+/** Every chat with at least one queued send — where drainAll resumes. */
+export async function listChatsWithPendingSends(): Promise<string[]> {
+  const db = await getDB();
+  const res = await db.execute(
+    `SELECT DISTINCT chat_id FROM outbox WHERE kind = 'send_message'`,
+  );
+  return ((res.rows ?? []) as unknown as { chat_id: string }[]).map((r) => r.chat_id);
+}
+
+/**
+ * The send landed. The row's identity moves from the optimistic local id to
+ * the server's — the same convention `saveCachedMessages` uses for every
+ * other row — so a later history refetch upserts onto this row instead of
+ * creating a duplicate.
+ */
+export async function markSendSucceeded(tempId: string, dto: MessageDTO): Promise<void> {
+  const db = await getDB();
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      `UPDATE messages SET
+         id = ?, server_id = ?, status = ?, pending = 0, created_at = ?
+       WHERE id = ?`,
+      [String(dto.id), dto.id, statusOf(dto), dto.created_at, tempId],
+    );
+    await tx.execute(
+      `DELETE FROM outbox WHERE kind = 'send_message' AND message_id = ?`,
+      [tempId],
+    );
+  });
+}
+
+/** One failed attempt. Returns the new attempt count so the caller can
+ * decide (via the pure policy in data/outbox.ts) whether to give up. */
+export async function recordSendAttemptFailed(tempId: string, error: string): Promise<number> {
+  const db = await getDB();
+  await db.execute(
+    `UPDATE outbox SET attempts = attempts + 1, last_error = ?
+      WHERE kind = 'send_message' AND message_id = ?`,
+    [error, tempId],
+  );
+  const res = await db.execute(
+    `SELECT attempts FROM outbox WHERE kind = 'send_message' AND message_id = ?`,
+    [tempId],
+  );
+  return ((res.rows ?? []) as unknown as { attempts: number }[])[0]?.attempts ?? 0;
+}
+
+/** Stop auto-retrying — surfaced to the user as a tap-to-retry bubble. */
+export async function markSendGivenUp(tempId: string): Promise<void> {
+  const db = await getDB();
+  await db.execute(`UPDATE messages SET status = 'failed' WHERE id = ?`, [tempId]);
+}
+
+/** A manual retry resets the count and re-enters the automatic queue. */
+export async function resetFailedSend(tempId: string): Promise<void> {
+  const db = await getDB();
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      `UPDATE outbox SET attempts = 0, last_error = NULL
+        WHERE kind = 'send_message' AND message_id = ?`,
+      [tempId],
+    );
+    await tx.execute(`UPDATE messages SET status = 'sending' WHERE id = ?`, [tempId]);
+  });
+}
+
 /**
  * Erase all local history.
  *

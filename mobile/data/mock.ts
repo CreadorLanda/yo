@@ -1,3 +1,5 @@
+import type { StoryReactionCount } from '@/data/story-reactions';
+
 const dicebear = (style: string, seed: string, bg: string) =>
   `https://api.dicebear.com/9.x/${style}/png?seed=${encodeURIComponent(seed)}&backgroundColor=${bg.replace('#', '')}&size=200`;
 
@@ -212,7 +214,7 @@ export type Message = {
   text: string;
   fromMe: boolean;
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read';
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   media?: MediaAttachment;
   /** Display name of the sender — shown in group threads for incoming messages. */
   senderName?: string;
@@ -408,6 +410,10 @@ export type Story = {
   accent: string;
   viewers: number;
   replies: number;
+  /** Every emoji on the story with how many people left it. */
+  reactions?: StoryReactionCount[];
+  /** What you yourself left, in the order you picked it. */
+  myReactions?: string[];
   isViewed: boolean;
   isOwn?: boolean;
   /** Audience: everyone, contacts only, or close friends. */

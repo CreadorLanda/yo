@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/CreadorLanda/yo/server/internal/modules/blocks"
-	"github.com/CreadorLanda/yo/server/internal/modules/keys"
 	"github.com/CreadorLanda/yo/server/internal/modules/users"
 	"github.com/CreadorLanda/yo/server/internal/platform/postgres"
 )

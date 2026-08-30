@@ -87,7 +87,7 @@ func TestViewersIsAuthorOnly(t *testing.T) {
 	}
 
 	// A reaction shows up against the viewer who left it.
-	if err := svc.React(ctx, story.ID, watcher, "🔥"); err != nil {
+	if _, err := svc.React(ctx, story.ID, watcher, single("🔥")); err != nil {
 		t.Fatalf("React: %v", err)
 	}
 	list, err = svc.Viewers(ctx, story.ID, author)
@@ -99,12 +99,17 @@ func TestViewersIsAuthorOnly(t *testing.T) {
 	}
 
 	// Reacting must not create a second row for the same person.
-	if err := svc.React(ctx, story.ID, watcher, "😂"); err != nil {
+	if _, err := svc.React(ctx, story.ID, watcher, single("😂")); err != nil {
 		t.Fatalf("React again: %v", err)
 	}
 	list, _ = svc.Viewers(ctx, story.ID, author)
 	if len(list) != 1 {
 		t.Fatalf("changing a reaction duplicated the viewer: %d rows", len(list))
+	}
+	// The single-emoji form replaces rather than adds, so the earlier 🔥 is
+	// gone. A client sending one emoji behaves exactly as it did before.
+	if len(list[0].Emojis) != 1 || list[0].Emojis[0] != "😂" {
+		t.Fatalf("single-emoji react did not replace: %+v", list[0].Emojis)
 	}
 
 	// The guard: a viewer cannot read the audience.

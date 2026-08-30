@@ -104,39 +104,93 @@ interface AutoCropSettings {
 
 ### 1.5 Reações nos Stories
 
-Reaja com múltiplos emojis do teclado.
+Deixe vários emojis no mesmo story.
 
 **Emojis Suportados:**
 
 ```
 Padrão:    ❤️ 😂 😮 😢 😡 👍 👎 🔥 🎉 😍 👏
-Extend:    🙌 💪 🙏 😇 ❤️‍🔥 💯 ⭐ 🌟 ✨ 🆕 😁 😎 🥳 😍
-Personalizado: [seus emojis personalizados]
+Extend:    🙌 💪 🙏 😇 ❤️‍🔥 💯 ⭐ 🌟 ✨ 🆕 😁 😎 🥳
 ```
 
-**Reagindo ( Único):**
+O conjunto é fechado — uma reacção fora dele volta como `400 invalid_emoji`.
+Duas diferenças são absorvidas em vez de recusadas, porque os teclados não
+concordam sobre elas e quem envia não as vê: o selector de variação (`❤` é
+guardado como `❤️`) e o tom de pele (`👍🏽` conta como `👍`).
+
+Lê a lista em vez de a fixar no código:
 
 ```http
-POST /api/stories/:id/reactions
+GET /api/stories/reactions
+```
+
+```json
 {
-  "reaction": "🔥"
+  "standard": ["❤️", "😂", "..."],
+  "extended": ["🙌", "💪", "..."]
 }
 ```
 
-**Reagindo ( Múltiplos):**
+**Reagindo:**
+
+Uma chamada define todo o conjunto de quem reage, substituindo o que tinha
+deixado antes. A forma em array é a que se deve enviar; o campo único é o
+que os clientes antigos enviam e continua a funcionar.
 
 ```http
-POST /api/stories/:id/reactions
+POST /api/stories/:id/react
 {
-  "reactions": ["🔥", "❤️", "🎉"]  // array para múltiplos
+  "reactions": ["🔥", "❤️", "🎉"]
 }
 ```
 
-**Do Teclado:**
+```http
+POST /api/stories/:id/react
+{
+  "emoji": "🔥"
+}
+```
 
-1. Toque e segure o story
-2. Barra de reação aparece
-3. Toque em múltiplos emojis para reagir de uma vez
+`"reactions": []` retira todas. Um corpo sem nenhum dos campos dá `400` em
+vez de limpar, para que um erro do cliente não apague as reacções de alguém.
+
+**Resposta:** o story, com as contagens como ficaram.
+
+```json
+{
+  "id": "…",
+  "reactions": [
+    { "emoji": "❤️", "count": 12 },
+    { "emoji": "🔥", "count": 5 },
+    { "emoji": "🎉", "count": 3 }
+  ],
+  "my_reactions": ["🔥", "❤️"]
+}
+```
+
+`reactions` é de todos, das mais movimentadas para as menos. `my_reactions`
+é só de quem lê, na ordem em que escolheu — o cliente precisa das duas:
+quais os chips a preencher, e qual o tamanho de cada número. Ambas vêm
+presentes e vazias, não ausentes, quando ninguém reagiu.
+
+Os mesmos dois campos vêm em `GET /api/stories` e `GET /api/stories/:id`,
+logo o feed desenha contagens sem uma segunda chamada.
+
+O autor do story também vê quem deixou o quê, na lista de espectadores:
+
+```http
+GET /api/stories/:id/viewers
+```
+
+```json
+[{ "user_id": "…", "username": "ana", "emojis": ["🔥", "❤️"] }]
+```
+
+**Na app:**
+
+1. A barra de reacções fica sob o story
+2. Toque nos emojis para adicionar, toque outra vez para retirar
+3. O conjunto completo abre a partir da barra
 
 ---
 

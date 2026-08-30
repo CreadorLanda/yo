@@ -4,8 +4,9 @@ import {
   Image as SkiaImage,
   useImage,
 } from '@shopify/react-native-skia';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { FILTERS, type FilterId } from '@/data/photo-filters';
 import { useTheme } from '@/hooks/use-theme';

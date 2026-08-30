@@ -7,10 +7,10 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 
+import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { storyViewers, type StoryViewer } from '@/data/api/stories';
 import { t } from '@/i18n';
@@ -84,24 +84,35 @@ export function ViewersSheet({
               data={viewers}
               keyExtractor={(v) => v.user_id}
               contentContainerStyle={styles.list}
-              renderItem={({ item }) => (
-                <View style={styles.row}>
-                  <Image
-                    source={{ uri: item.avatar_uri ?? '' }}
-                    style={styles.avatar}
-                    contentFit="cover"
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {item.display_name || item.username}
-                    </Text>
-                    <Text style={styles.handle} numberOfLines={1}>
-                      @{item.username}
-                    </Text>
+              renderItem={({ item }) => {
+                // Every emoji they left, not just the first: with several
+                // allowed, showing one hides the rest from the only person
+                // who can see this list. `emojis` is absent on a server that
+                // predates them, so fall back to `emoji`.
+                const left = item.emojis ?? (item.emoji ? [item.emoji] : []);
+                return (
+                  <View style={styles.row}>
+                    <Image
+                      source={{ uri: item.avatar_uri ?? '' }}
+                      style={styles.avatar}
+                      contentFit="cover"
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {item.display_name || item.username}
+                      </Text>
+                      <Text style={styles.handle} numberOfLines={1}>
+                        @{item.username}
+                      </Text>
+                    </View>
+                    {left.length > 0 ? (
+                      <Text style={styles.emoji} numberOfLines={1}>
+                        {left.join(' ')}
+                      </Text>
+                    ) : null}
                   </View>
-                  {item.emoji ? <Text style={styles.emoji}>{item.emoji}</Text> : null}
-                </View>
-              )}
+                );
+              }}
             />
           )}
         </Pressable>

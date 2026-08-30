@@ -9,13 +9,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PeoplePicker, type PickablePerson } from '@/components/ui/people-picker';
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { createGroup } from '@/data/api/groups';
 import { uploadMedia } from '@/data/api/media';

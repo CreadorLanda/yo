@@ -17,6 +17,7 @@ var (
 	ErrInvalidVis   = errors.New("invalid_visibility")
 	ErrNeedMedia    = errors.New("media_required")
 	ErrEmptyCaption = errors.New("empty_caption")
+	ErrInvalidEmoji = errors.New("invalid_emoji")
 )
 
 type Service struct {
@@ -145,7 +146,47 @@ func (s *Service) Get(ctx context.Context, id, viewer uuid.UUID) (Story, error) 
 		}
 		return Story{}, err
 	}
-	return s.toStory(x, viewer), nil
+	list := []Story{s.toStory(x, viewer)}
+	if err := s.attachReactions(ctx, list, viewer); err != nil {
+		return Story{}, err
+	}
+	return list[0], nil
+}
+
+// attachReactions fills in each story's reaction counts and the reader's own
+// picks, in place.
+//
+// One pair of queries for the whole slice rather than a pair per story: the
+// feed returns up to a hundred.
+func (s *Service) attachReactions(ctx context.Context, list []Story, viewer uuid.UUID) error {
+	if len(list) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(list))
+	for _, st := range list {
+		ids = append(ids, st.ID)
+	}
+	counts, err := s.repo.ReactionsFor(ctx, ids)
+	if err != nil {
+		return err
+	}
+	mine, err := s.repo.MyReactionsFor(ctx, ids, viewer)
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		// Empty rather than absent: a client reading `reactions.length`
+		// should not have to check for null first.
+		list[i].Reactions = []Reaction{}
+		if got := counts[list[i].ID]; got != nil {
+			list[i].Reactions = got
+		}
+		list[i].MyReactions = []string{}
+		if got := mine[list[i].ID]; got != nil {
+			list[i].MyReactions = got
+		}
+	}
+	return nil
 }
 
 func (s *Service) Feed(ctx context.Context, viewer uuid.UUID) ([]Story, error) {
@@ -156,6 +197,9 @@ func (s *Service) Feed(ctx context.Context, viewer uuid.UUID) ([]Story, error) {
 	out := make([]Story, 0, len(rows))
 	for _, x := range rows {
 		out = append(out, s.toStory(x, viewer))
+	}
+	if err := s.attachReactions(ctx, out, viewer); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -180,15 +224,40 @@ func (s *Service) Delete(ctx context.Context, id, author uuid.UUID) error {
 	return err
 }
 
-func (s *Service) React(ctx context.Context, id, user uuid.UUID, emoji string) error {
+// React replaces the caller's reactions on a story and returns the story as
+// it now reads, counts included.
+//
+// Replacing rather than adding is what the client's reaction bar shows: the
+// caller's own picks are filled in, so it already holds the whole set. An
+// empty `reactions` array takes them all back.
+//
+// Returning the story saves the client a second call for the new counts, and
+// keeps the numbers it draws the server's numbers rather than its own guess
+// at what its tap did.
+func (s *Service) React(ctx context.Context, id, user uuid.UUID, req ReactRequest) (Story, error) {
 	if _, err := s.Get(ctx, id, user); err != nil {
-		return err
+		return Story{}, err
 	}
-	emoji = strings.TrimSpace(emoji)
-	if emoji == "" {
-		return ErrInvalidKind
+	emojis, err := requestedReactions(req)
+	if err != nil {
+		return Story{}, err
 	}
-	return s.repo.React(ctx, id, user, emoji)
+	if err := s.repo.SetReactions(ctx, id, user, emojis); err != nil {
+		return Story{}, err
+	}
+	return s.Get(ctx, id, user)
+}
+
+// ReactionCatalogue is the emoji this server accepts as reactions.
+//
+// Served so the set has one definition. A client carrying its own copy drifts
+// from it, and the drift shows up as a reaction the app offers and the server
+// then refuses.
+func (s *Service) ReactionCatalogue() ReactionCatalogue {
+	return ReactionCatalogue{
+		Standard: append([]string(nil), StandardReactions...),
+		Extended: append([]string(nil), ExtendedReactions...),
+	}
 }
 
 // Viewers returns who has seen a story. Author only.

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
@@ -8,17 +9,21 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { formatCount } from '@/components/ui/follow-button';
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
+import { appAlert } from '@/data/dialog-store';
+import { APP_ICONS, type AppIconId } from '@/data/theme-app-icons';
 import {
   THEME_CATEGORIES,
   applyTheme,
+  canChangeAppIcon,
+  setAppIcon,
+  useAppIcon,
   installTheme,
   toggleLikeTheme,
   useActiveThemeId,
@@ -140,6 +145,8 @@ export default function ThemeMarketplaceScreen() {
               })}
             </ScrollView>
 
+            <AppIconPicker />
+
             {featured ? (
               <>
                 <Text style={[styles.section, { color: colors.textSecondary }]}>
@@ -214,7 +221,13 @@ function ThemeHero({
               ) : null}
             </View>
             <Text style={[styles.author, { color: colors.textSecondary }]}>
-              {pack.author} · {formatCount(pack.downloads)} {t('themes.installs')}
+              {/* A pack that ships with the app has no install count to show,
+                  and inventing one — this card used to claim 128,400 — tells
+                  the reader something about popularity that is not true. */}
+              {pack.author} ·{' '}
+              {pack.isOfficial
+                ? t('themes.bundled')
+                : `${formatCount(pack.downloads)} ${t('themes.installs')}`}
             </Text>
           </View>
           <Pressable onPress={() => toggleLikeTheme(pack.id)} hitSlop={8}>
@@ -408,6 +421,86 @@ function ActionButton({
   );
 }
 
+/**
+ * The four alternate launcher icons, drawn from the same artwork as the packs
+ * they are named for.
+ *
+ * Rendered only where it can actually work. Alternate icons need the config
+ * plugin to have run through a prebuild, so in Expo Go and on the web the
+ * native side is simply not there — and a row of tiles that silently do
+ * nothing is worse than no row at all.
+ */
+const ICON_PREVIEWS: Record<AppIconId, number> = {
+  default: require('@/assets/images/icon.png'),
+  sunset: require('@/assets/images/app-icons/sunset.png'),
+  phosphor: require('@/assets/images/app-icons/phosphor.png'),
+  sakura: require('@/assets/images/app-icons/sakura.png'),
+  void: require('@/assets/images/app-icons/void.png'),
+};
+
+function AppIconPicker() {
+  const { colors } = useTheme();
+  const current = useAppIcon();
+
+  if (!canChangeAppIcon()) return null;
+
+  return (
+    <>
+      <Text style={[styles.section, { color: colors.textSecondary }]}>
+        {t('themes.app_icon')}
+      </Text>
+      <Text style={[styles.appIconHint, { color: colors.textMuted }]}>
+        {t('themes.app_icon_hint')}
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+      >
+        {APP_ICONS.map((icon) => {
+          const active = current === icon.id;
+          return (
+            <Pressable
+              key={icon.id}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                // iOS shows a system dialog here that can be declined, so the
+                // tile only moves once the swap has actually happened.
+                setAppIcon(icon.id).then((ok) => {
+                  if (!ok) appAlert(t('themes.app_icon'), t('themes.app_icon_failed'));
+                });
+              }}
+              style={styles.appIconCell}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={icon.label}
+            >
+              <Image
+                source={ICON_PREVIEWS[icon.id]}
+                style={[
+                  styles.appIconImage,
+                  { borderColor: active ? colors.primary : colors.border },
+                  active && styles.appIconImageActive,
+                ]}
+                contentFit="cover"
+              />
+              <Text
+                style={[
+                  styles.appIconLabel,
+                  { color: active ? colors.primary : colors.textSecondary },
+                ]}
+                numberOfLines={1}
+              >
+                {icon.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   header: {
@@ -451,6 +544,28 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   chipText: { ...Typography.caption, fontWeight: '700' },
+  appIconHint: {
+    ...Typography.caption,
+    marginBottom: Spacing.sm,
+  },
+  appIconCell: {
+    alignItems: 'center',
+    gap: 6,
+    width: 74,
+  },
+  appIconImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  appIconImageActive: {
+    borderWidth: 2,
+  },
+  appIconLabel: {
+    ...Typography.micro,
+    textAlign: 'center',
+  },
   section: {
     ...Typography.micro,
     fontWeight: '700',

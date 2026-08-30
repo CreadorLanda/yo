@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import {
   StyleSheet,
-  Text,
-  TextInput,
   type TextInputProps,
   View,
 } from 'react-native';
 
+import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -16,7 +15,7 @@ type Props = TextInputProps & {
   error?: string;
   leftAdornment?: React.ReactNode;
   rightAdornment?: React.ReactNode;
-  inputRef?: React.Ref<TextInput>;
+  inputRef?: React.Ref<TextInputHandle>;
 };
 
 export function TextField({

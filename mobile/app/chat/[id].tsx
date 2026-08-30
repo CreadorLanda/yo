@@ -23,8 +23,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type StyleProp,
   type TextStyle,
@@ -48,8 +46,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AttachmentBubble } from '@/components/chat/attachment-bubbles';
 import { MediaEditor, type EditorAsset, type EditorResult } from '@/components/chat/media-editor';
+import { AnimatedWallpaper } from '@/components/chat/animated-wallpaper';
+import { GlassSurface } from '@/components/ui/glass-surface';
+import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { appAlert } from '@/data/dialog-store';
 import { ApiError } from '@/data/api/client';
+import { AppIcon } from '@/components/ui/app-icon';
 import { CachedImage } from '@/components/ui/cached-image';
 import { ForwardPicker } from '@/components/chat/forward-picker';
 import { MediaViewer, type ViewerItem } from '@/components/chat/media-viewer';
@@ -121,11 +123,13 @@ import {
 import { linkReplies } from '@/data/reply-link';
 import { ensureLocal, mediaIdFromURL, useCacheState } from '@/data/media-cache';
 import {
+  listPendingSends,
   loadCachedMessages,
   markCachedMessageOpened,
   saveCachedMessages,
   trimCachedChat,
 } from '@/data/db/messages';
+import { queueTextMessage, retrySend, subscribeOutbox } from '@/data/outbox';
 import {
   E2EEUnavailable,
   encryptForGroup,
@@ -362,7 +366,9 @@ export default function ChatScreen() {
   const recordPermRef = useRef(false);
   const dandaraTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<GroupedMessage>>(null);
-  const composerInputRef = useRef<TextInput>(null);
+  // Measured, not assumed — see the header block in the tree below.
+  const [headerH, setHeaderH] = useState(0);
+  const composerInputRef = useRef<TextInputHandle>(null);
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
   const recOriginX = useSharedValue(0);
@@ -401,14 +407,38 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!id || !meId) return;
     let cancelled = false;
-    loadCachedMessages(id, 50)
-      .then((cached) => {
+    Promise.all([loadCachedMessages(id, 50), listPendingSends(id)])
+      .then(([cached, pending]) => {
         // Seed only — the network result replaces this wholesale, and
         // overwriting live messages with stale rows would be a regression.
-        if (cancelled || cached.length === 0) return;
+        // Pending sends are the exception: nothing else will ever paint
+        // them, since the server has never heard of them.
+        if (cancelled || (cached.length === 0 && pending.length === 0)) return;
         // Quotes reconstructed here too: the cache stores the decrypted DTO,
         // which carries reply_to_id but no quoted text.
-        setMessages(linkReplies(cached.map((m) => mapApiMessage(m, meId))));
+        const cachedMapped = cached.map((m) => mapApiMessage(m, meId));
+        const pendingMapped: Message[] = pending.map((p) => {
+          const replyToMsg = p.replyToId
+            ? cachedMapped.find((m) => serverMessageId(m.id) === Number(p.replyToId))
+            : undefined;
+          return {
+            id: p.id,
+            text: p.text,
+            fromMe: true,
+            timestamp: new Date(p.createdAt).toLocaleTimeString(),
+            status: p.status === 'failed' ? 'failed' : 'sending',
+            replyTo: replyToMsg
+              ? {
+                  id: replyToMsg.id,
+                  text: replySnippet(replyToMsg),
+                  fromMe: replyToMsg.fromMe,
+                  senderName: replyToMsg.senderName,
+                  icon: replyIcon(replyToMsg),
+                }
+              : undefined,
+          };
+        });
+        setMessages(linkReplies([...cachedMapped, ...pendingMapped]));
       })
       .catch((err) => {
         // Loud on purpose. Swallowing this is how a completely dead local
@@ -420,6 +450,42 @@ export default function ChatScreen() {
     return () => {
       cancelled = true;
     };
+  }, [id, meId]);
+
+  // Reconcile the outbox: a queued send lands, retries, or gives up, on its
+  // own schedule — this only paints whatever it decided. Matched against
+  // the bubble already on screen rather than the DTO's own id, since the
+  // whole point of the optimistic id is that the server has never seen it.
+  useEffect(() => {
+    if (!id) return;
+    return subscribeOutbox(id, (event) => {
+      if (event.outcome !== 'sent') {
+        const nextStatus = event.outcome === 'gave_up' ? 'failed' : 'sending';
+        setMessages((prev) =>
+          prev.map((m) => (m.id === event.messageId ? { ...m, status: nextStatus } : m)),
+        );
+        return;
+      }
+      const mapped = mapApiMessage(event.dto, meId);
+      setMessages((prev) => {
+        const existing = prev.find((m) => m.id === event.messageId);
+        // The server cannot echo back what it never decrypted, and the
+        // quote it returns is only an id — both are already right on the
+        // bubble that has been sitting on screen since submit.
+        if (existing?.text) mapped.text = existing.text;
+        if (existing?.replyTo) mapped.replyTo = existing.replyTo;
+        if (prev.some((m) => m.id === mapped.id)) {
+          return prev.filter((m) => m.id !== event.messageId);
+        }
+        const idx = prev.findIndex((m) => m.id === event.messageId);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = mapped;
+          return next;
+        }
+        return [...prev, mapped];
+      });
+    });
   }, [id, meId]);
 
   // Reconcile with the API.
@@ -798,7 +864,10 @@ export default function ChatScreen() {
   const grouped = useMemo(() => groupMessages(filtered), [filtered]);
 
   const appendMessage = (
-    msg: Omit<Message, 'id' | 'timestamp' | 'fromMe' | 'status'> & { id?: string },
+    msg: Omit<Message, 'id' | 'timestamp' | 'fromMe' | 'status'> & {
+      id?: string;
+      status?: Message['status'];
+    },
   ) => {
     setMessages((prev) => [
       ...prev,
@@ -1348,6 +1417,15 @@ export default function ChatScreen() {
     setReplyTarget(msg);
   };
 
+  /** Re-arm a message the outbox gave up on. Flips back to the clock icon
+   * immediately — waiting for the retry itself to resolve would leave the
+   * tap looking like it did nothing. */
+  const handleRetry = (msgId: string) => {
+    if (!id) return;
+    setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: 'sending' } : m)));
+    retrySend(id, msgId);
+  };
+
   /** Absolute media URL back to the stored server path. */
   const stripApiBase = (uri: string) =>
     uri.startsWith('http') ? uri.replace(/^https?:\/\/[^/]+/, '') : uri;
@@ -1400,68 +1478,28 @@ export default function ChatScreen() {
           icon: replyIcon(replyTarget),
         }
       : undefined;
+    // Queued (not 'sent') for anything that goes through the outbox: the
+    // bubble is on screen but the network has not confirmed it yet, and
+    // WhatsApp's clock icon — not a checkmark — is what that means.
     appendMessage({
       id: tempId,
       text,
       replyTo: reply,
+      status: id && !isAIChat ? 'sending' : 'sent',
     });
     setReplyTarget(null);
     if (isAIChat || /@dandara/i.test(text)) triggerDandara(text);
 
     if (id && !isAIChat) {
+      // Persist first, network after: this is the whole fix for a message
+      // that used to vanish if the app closed before the send finished.
+      // Direct chats are end-to-end encrypted or they do not send — groups
+      // are exempt because they have no E2EE yet, not because encryption is
+      // optional. Encryption itself happens inside the outbox, at the moment
+      // of actual send, not here: sealing now would spend a ratchet step on
+      // a message that has not even tried the network yet.
       const replyTo = reply ? serverMessageId(reply.id) ?? undefined : undefined;
-      (async () => {
-        let payload: string;
-        // Direct chats are end-to-end encrypted or they do not send.
-        //
-        // This used to fall back to plaintext on any failure, silently: the
-        // sender's screen looked identical whether the message went out
-        // encrypted or in the clear, so the one promise the app makes about
-        // messages was broken precisely when nobody could tell. Groups are
-        // excluded because they have no E2EE yet — blocking there would stop
-        // group messaging outright, which is a different decision.
-        //
-        // One path for every chat and every message kind. This branch used
-        // to read `type !== 'group'`, so a group's text messages skipped
-        // encryption altogether — the most common message in the app was the
-        // one left in the clear, while its photos were sealed.
-        try {
-          payload = await encryptBody(text);
-        } catch (err) {
-          // Nothing goes to the server. The bubble comes back off the thread
-          // and the text returns to the box, so the message is not lost and
-          // the failure is not mistaken for a delivery.
-          setMessages((prev) => prev.filter((m) => m.id !== tempId));
-          setDraft((d) => (d ? d : text));
-          reportE2EEBlocked(err);
-          return;
-        }
-        try {
-          const dto = await apiSendMessage(id, payload, 'text', replyTo ?? undefined);
-          const mapped = mapApiMessage(dto, meId);
-          // Show plaintext in UI even if wire was encrypted.
-          mapped.text = text;
-          // Keep the quote the optimistic bubble was showing. The server
-          // returns only reply_to_id — it cannot return the quoted text,
-          // which is encrypted — so dropping this made the quote blink out
-          // the instant the message was confirmed.
-          if (reply) mapped.replyTo = reply;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === mapped.id)) {
-              return prev.filter((m) => m.id !== tempId);
-            }
-            const idx = prev.findIndex((m) => m.id === tempId);
-            if (idx >= 0) {
-              const next = [...prev];
-              next[idx] = mapped;
-              return next;
-            }
-            return [...prev, mapped];
-          });
-        } catch {
-          // Keep optimistic bubble; failed sync surfaces on next open/reload.
-        }
-      })();
+      queueTextMessage({ id: tempId, chatId: id, senderId: meId ?? '', text, replyToId: replyTo });
     }
   };
 
@@ -2166,6 +2204,36 @@ export default function ChatScreen() {
     setQuery('');
   };
 
+  /**
+   * Attach and camera, as one group so the theme can put them on either side
+   * of the input. `attachSide` was a knob the creator offered and the composer
+   * ignored — the icons were hardcoded to the right whatever it said.
+   */
+  const attachControls = (
+    <>
+      {canCompose ? (
+        <Pressable
+          hitSlop={8}
+          style={layout.attachSide === 'left' ? styles.composerLeft : styles.composerRight}
+          onPress={() => setShowAttach(true)}
+          accessibilityLabel={t('chat.attach')}
+        >
+          <AppIcon slot="attach" size={22} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+      {canCompose && !hasDraft ? (
+        <Pressable
+          hitSlop={8}
+          style={layout.attachSide === 'left' ? styles.composerLeft : styles.composerRight}
+          onPress={openCamera}
+          accessibilityLabel={t('chat.camera')}
+        >
+          <AppIcon slot="camera" size={22} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+    </>
+  );
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -2173,182 +2241,205 @@ export default function ChatScreen() {
       {/* Selection-mode header replaces both the normal and the search header
           while messages are selected. Search and selection are mutually
           exclusive — entering selection cancels search. */}
-      {selectionMode ? (
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
-          <Pressable
-            onPress={clearSelection}
-            hitSlop={12}
-            style={({ pressed }) => [styles.backBtn, pressed && { backgroundColor: colors.surfaceMuted }]}
-            accessibilityLabel={t('chat.cancel')}
-          >
-            <Ionicons name="close" size={22} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.peerName, { color: colors.text, flex: 1 }]} numberOfLines={1}>
-            {t('chat.selected_count', { count: selectedIds.size })}
-          </Text>
-          <View style={styles.headerActions}>
-            <Pressable
-              hitSlop={8}
-              style={styles.iconBtn}
-              onPress={bulkCopy}
-              accessibilityLabel={t('chat.copy')}
-            >
-              <Ionicons name="copy-outline" size={20} color={colors.text} />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              style={styles.iconBtn}
-              onPress={bulkForward}
-              accessibilityLabel={t('chat.forward')}
-            >
-              <Ionicons name="arrow-redo-outline" size={20} color={colors.text} />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              style={styles.iconBtn}
-              onPress={bulkDelete}
-              accessibilityLabel={t('chat.delete')}
-            >
-              <Ionicons name="trash-outline" size={20} color={colors.danger} />
-            </Pressable>
-          </View>
-        </View>
-      ) : (
-      <StateTransition transitionKey={searchMode}>
-      {searchMode ? (
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
-          <Pressable
-            onPress={closeSearch}
-            hitSlop={12}
-            style={styles.backBtn}
-            accessibilityLabel={t('chat.close_search')}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
-          </Pressable>
-          <View style={[styles.searchField, { backgroundColor: colors.surfaceMuted }]}>
-            <Ionicons name="search" size={16} color={colors.textMuted} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder={t('chat.search_placeholder')}
-              placeholderTextColor={colors.textMuted}
-              autoFocus
-              style={[styles.searchInput, { color: colors.text }]}
-            />
-            {trimmedQuery.length > 0 ? (
-              <Pressable onPress={() => setQuery('')} hitSlop={8}>
-                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-      ) : (
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
-            style={({ pressed }) => [
-              styles.backBtn,
-              pressed && [styles.iconBtnPressed, { backgroundColor: colors.surfaceMuted }],
-            ]}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
-          </Pressable>
+      {/*
+        The header floats over the thread rather than sitting above it.
 
-          <Pressable
-            style={styles.peer}
-            hitSlop={6}
-            onPress={() => router.push(`/chat-info/${id!}`)}
-            accessibilityRole="button"
-            accessibilityLabel={isGroup ? t('chat_info.group_title') : t('chat_info.title')}
-          >
-            <View>
-              <Image
-                source={{ uri: chat?.avatarUri || apiChatInfo?.avatar_url }}
-                style={[styles.peerAvatar, { backgroundColor: colors.surfaceMuted }]}
-                contentFit="cover"
+        Glass is only worth anything over something that moves: a blur of a
+        flat colour is that same flat colour. So the messages scroll
+        underneath, and the list is padded by the height measured here —
+        which has to be measured rather than assumed, because the search and
+        selection headers are not the same height as the normal one.
+
+        The layout is the same whether or not glass is on. When it is off the
+        backdrop is opaque and covers the thread exactly as the old in-flow
+        header did, which is what keeps this one code path instead of two.
+      */}
+      <View
+        style={styles.headerFloat}
+        onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+      >
+        <GlassSurface
+          color={colors.surface}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        {selectionMode ? (
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+            <Pressable
+              onPress={clearSelection}
+              hitSlop={12}
+              style={({ pressed }) => [styles.backBtn, pressed && { backgroundColor: colors.surfaceMuted }]}
+              accessibilityLabel={t('chat.cancel')}
+            >
+              <Ionicons name="close" size={22} color={colors.text} />
+            </Pressable>
+            <Text style={[styles.peerName, { color: colors.text, flex: 1 }]} numberOfLines={1}>
+              {t('chat.selected_count', { count: selectedIds.size })}
+            </Text>
+            <View style={styles.headerActions}>
+              <Pressable
+                hitSlop={8}
+                style={styles.iconBtn}
+                onPress={bulkCopy}
+                accessibilityLabel={t('chat.copy')}
+              >
+                <Ionicons name="copy-outline" size={20} color={colors.text} />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                style={styles.iconBtn}
+                onPress={bulkForward}
+                accessibilityLabel={t('chat.forward')}
+              >
+                <Ionicons name="arrow-redo-outline" size={20} color={colors.text} />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                style={styles.iconBtn}
+                onPress={bulkDelete}
+                accessibilityLabel={t('chat.delete')}
+              >
+                <Ionicons name="trash-outline" size={20} color={colors.danger} />
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+        <StateTransition transitionKey={searchMode}>
+        {searchMode ? (
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+            <Pressable
+              onPress={closeSearch}
+              hitSlop={12}
+              style={styles.backBtn}
+              accessibilityLabel={t('chat.close_search')}
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
+            </Pressable>
+            <View style={[styles.searchField, { backgroundColor: colors.surfaceMuted }]}>
+              <Ionicons name="search" size={16} color={colors.textMuted} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={t('chat.search_placeholder')}
+                placeholderTextColor={colors.textMuted}
+                autoFocus
+                style={[styles.searchInput, { color: colors.text }]}
               />
-              {(chat?.online) && !isGroup ? (
-                <View
-                  style={[
-                    styles.peerOnlineDot,
-                    { backgroundColor: colors.success, borderColor: colors.surface },
-                  ]}
-                />
+              {trimmedQuery.length > 0 ? (
+                <Pressable onPress={() => setQuery('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                </Pressable>
               ) : null}
             </View>
-            <View style={styles.peerInfo}>
-              <Text style={[styles.peerName, { color: colors.text }]} numberOfLines={1}>
-                {chat?.name || apiChatInfo?.title || 'Chat'}
-              </Text>
-              <View style={styles.peerStatusRow}>
-                <Text style={[styles.peerStatus, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {isAIChat
-                    ? t('chat.ai_subtitle')
-                    : isGroup
-                      ? t('group.members_count', { count: memberCount })
-                      : chat?.online
-                        ? t('chats.online')
-                        : t('chats.last_seen')}
-                </Text>
-              </View>
-            </View>
-          </Pressable>
-
-          <View style={styles.headerActions}>
+          </View>
+        ) : (
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <Pressable
-              hitSlop={8}
-              style={styles.iconBtn}
-              onPress={() => setSearchMode(true)}
-              accessibilityLabel={t('chat.search')}
+              onPress={() => router.back()}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.backBtn,
+                pressed && [styles.iconBtnPressed, { backgroundColor: colors.surfaceMuted }],
+              ]}
             >
-              <Ionicons name="search" size={20} color={colors.text} />
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
             </Pressable>
-            {!isAIChat ? (
+
+            <Pressable
+              style={styles.peer}
+              hitSlop={6}
+              onPress={() => router.push(`/chat-info/${id!}`)}
+              accessibilityRole="button"
+              accessibilityLabel={isGroup ? t('chat_info.group_title') : t('chat_info.title')}
+            >
+              <View>
+                <Image
+                  source={{ uri: chat?.avatarUri || apiChatInfo?.avatar_url }}
+                  style={[styles.peerAvatar, { backgroundColor: colors.surfaceMuted }]}
+                  contentFit="cover"
+                />
+                {(chat?.online) && !isGroup ? (
+                  <View
+                    style={[
+                      styles.peerOnlineDot,
+                      { backgroundColor: colors.success, borderColor: colors.surface },
+                    ]}
+                  />
+                ) : null}
+              </View>
+              <View style={styles.peerInfo}>
+                <Text style={[styles.peerName, { color: colors.text }]} numberOfLines={1}>
+                  {chat?.name || apiChatInfo?.title || 'Chat'}
+                </Text>
+                <View style={styles.peerStatusRow}>
+                  <Text style={[styles.peerStatus, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {isAIChat
+                      ? t('chat.ai_subtitle')
+                      : isGroup
+                        ? t('group.members_count', { count: memberCount })
+                        : chat?.online
+                          ? t('chats.online')
+                          : t('chats.last_seen')}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+
+            <View style={styles.headerActions}>
               <Pressable
                 hitSlop={8}
                 style={styles.iconBtn}
-                onPress={() => router.push(`/call/${id!}?mode=voice`)}
-                accessibilityLabel={t('hangout.open')}
+                onPress={() => setSearchMode(true)}
+                accessibilityLabel={t('chat.search')}
               >
-                <Ionicons name="home" size={20} color={colors.text} />
+                <Ionicons name="search" size={20} color={colors.text} />
               </Pressable>
-            ) : null}
-            {isGroup ? (
-              <Pressable
-                hitSlop={8}
-                style={styles.iconBtn}
-                onPress={() => router.push(`/chat-info/${id!}`)}
-                accessibilityLabel={t('chat_info.group_title')}
-              >
-                <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
-              </Pressable>
-            ) : (
-              <>
-                <Pressable
-                  hitSlop={8}
-                  style={styles.iconBtn}
-                  onPress={() => router.push(`/call/${id!}?mode=video`)}
-                  accessibilityLabel={t('call.video_call')}
-                >
-                  <Ionicons name="videocam-outline" size={22} color={colors.text} />
-                </Pressable>
+              {!isAIChat ? (
                 <Pressable
                   hitSlop={8}
                   style={styles.iconBtn}
                   onPress={() => router.push(`/call/${id!}?mode=voice`)}
-                  accessibilityLabel={t('call.voice_call')}
+                  accessibilityLabel={t('hangout.open')}
                 >
-                  <Ionicons name="call-outline" size={20} color={colors.text} />
+                  <Ionicons name="home" size={20} color={colors.text} />
                 </Pressable>
-              </>
-            )}
+              ) : null}
+              {isGroup ? (
+                <Pressable
+                  hitSlop={8}
+                  style={styles.iconBtn}
+                  onPress={() => router.push(`/chat-info/${id!}`)}
+                  accessibilityLabel={t('chat_info.group_title')}
+                >
+                  <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+                </Pressable>
+              ) : (
+                <>
+                  <Pressable
+                    hitSlop={8}
+                    style={styles.iconBtn}
+                    onPress={() => router.push(`/call/${id!}?mode=video`)}
+                    accessibilityLabel={t('call.video_call')}
+                  >
+                    <Ionicons name="videocam-outline" size={22} color={colors.text} />
+                  </Pressable>
+                  <Pressable
+                    hitSlop={8}
+                    style={styles.iconBtn}
+                    onPress={() => router.push(`/call/${id!}?mode=voice`)}
+                    accessibilityLabel={t('call.voice_call')}
+                  >
+                    <Ionicons name="call-outline" size={20} color={colors.text} />
+                  </Pressable>
+                </>
+              )}
+            </View>
           </View>
-        </View>
-      )}
+        )}
 
-      </StateTransition>
-      )}
+        </StateTransition>
+        )}
+      </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <View style={[styles.thread, { backgroundColor: chrome.wallpaper || colors.surfaceMuted }]}>
@@ -2360,6 +2451,15 @@ export default function ChatScreen() {
               blurRadius={layout.wallpaperBlur ? 12 : 0}
             />
           ) : null}
+          {/* Over the photo, under the dim: the movement is part of the
+              wallpaper, so it gets darkened along with it. `info` is the
+              second hue on purpose — it is a token a pack can set, which is
+              the only handle a theme author has on what the aurora does. */}
+          <AnimatedWallpaper
+            animation={layout.wallpaperAnimation}
+            tint={colors.primary}
+            accent={colors.info}
+          />
           {chrome.wallpaperImage || layout.wallpaperDim > 0 ? (
             <View
               pointerEvents="none"
@@ -2415,10 +2515,11 @@ export default function ChatScreen() {
                   onPlay={handlePlayGame}
                   onViewOnce={handleViewOnce}
                   revealed={revealed}
+                  onRetry={handleRetry}
                 />
               )
             }
-            contentContainerStyle={styles.threadContent}
+            contentContainerStyle={[styles.threadContent, { paddingTop: headerH + Spacing.md }]}
             keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
               searchMode ? null : (
@@ -2482,15 +2583,24 @@ export default function ChatScreen() {
             style={[
               styles.composerWrap,
               {
-                backgroundColor: chrome.composerBg || colors.surfaceMuted,
                 ...(layout.composerStyle === 'floating'
                   ? { marginHorizontal: 10, marginBottom: 8, borderRadius: 20, overflow: 'hidden' as const }
                   : layout.composerStyle === 'flat'
                     ? { borderTopWidth: 0 }
                     : null),
+                // The backdrop is a sibling of the rows, so the bar has to do
+                // the clipping the background used to do for itself.
+                ...(layout.glassChrome ? { overflow: 'hidden' as const } : null),
               },
             ]}
           >
+            {/* Solid when glass is off — the composer never goes see-through
+                by accident, only when the theme asks for it. */}
+            <GlassSurface
+              color={chrome.composerBg || colors.surfaceMuted}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             {/* Pending / blocked friend-request banner */}
             {isBlocked ? (
               <View style={[styles.pendingBanner, { backgroundColor: colors.surface, borderTopColor: colors.divider }]}>
@@ -2630,6 +2740,7 @@ export default function ChatScreen() {
                       color={canCompose ? colors.textSecondary : colors.textMuted}
                     />
                   </Pressable>
+                  {layout.attachSide === 'left' ? attachControls : null}
                   <TextInput
                     ref={composerInputRef}
                     value={draft}
@@ -2650,26 +2761,7 @@ export default function ChatScreen() {
                     editable={canCompose}
                     style={[styles.composerInput, { color: canCompose ? colors.text : colors.textMuted }]}
                   />
-                  {canCompose ? (
-                    <Pressable
-                      hitSlop={8}
-                      style={styles.composerRight}
-                      onPress={() => setShowAttach(true)}
-                      accessibilityLabel={t('chat.attach')}
-                    >
-                      <Ionicons name="attach" size={22} color={colors.textSecondary} />
-                    </Pressable>
-                  ) : null}
-                  {canCompose && !hasDraft ? (
-                    <Pressable
-                      hitSlop={8}
-                      style={styles.composerRight}
-                      onPress={openCamera}
-                      accessibilityLabel={t('chat.camera')}
-                    >
-                      <Ionicons name="camera-outline" size={22} color={colors.textSecondary} />
-                    </Pressable>
-                  ) : null}
+                  {layout.attachSide === 'right' ? attachControls : null}
                 </View>
               ) : (
                 <RecordingStrip
@@ -2692,7 +2784,7 @@ export default function ChatScreen() {
                     ]}
                     accessibilityLabel={t('chat.send')}
                   >
-                    <Ionicons name="arrow-up" size={22} color={colors.onPrimary} />
+                    <AppIcon slot="send" size={22} color={colors.onPrimary} />
                   </Pressable>
                 ) : hasDraft ? (
                   <Pressable
@@ -2704,7 +2796,7 @@ export default function ChatScreen() {
                     ]}
                     accessibilityLabel={t('chat.send')}
                   >
-                    <Ionicons name="arrow-up" size={22} color={colors.onPrimary} />
+                    <AppIcon slot="send" size={22} color={colors.onPrimary} />
                   </Pressable>
                 ) : (
                   <View style={styles.micWrap}>
@@ -2719,7 +2811,7 @@ export default function ChatScreen() {
                           micStyle,
                         ]}
                       >
-                        <Ionicons name="mic" size={22} color={colors.onPrimary} />
+                        <AppIcon slot="mic" size={22} color={colors.onPrimary} />
                       </Animated.View>
                     </GestureDetector>
                   </View>
@@ -3026,7 +3118,15 @@ function relativeRemaining(iso?: string): string | null {
   return `${Math.floor(h / 24)}d`;
 }
 
-function MetaRow({ msg, onMedia }: { msg: GroupedMessage; onMedia?: boolean }) {
+function MetaRow({
+  msg,
+  onMedia,
+  onRetry,
+}: {
+  msg: GroupedMessage;
+  onMedia?: boolean;
+  onRetry?: () => void;
+}) {
   const { colors, chat } = useTheme();
   const mine = msg.fromMe;
   const dim = onMedia
@@ -3057,19 +3157,46 @@ function MetaRow({ msg, onMedia }: { msg: GroupedMessage; onMedia?: boolean }) {
         {msg.timestamp}
       </Text>
       {mine ? (
-        <Ionicons
-          name={msg.status === 'read' ? 'checkmark-done' : 'checkmark'}
-          size={14}
-          color={
-            onMedia
-              ? '#FFFFFF'
-              : msg.status === 'read'
-                ? '#9DC1FF'
-                : dim
-          }
-        />
+        <MessageTick msg={msg} onMedia={onMedia} dim={dim} onRetry={onRetry} />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The checkmark, but also everything a still-queued send needs: a clock
+ * while it waits its turn (not a checkmark — nothing has confirmed it yet),
+ * and a tap-to-retry once the outbox has given up on it. See data/outbox.ts
+ * for what "sending" and "failed" actually mean here.
+ */
+function MessageTick({
+  msg,
+  onMedia,
+  dim,
+  onRetry,
+}: {
+  msg: GroupedMessage;
+  onMedia?: boolean;
+  dim: string;
+  onRetry?: () => void;
+}) {
+  const { colors } = useTheme();
+  if (msg.status === 'failed') {
+    return (
+      <Pressable onPress={onRetry} hitSlop={8} accessibilityLabel={t('chat.retry_send')}>
+        <Ionicons name="alert-circle" size={14} color={colors.danger} />
+      </Pressable>
+    );
+  }
+  if (msg.status === 'sending') {
+    return <Ionicons name="time-outline" size={14} color={onMedia ? '#FFFFFF' : dim} />;
+  }
+  return (
+    <Ionicons
+      name={msg.status === 'read' ? 'checkmark-done' : 'checkmark'}
+      size={14}
+      color={onMedia ? '#FFFFFF' : msg.status === 'read' ? '#9DC1FF' : dim}
+    />
   );
 }
 
@@ -3470,6 +3597,7 @@ function BubbleBody({
   revealed,
   onOpenMedia,
   onLongPressMedia,
+  onRetry,
 }: {
   msg: GroupedMessage;
   mine: boolean;
@@ -3482,6 +3610,7 @@ function BubbleBody({
   revealed?: Set<string>;
   onOpenMedia?: (msg: Message) => void;
   onLongPressMedia?: () => void;
+  onRetry?: (msgId: string) => void;
 }) {
   const { colors, chat, metrics, layout } = useTheme();
   const isAudio = msg.media?.type === 'audio';
@@ -3502,7 +3631,7 @@ function BubbleBody({
         <Text style={[styles.deletedText, { color: dim }]}>
           {mine ? t('chat.deleted_self') : t('chat.deleted_other')}
         </Text>
-        <MetaRow msg={msg} />
+        <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
       </View>
     );
   }
@@ -3530,7 +3659,7 @@ function BubbleBody({
             {spent ? t('chat.view_once_opened_hint') : t('chat.view_once_tap')}
           </Text>
         </View>
-        <MetaRow msg={msg} />
+        <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
       </>
     );
     // Nothing to tap once it is spent: an affordance that only ever produces
@@ -3702,13 +3831,13 @@ function BubbleBody({
               },
             ]}
           />
-          <MetaRow msg={msg} />
+          <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
         </View>
       ) : null}
 
-      {(isAudio || hasAttachment) && !hasText ? <MetaRow msg={msg} /> : null}
+      {(isAudio || hasAttachment) && !hasText ? <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} /> : null}
 
-      {mediaOnly ? <MetaRow msg={msg} onMedia /> : null}
+      {mediaOnly ? <MetaRow msg={msg} onMedia onRetry={() => onRetry?.(msg.id)} /> : null}
     </>
   );
 }
@@ -3729,6 +3858,7 @@ function Bubble({
   onViewOnce,
   revealed,
   onOpenMedia,
+  onRetry,
 }: {
   msg: GroupedMessage;
   isGroup: boolean;
@@ -3745,6 +3875,7 @@ function Bubble({
   onViewOnce: (msgId: string) => void;
   revealed: Set<string>;
   onOpenMedia: (msg: Message) => void;
+  onRetry?: (msgId: string) => void;
 }) {
   const { colors, chat: chrome, layout, metrics } = useTheme();
   const mine = msg.fromMe;
@@ -3908,6 +4039,7 @@ function Bubble({
               revealed={revealed}
               onOpenMedia={onOpenMedia}
               onLongPressMedia={handleLongPress}
+              onRetry={onRetry}
             />
           </Pressable>
 
@@ -4334,6 +4466,14 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
+  headerFloat: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    // Above the thread, which is declared after it in the tree.
+    zIndex: 10,
+  },
   thread: { flex: 1 },
   threadContent: {
     paddingHorizontal: Spacing.md,

@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/CreadorLanda/yo/server/internal/modules/keys"
 	"github.com/CreadorLanda/yo/server/internal/modules/users"
 )
 

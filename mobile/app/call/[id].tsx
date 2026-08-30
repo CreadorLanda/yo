@@ -14,10 +14,11 @@ import {
 import { Track } from 'livekit-client';
 import type { TrackReference } from '@livekit/react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PeoplePicker, type PickablePerson } from '@/components/ui/people-picker';
+import { Text } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { callToken, hangupCall, inviteToCall, type CallGrant } from '@/data/api/calls';
 import { RING_TIMEOUT_MS } from '@/data/incoming-call';

@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,14 +9,24 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { appAlert } from '@/data/dialog-store';
+import { persistThemeImage } from '@/data/theme-assets';
+import { loadFontFamily } from '@/data/theme-font-assets';
+import { FONT_FAMILIES, type FontFamilyId } from '@/data/theme-fonts';
+import {
+  ICON_SETS,
+  ICON_SLOTS,
+  resolveIcon,
+  type IconSet,
+  type IconSlot,
+  type ThemeIcons,
+} from '@/data/theme-icons';
 import {
   BUBBLE_SHAPES,
   COMPOSER_STYLES,
@@ -27,6 +37,7 @@ import {
   REPLY_STYLES,
   SEND_STYLES,
   SYSTEM_STYLES,
+  WALLPAPER_ANIMATIONS,
   bubbleRadii,
   createThemePack,
   forkTheme,
@@ -43,6 +54,7 @@ import {
   type ThemeLayout,
   type ThemeMode,
   type ThemePack,
+  type WallpaperAnimation,
 } from '@/data/theme-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -57,7 +69,15 @@ const WALLPAPERS_LIGHT = ['#EEF1F6', '#E8F5E9', '#FFF3E0', '#E3F2FD', '#F3E5F5',
 const WALLPAPERS_DARK = ['#0E0F13', '#12141C', '#0A0C09', '#160A18', '#0C0E14', '#181210', '#042F2E', '#1A1F16'];
 
 type DesignMode = ThemeMode | 'both';
-type EditorTab = 'colors' | 'chat' | 'layout' | 'positions' | 'effects' | 'css' | 'ai';
+type EditorTab =
+  | 'colors'
+  | 'chat'
+  | 'layout'
+  | 'positions'
+  | 'icons'
+  | 'effects'
+  | 'css'
+  | 'ai';
 
 export default function ThemeCreatorScreen() {
   const { colors, isDark } = useTheme();
@@ -82,6 +102,7 @@ export default function ThemeCreatorScreen() {
   const [category, setCategory] = useState<ThemePack['category']>('minimal');
   const [chat, setChat] = useState<Partial<ChatChrome>>({});
   const [layout, setLayout] = useState<ThemeLayout>({ ...DEFAULT_LAYOUT });
+  const [icons, setIcons] = useState<ThemeIcons>({});
   const [customCss, setCustomCss] = useState(CSS_THEME_TEMPLATE);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
@@ -100,6 +121,7 @@ export default function ThemeCreatorScreen() {
     setLayout({ ...DEFAULT_LAYOUT, ...source.layout });
     const ch = source.chat?.[schemeKey] ?? source.chat?.light ?? source.chat?.dark ?? {};
     setChat({ ...ch });
+    setIcons({ ...(source.icons ?? {}) });
     if (source.customCss) setCustomCss(source.customCss);
     if (source.aiPrompt) setAiPrompt(source.aiPrompt);
     if (forking) setName(`${source.name} (edit)`.slice(0, 40));
@@ -135,7 +157,28 @@ export default function ThemeCreatorScreen() {
     });
     if (result.canceled || !result.assets[0]) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setChat((p) => ({ ...p, wallpaperImage: result.assets[0].uri }));
+    // Copied out of the picker's cache first. Storing the cache URI is how a
+    // wallpaper survives until the OS reclaims the directory and the theme
+    // comes back with a grey rectangle where the photo was.
+    const stored = await persistThemeImage(result.assets[0].uri);
+    setChat((p) => ({ ...p, wallpaperImage: stored }));
+  };
+
+  const pickSlotIcon = async (slot: IconSlot) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.9,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+    if (result.canceled || !result.assets[0]) return;
+    Haptics.selectionAsync().catch(() => {});
+    const stored = await persistThemeImage(result.assets[0].uri);
+    setIcons((prev) => ({ ...prev, [slot]: stored }));
+  };
+
+  const clearSlotIcon = (slot: IconSlot) => {
+    setIcons((prev) => ({ ...prev, [slot]: '' }));
   };
 
   const clearWallpaperPhoto = () => {
@@ -205,6 +248,7 @@ export default function ThemeCreatorScreen() {
         ...chat,
       },
       layout,
+      icons,
       customCss,
       aiPrompt: aiPrompt || undefined,
       editId,
@@ -218,6 +262,7 @@ export default function ThemeCreatorScreen() {
     { id: 'chat', label: t('themes.tab_chat'), icon: 'chatbubbles' },
     { id: 'layout', label: t('themes.tab_layout'), icon: 'shapes' },
     { id: 'positions', label: t('themes.tab_positions'), icon: 'move' },
+    { id: 'icons', label: t('themes.tab_icons'), icon: 'apps' },
     { id: 'effects', label: t('themes.tab_effects'), icon: 'sparkles' },
     { id: 'css', label: t('themes.tab_css'), icon: 'code-slash' },
     { id: 'ai', label: t('themes.tab_ai'), icon: 'hardware-chip' },
@@ -318,6 +363,7 @@ export default function ThemeCreatorScreen() {
             ]}
           >
             <Text
+              font={layout.fontFamily}
               style={{
                 color: textTheirs,
                 fontSize,
@@ -346,6 +392,7 @@ export default function ThemeCreatorScreen() {
             ]}
           >
             <Text
+              font={layout.fontFamily}
               style={{
                 color: textMine,
                 fontSize,
@@ -544,6 +591,19 @@ export default function ThemeCreatorScreen() {
               onChange={(v) => patchLayout('wallpaperBlur', v)}
               colors={colors}
             />
+            <Label color={colors.textSecondary}>{t('themes.wallpaper_animation')}</Label>
+            <ChipRow
+              options={WALLPAPER_ANIMATIONS.map((a) => ({
+                id: a,
+                label: t(`themes.wallpaper_anim_${a}`),
+              }))}
+              value={layout.wallpaperAnimation}
+              onChange={(v) => patchLayout('wallpaperAnimation', v as WallpaperAnimation)}
+              colors={colors}
+            />
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.wallpaper_animation_hint')}
+            </Text>
 
             <Label color={colors.textSecondary}>{t('themes.bubble_mine')}</Label>
             <ColorRow
@@ -606,6 +666,22 @@ export default function ThemeCreatorScreen() {
             <StepRow value={layout.bubblePaddingH} min={6} max={22} step={1} onChange={(v) => patchLayout('bubblePaddingH', v)} colors={colors} />
             <Label color={colors.textSecondary}>{t('themes.bubble_pad_v')}: {layout.bubblePaddingV}</Label>
             <StepRow value={layout.bubblePaddingV} min={4} max={18} step={1} onChange={(v) => patchLayout('bubblePaddingV', v)} colors={colors} />
+            <Label color={colors.textSecondary}>{t('themes.font_family')}</Label>
+            <ChipRow
+              options={FONT_FAMILIES.map((f) => ({ id: f.id, label: f.label }))}
+              value={layout.fontFamily}
+              onChange={(v) => {
+                const id = v as FontFamilyId;
+                // Register the faces now so the preview above changes on this
+                // tap rather than on the one after it.
+                loadFontFamily(id).catch(() => {});
+                patchLayout('fontFamily', id);
+              }}
+              colors={colors}
+            />
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.font_family_hint')}
+            </Text>
             <Label color={colors.textSecondary}>{t('themes.font_scale')}: {Math.round(layout.fontScale * 100)}%</Label>
             <StepRow value={Math.round(layout.fontScale * 100)} min={85} max={135} step={5} onChange={(v) => patchLayout('fontScale', v / 100)} colors={colors} />
             <Label color={colors.textSecondary}>{t('themes.letter_spacing')}: {layout.letterSpacing}</Label>
@@ -706,6 +782,17 @@ export default function ThemeCreatorScreen() {
               onChange={(v) => patchLayout('tabBarPosition', v as 'top' | 'bottom')}
               colors={colors}
             />
+            <Label color={colors.textSecondary}>{t('themes.tab_bar_labels')}</Label>
+            <ChipRow
+              options={[
+                { id: 'labels', label: t('themes.tab_labels_labels') },
+                { id: 'icons', label: t('themes.tab_labels_icons') },
+                { id: 'both', label: t('themes.tab_labels_both') },
+              ]}
+              value={layout.tabBarLabels}
+              onChange={(v) => patchLayout('tabBarLabels', v as ThemeLayout['tabBarLabels'])}
+              colors={colors}
+            />
             <Label color={colors.textSecondary}>{t('themes.header_style')}</Label>
             <ChipRow
               options={[
@@ -726,11 +813,102 @@ export default function ThemeCreatorScreen() {
           </>
         ) : null}
 
+        {tab === 'icons' ? (
+          <>
+            <Text style={[styles.sectionLead, { color: colors.textSecondary }]}>
+              {t('themes.icons_lead')}
+            </Text>
+            <Label color={colors.textSecondary}>{t('themes.icon_set')}</Label>
+            <ChipRow
+              options={ICON_SETS.map((set) => ({ id: set, label: t(`themes.icon_set_${set}`) }))}
+              value={layout.iconSet}
+              onChange={(v) => patchLayout('iconSet', v as IconSet)}
+              colors={colors}
+            />
+            <Label color={colors.textSecondary}>
+              {t('themes.icon_scale')}: {Math.round(layout.iconScale * 100)}%
+            </Label>
+            <StepRow
+              value={Math.round(layout.iconScale * 100)}
+              min={80}
+              max={140}
+              step={5}
+              onChange={(v) => patchLayout('iconScale', v / 100)}
+              colors={colors}
+            />
+            <Label color={colors.textSecondary}>{t('themes.icon_custom')}</Label>
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.icon_custom_hint')}
+            </Text>
+            <View style={styles.iconGrid}>
+              {ICON_SLOTS.map((slot) => {
+                const drawn = resolveIcon(slot, layout.iconSet, icons);
+                return (
+                  <View
+                    key={slot}
+                    style={[styles.iconCell, { backgroundColor: colors.surfaceMuted }]}
+                  >
+                    <Pressable
+                      onPress={() => pickSlotIcon(slot)}
+                      style={[styles.iconPreview, { backgroundColor: colors.surface }]}
+                      accessibilityLabel={t(`themes.slot_${slot}`)}
+                    >
+                      {drawn.kind === 'image' ? (
+                        <Image
+                          source={{ uri: drawn.uri }}
+                          style={styles.iconPreviewImage}
+                          contentFit="contain"
+                        />
+                      ) : drawn.glyph.family === 'material' ? (
+                        <MaterialIcons
+                          name={drawn.glyph.name as keyof typeof MaterialIcons.glyphMap}
+                          size={22}
+                          color={colors.text}
+                        />
+                      ) : (
+                        <Ionicons
+                          name={drawn.glyph.name as keyof typeof Ionicons.glyphMap}
+                          size={22}
+                          color={colors.text}
+                        />
+                      )}
+                    </Pressable>
+                    <Text style={[styles.iconCellLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {t(`themes.slot_${slot}`)}
+                    </Text>
+                    {icons[slot] ? (
+                      <Pressable onPress={() => clearSlotIcon(slot)} hitSlop={6}>
+                        <Text style={[styles.iconCellReset, { color: colors.primary }]}>
+                          {t('themes.icon_reset')}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+
         {tab === 'effects' ? (
           <>
             <Text style={[styles.sectionLead, { color: colors.textSecondary }]}>
               {t('themes.effects_lead')}
             </Text>
+            <ToggleRow label={t('themes.amoled')} value={layout.amoledBlack} onChange={(v) => patchLayout('amoledBlack', v)} colors={colors} />
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.amoled_hint')}
+            </Text>
+            <ToggleRow label={t('themes.glass')} value={layout.glassChrome} onChange={(v) => patchLayout('glassChrome', v)} colors={colors} />
+            <Text style={[styles.cssHint, { color: colors.textMuted }]}>
+              {t('themes.glass_hint')}
+            </Text>
+            {layout.glassChrome ? (
+              <>
+                <Label color={colors.textSecondary}>{t('themes.glass_intensity')}: {layout.glassIntensity}</Label>
+                <StepRow value={layout.glassIntensity} min={10} max={100} step={5} onChange={(v) => patchLayout('glassIntensity', v)} colors={colors} />
+              </>
+            ) : null}
             <ToggleRow label={t('themes.bubble_shadow')} value={layout.bubbleShadow} onChange={(v) => patchLayout('bubbleShadow', v)} colors={colors} />
             <Label color={colors.textSecondary}>{t('themes.shadow_strength')}: {Math.round(layout.bubbleShadowStrength * 100)}%</Label>
             <StepRow value={Math.round(layout.bubbleShadowStrength * 100)} min={0} max={100} step={10} onChange={(v) => patchLayout('bubbleShadowStrength', v / 100)} colors={colors} />
@@ -1076,6 +1254,37 @@ function hex(h: string) {
 }
 
 const styles = StyleSheet.create({
+  iconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  iconCell: {
+    width: 88,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radii.md,
+  },
+  iconPreview: {
+    width: 44,
+    height: 44,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconPreviewImage: {
+    width: 26,
+    height: 26,
+  },
+  iconCellLabel: {
+    ...Typography.caption,
+  },
+  iconCellReset: {
+    ...Typography.caption,
+    fontWeight: '600',
+  },
   safe: { flex: 1 },
   header: {
     flexDirection: 'row',

@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import { useColorScheme as useSystemScheme } from 'react-native';
 
+import type { ThemeIcons } from '@/data/theme-icons';
 import {
   getResolvedChat,
   getResolvedColors,
+  getResolvedIcons,
   getResolvedLayout,
   layoutMetrics,
   useActiveThemeId,
@@ -45,6 +47,12 @@ export function useTheme() {
     [scheme, activeId, pref, rev],
   );
 
+  const icons = useMemo(
+    () => getResolvedIcons() as ThemeIcons,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeId, rev],
+  );
+
   const metrics = useMemo(() => layoutMetrics(layout), [layout]);
 
   return {
@@ -52,6 +60,7 @@ export function useTheme() {
     colors,
     chat,
     layout,
+    icons,
     metrics,
     isDark: scheme === 'dark',
     activeThemeId: activeId,

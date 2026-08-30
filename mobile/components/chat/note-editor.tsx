@@ -6,11 +6,10 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { getNote, setNote } from '@/data/db/notes';
 import { useTheme } from '@/hooks/use-theme';

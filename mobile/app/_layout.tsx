@@ -19,7 +19,9 @@ import {
 } from '@/data/push';
 import { bootstrapAuth } from '@/data/auth-store';
 import { ensureKeysPublished } from '@/data/crypto';
+import { ensureOutboxRunning } from '@/data/outbox';
 import { registerPushWithServer } from '@/data/push';
+import { bootstrapThemes } from '@/data/theme-store';
 import { useTheme } from '@/hooks/use-theme';
 
 export const unstable_settings = {
@@ -53,8 +55,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     let mounted = true;
-    bootstrapAuth()
-      .then((user) => {
+    // The stored theme decides what every screen below is painted with, so it
+    // is restored alongside the session rather than after it. Read late, the
+    // first frame is drawn in the default palette and then visibly flips to
+    // the one the person actually chose. It never rejects — a theme that
+    // cannot be read falls back to the default inside the store.
+    Promise.all([bootstrapAuth(), bootstrapThemes()])
+      .then(([user]) => {
         if (!mounted) return;
         if (user) {
           router.replace('/(tabs)');
@@ -62,6 +69,10 @@ export default function RootLayout() {
           registerPushWithServer().catch(() => {});
           // Generate / publish Signal-style pre-key material for E2EE.
           ensureKeysPublished().catch(() => {});
+          // Resume any message queued offline before the app was closed,
+          // and again on every foreground — not just on reopening the one
+          // chat that queued it.
+          ensureOutboxRunning();
         } else {
           // Send signed-out users to onboarding explicitly rather than
           // relying on the anchor to resolve "/". A standalone build opens

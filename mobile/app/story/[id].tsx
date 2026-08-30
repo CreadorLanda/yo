@@ -3,7 +3,9 @@ import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 
 import { AnonInbox } from '@/components/story/anon-inbox';
+import { ReactionBar } from '@/components/story/reaction-bar';
 import { StoryVideo } from '@/components/story/story-video';
+import { Text, TextInput } from '@/components/ui/text';
 import { appAlert } from '@/data/dialog-store';
 import { ViewersSheet } from '@/components/story/viewers-sheet';
 import { CachedImage } from '@/components/ui/cached-image';
@@ -20,8 +22,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -34,8 +34,6 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
-  withSpring,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -48,22 +46,22 @@ import {
   deleteStory,
   listComments,
   deleteComment,
-  reactStory,
   viewStory,
   writeAnon,
   type StoryCommentDTO,
 } from '@/data/api/stories';
 import type { Story, StoryComment } from '@/data/mock';
+import { toggleReaction } from '@/data/story-reactions';
 import {
   bootstrapStories,
   ensureStory,
   markStoryViewedLocal,
   removeStoryLocal,
+  setStoryReactions,
   useStories,
 } from '@/data/story-store';
 import { t } from '@/i18n';
 
-const REACTIONS = ['❤️', '🔥', '😂', '😮', '🙌'] as const;
 type ReplyMode = 'comment' | 'private';
 
 /** Poll/question captions may be plain text or JSON `{ q, a?, b? }`. */
@@ -362,15 +360,22 @@ export default function StoryViewerScreen() {
 
   const storyGestures = Gesture.Race(swipe, longPress);
 
-  const fireReact = (emoji: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setReactBurst(emoji);
-    setToast(t('stories.react_sent'));
-    setTimeout(() => setReactBurst(null), 700);
-    setTimeout(() => setToast(null), 1400);
-    if (story?.id && /^[0-9a-f-]{36}$/i.test(story.id)) {
-      reactStory(story.id, emoji).catch(() => {});
+  /**
+   * A chip is a toggle, not a send button: with several reactions allowed,
+   * tapping one that is already lit has to mean "take it back", and the whole
+   * set goes to the server in one call.
+   */
+  const onToggleReaction = (emoji: string) => {
+    if (!story) return;
+    const mine = story.myReactions ?? [];
+    const adding = !mine.includes(emoji);
+    if (adding) {
+      setReactBurst(emoji);
+      setTimeout(() => setReactBurst(null), 700);
     }
+    setToast(adding ? t('stories.react_sent') : t('stories.react_removed'));
+    setTimeout(() => setToast(null), 1400);
+    void setStoryReactions(story.id, toggleReaction(mine, emoji));
   };
 
   const sendReply = () => {
@@ -760,9 +765,12 @@ export default function StoryViewerScreen() {
         </View>
 
         <View style={styles.reactTray}>
-          {REACTIONS.map((emoji) => (
-            <ReactChip key={emoji} emoji={emoji} onPress={() => fireReact(emoji)} />
-          ))}
+          <ReactionBar
+            counts={story.reactions ?? []}
+            mine={story.myReactions ?? []}
+            onToggle={onToggleReaction}
+            onSheetOpenChange={setPaused}
+          />
           {commentsEnabled ? (
             <Pressable onPress={() => setCommentsOpen(true)} style={styles.commentsBtn}>
               <Ionicons name="chatbubbles" size={17} color="#FFF" />
@@ -943,27 +951,6 @@ function Metric({
         <Ionicons name="chevron-forward" size={13} color="rgba(255,255,255,0.6)" />
       ) : null}
     </View>
-  );
-}
-
-function ReactChip({ emoji, onPress }: { emoji: string; onPress: () => void }) {
-  const scale = useSharedValue(1);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  return (
-    <Pressable
-      onPress={() => {
-        scale.value = withSequence(
-          withSpring(1.28, { damping: 8, stiffness: 320 }),
-          withSpring(1, { damping: 12, stiffness: 220 }),
-        );
-        onPress();
-      }}
-      hitSlop={6}
-    >
-      <Animated.View style={[styles.reactChip, style]}>
-        <Text style={styles.reactEmoji}>{emoji}</Text>
-      </Animated.View>
-    </Pressable>
   );
 }
 
@@ -1455,10 +1442,11 @@ const styles = StyleSheet.create({
   metricText: { ...Typography.micro, color: 'rgba(255,255,255,0.82)' },
   reactTray: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    alignSelf: 'center',
+    // Full width instead of hugging its contents: the emoji row scrolls now,
+    // and a row sized to its content has nothing to scroll inside.
+    alignSelf: 'stretch',
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 28,
@@ -1466,15 +1454,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
-  reactChip: {
-    width: 40,
-    height: 40,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  reactEmoji: { fontSize: 20 },
   commentsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
