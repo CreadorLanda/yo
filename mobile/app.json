@@ -130,6 +130,12 @@
             }
           }
         ]
+      ],
+      [
+        "./plugins/with-gradle-heap",
+        {
+          "jvmargs": "-Xmx6g -XX:MaxMetaspaceSize=1g"
+        }
       ]
     ],
     "experiments": {
