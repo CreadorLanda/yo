@@ -9,9 +9,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import { appAlert } from '@/data/dialog-store';
+import { appAlert, appPrompt } from '@/data/dialog-store';
 import { deleteMe, me, patchMe, type UserPatch } from '@/data/api/users';
+import {
+  biometricsAvailable,
+  setAppLockBiometrics,
+  setAppLockEnabled,
+  setAppLockTimeout,
+  useAppLockPrefs,
+} from '@/data/app-lock';
+import { LOCK_TIMEOUTS_MS, type LockTimeoutMs } from '@/data/app-lock-policy';
 import { clearSession, getSessionPhone } from '@/data/auth-store';
+import { hasLockCode, isValidCode, setLockCode } from '@/data/chat-lock';
 import { resetAllStores } from '@/data/reset';
 
 import {
@@ -46,6 +55,7 @@ export default function SettingsScreen() {
   const [lastSeen, setLastSeen] = useState<Visibility>('everyone');
   const [profilePhoto, setProfilePhoto] = useState<Visibility>('everyone');
   const [readReceipts, setReadReceipts] = useState(true);
+  const [ghostMode, setGhostMode] = useState(false);
   const [phone, setPhone] = useState('');
   const [privacyLoaded, setPrivacyLoaded] = useState(false);
 
@@ -57,6 +67,7 @@ export default function SettingsScreen() {
         setLastSeen(u.last_seen_visibility ?? 'everyone');
         setProfilePhoto(u.photo_visibility ?? 'everyone');
         setReadReceipts(u.read_receipts !== false);
+        setGhostMode(u.ghost_mode === true);
         // Not from the server: it holds a hash of the number, never the
         // number. The device is the only place that can answer this.
         void getSessionPhone().then(setPhone);
@@ -140,6 +151,72 @@ export default function SettingsScreen() {
       : v === 'contacts'
         ? t('settings.visibility_contacts')
         : t('settings.visibility_nobody');
+
+  // ── App lock ──────────────────────────────────────────────────────────
+  const appLock = useAppLockPrefs();
+  const [bioAvailable, setBioAvailable] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    biometricsAvailable().then((ok) => {
+      if (alive) setBioAvailable(ok);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** Same dialog shape the per-chat lock uses, so the two feel like one thing. */
+  const promptCode = (title: string, onSubmit: (code: string) => Promise<boolean>) =>
+    appPrompt(title, {
+      message: t('app_lock.code_hint'),
+      placeholder: t('app_lock.code_placeholder'),
+      secure: true,
+      keyboard: 'number-pad',
+      cancelLabel: t('common.cancel'),
+      submitLabel: t('common.confirm'),
+      onSubmit,
+    });
+
+  /**
+   * Switching the lock either way asks for the code.
+   *
+   * Turning it *off* matters as much as turning it on: without the check,
+   * anyone holding the phone walks past the lock by opening settings and
+   * flipping the switch.
+   */
+  const toggleAppLock = (next: boolean) => {
+    void (async () => {
+      if (next && !(await hasLockCode())) {
+        promptCode(t('app_lock.set_code'), async (code) => {
+          if (!isValidCode(code)) return false;
+          await setLockCode(code);
+          await setAppLockEnabled(true, code);
+          appAlert(t('app_lock.enabled_title'), t('app_lock.enabled_body'));
+          return true;
+        });
+        return;
+      }
+      promptCode(next ? t('app_lock.confirm_code') : t('app_lock.disable_code'), async (code) => {
+        const ok = await setAppLockEnabled(next, code);
+        return ok;
+      });
+    })();
+  };
+
+  const timeoutLabel = (ms: number) =>
+    ms === 0 ? t('app_lock.timeout_immediately') : t('app_lock.timeout_minutes', { n: ms / 60000 });
+
+  const pickTimeout = () => {
+    appAlert(
+      t('app_lock.timeout'),
+      undefined,
+      LOCK_TIMEOUTS_MS.map((ms) => ({
+        text: timeoutLabel(ms) + (ms === appLock.timeoutMs ? '  \u2713' : ''),
+        onPress: () => void setAppLockTimeout(ms as LockTimeoutMs),
+      })),
+    );
+  };
 
   const pickVisibility = (
     title: string,
@@ -335,8 +412,78 @@ export default function SettingsScreen() {
                 thumbColor="#FFFFFF"
               />
             }
+          />
+          {/* Below read receipts on purpose: it is the wider switch, and
+              turning it on makes the one above it moot. */}
+          <Row
+            icon="eye-off-outline"
+            label={t('settings.ghost_mode')}
+            value={ghostMode ? undefined : t('settings.ghost_mode_off')}
+            control={
+              <Switch
+                value={ghostMode}
+                onValueChange={(v) => {
+                  setGhostMode(v);
+                  savePrivacy({ ghost_mode: v }, () => setGhostMode(!v));
+                }}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            }
             last
           />
+        </Group>
+
+        <Group title={t('settings.section_security')}>
+          <Row
+            icon="lock-closed-outline"
+            label={t('app_lock.row')}
+            value={appLock.enabled ? undefined : t('app_lock.off')}
+            control={
+              <Switch
+                value={appLock.enabled}
+                onValueChange={toggleAppLock}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            }
+            last={!appLock.enabled}
+          />
+          {appLock.enabled ? (
+            <>
+              <Row
+                icon="time-outline"
+                label={t('app_lock.timeout')}
+                value={timeoutLabel(appLock.timeoutMs)}
+                onPress={pickTimeout}
+              />
+              {/* Only offered where the device has biometrics enrolled —
+                  a switch that cannot do anything is worse than no switch. */}
+              {bioAvailable ? (
+                <Row
+                  icon="finger-print-outline"
+                  label={t('app_lock.biometrics')}
+                  value={appLock.biometrics ? undefined : t('app_lock.off')}
+                  control={
+                    <Switch
+                      value={appLock.biometrics}
+                      onValueChange={(v) => void setAppLockBiometrics(v)}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor="#FFFFFF"
+                    />
+                  }
+                  last
+                />
+              ) : (
+                <Row
+                  icon="finger-print-outline"
+                  label={t('app_lock.biometrics')}
+                  value={t('app_lock.biometrics_unavailable')}
+                  last
+                />
+              )}
+            </>
+          ) : null}
         </Group>
 
         <Group title={t('settings.section_notifications')}>

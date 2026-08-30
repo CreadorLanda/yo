@@ -157,15 +157,17 @@ without turning the chat into a group, live broadcasts.
 **Privacy** — per-chat lock with a code, last-seen and photo visibility,
 read receipts, directional blocking, account deletion that actually deletes.
 
-Of the mod features named at the top, **chat lock** is the one that already
-works. Ghost mode and freeze last seen are
-[#122](https://github.com/CreadorLanda/yo/issues/122), app lock is
-[#121](https://github.com/CreadorLanda/yo/issues/121), anti-delete is
-[#123](https://github.com/CreadorLanda/yo/issues/123), nudges and winks
-are [#126](https://github.com/CreadorLanda/yo/issues/126), and themes
-that survive a restart are
-[#114](https://github.com/CreadorLanda/yo/issues/114). None of them is
-done, and the issues say so rather than this page pretending otherwise.
+Of the mod features named at the top, **chat lock**, **app lock** and
+**themes that survive a restart** now work. App lock takes a code and,
+where the device has one, a fingerprint or Face ID — the code is the same
+one chat lock uses, and the biometric check is the operating system's, so
+no face or fingerprint data is ever stored by Yo.
+
+Still open: ghost mode and freeze last seen
+([#122](https://github.com/CreadorLanda/yo/issues/122)), anti-delete
+([#123](https://github.com/CreadorLanda/yo/issues/123)), and nudges and
+winks ([#126](https://github.com/CreadorLanda/yo/issues/126)). The issues
+say so rather than this page pretending otherwise.
 
 ---
 
