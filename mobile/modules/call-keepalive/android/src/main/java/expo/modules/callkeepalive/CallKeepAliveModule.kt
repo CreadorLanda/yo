@@ -50,16 +50,22 @@ class CallKeepAliveModule : Module() {
       }
     }
 
+    // `?.let` rather than an early return. Expo infers this lambda's return
+    // type as `Any?`, and a bare `return@Function` yields `Unit`, which the
+    // elvis cannot reconcile with it — the one line of this module that did
+    // not survive first contact with the Kotlin compiler. `OnDestroy` below
+    // has always used this shape, and always compiled.
     Function("stop") {
-      val context = appContext.reactContext ?: return@Function
-      val intent = Intent(context, CallForegroundService::class.java).apply {
-        action = CallForegroundService.ACTION_STOP
-      }
-      try {
-        context.stopService(intent)
-      } catch (e: Exception) {
-        // Already gone. Stopping a service that is not running is not a
-        // problem worth surfacing to a call screen that is tearing down.
+      appContext.reactContext?.let { context ->
+        val intent = Intent(context, CallForegroundService::class.java).apply {
+          action = CallForegroundService.ACTION_STOP
+        }
+        try {
+          context.stopService(intent)
+        } catch (e: Exception) {
+          // Already gone. Stopping a service that is not running is not a
+          // problem worth surfacing to a call screen that is tearing down.
+        }
       }
     }
 
