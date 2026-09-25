@@ -177,8 +177,8 @@ func (s *Service) Duplicate(ctx context.Context, srcID, newOwner uuid.UUID) (Obj
 		return s.toObject(src), nil
 	}
 
-	srcAbs := filepath.Join(s.rootDir, filepath.FromSlash(src.StoragePath))
-	if !strings.HasPrefix(filepath.Clean(srcAbs), filepath.Clean(s.rootDir)) {
+	srcAbs, ok := mediaPath(s.rootDir, src.StoragePath)
+	if !ok {
 		return Object{}, ErrNotFound
 	}
 	in, err := os.Open(srcAbs)
@@ -262,9 +262,8 @@ func (s *Service) Open(ctx context.Context, id uuid.UUID) (Object, *os.File, err
 		}
 		return Object{}, nil, err
 	}
-	abs := filepath.Join(s.rootDir, filepath.FromSlash(row.StoragePath))
-	// Prevent path escape.
-	if !strings.HasPrefix(filepath.Clean(abs), filepath.Clean(s.rootDir)) {
+	abs, ok := mediaPath(s.rootDir, row.StoragePath)
+	if !ok {
 		return Object{}, nil, ErrNotFound
 	}
 	f, err := os.Open(abs)
@@ -291,8 +290,8 @@ func (s *Service) OpenForUser(ctx context.Context, id, userID uuid.UUID) (Object
 	if row.OwnerID != userID {
 		return Object{}, nil, ErrNotFound
 	}
-	abs := filepath.Join(s.rootDir, filepath.FromSlash(row.StoragePath))
-	if !strings.HasPrefix(filepath.Clean(abs), filepath.Clean(s.rootDir)) {
+	abs, ok := mediaPath(s.rootDir, row.StoragePath)
+	if !ok {
 		return Object{}, nil, ErrNotFound
 	}
 	f, err := os.Open(abs)
@@ -320,6 +319,19 @@ func (s *Service) Delete(ctx context.Context, id, ownerID uuid.UUID) error {
 
 func (s *Service) userDir(ownerID uuid.UUID) string {
 	return filepath.Join(s.rootDir, ownerID.String())
+}
+
+// mediaPath resolves a database storage path and proves that the result stays
+// below the configured root. A string-prefix check is insufficient here:
+// /data/media2 also has /data/media as a prefix.
+func mediaPath(rootDir, storagePath string) (string, bool) {
+	root := filepath.Clean(rootDir)
+	abs := filepath.Join(root, filepath.FromSlash(storagePath))
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return abs, true
 }
 
 func classify(filename, contentType string) (Kind, string, string) {

@@ -2,6 +2,7 @@ package media
 
 import (
 	"errors"
+	"mime"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -116,7 +117,10 @@ func (c *Controller) GetFile(ctx *gin.Context) {
 	ctx.Header("Content-Type", obj.MimeType)
 	ctx.Header("Cache-Control", "private, max-age=86400")
 	if obj.OriginalName != "" {
-		ctx.Header("Content-Disposition", `inline; filename="`+obj.OriginalName+`"`)
+		disposition := mime.FormatMediaType("inline", map[string]string{
+			"filename": obj.OriginalName,
+		})
+		ctx.Header("Content-Disposition", disposition)
 	}
 
 	// ServeContent handles Range requests, conditional GETs and the
