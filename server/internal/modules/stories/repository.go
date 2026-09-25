@@ -87,6 +87,7 @@ func (r *Repository) Get(ctx context.Context, id, viewer uuid.UUID) (row, error)
 		        SELECT 1
 		        FROM chat_participants mine
 		        JOIN chat_participants theirs ON theirs.chat_id = mine.chat_id
+		        JOIN chats c ON c.id = mine.chat_id AND c.type = 'direct'
 		        WHERE mine.user_id = $2
 		          AND theirs.user_id = s.author_id
 		      )
@@ -127,6 +128,7 @@ func (r *Repository) Feed(ctx context.Context, viewer uuid.UUID) ([]row, error) 
 		        SELECT 1
 		        FROM chat_participants mine
 		        JOIN chat_participants theirs ON theirs.chat_id = mine.chat_id
+		        JOIN chats c ON c.id = mine.chat_id AND c.type = 'direct'
 		        WHERE mine.user_id = $1
 		          AND theirs.user_id = s.author_id
 		      )

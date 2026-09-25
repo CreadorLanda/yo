@@ -108,14 +108,32 @@ function sessionKey(peerUserId: string) {
 const sessionCache = new Map<string, SessionRecord | null>();
 
 // A direct-message counter is part of the cryptographic state. Serialise
-// sends per peer so two rapid sends cannot both read the same counter and
-// reuse the same secretbox nonce.
+// sends per account and peer so two rapid sends cannot both read the same
+// counter and reuse the same secretbox nonce. The generation also prevents a
+// send that was waiting across logout from running under the next account.
 const peerSendLocks = new Map<string, Promise<unknown>>();
+let sessionGeneration = 0;
 
-function withPeerSendLock<T>(peerUserId: string, run: () => Promise<T>): Promise<T> {
-  const previous = peerSendLocks.get(peerUserId) ?? Promise.resolve();
-  const next = previous.then(run, run);
-  peerSendLocks.set(peerUserId, next.catch(() => undefined));
+function withPeerSendLock<T>(
+  peerUserId: string,
+  run: (assertActive: () => void) => Promise<T>,
+): Promise<T> {
+  const accountId = getCurrentUser()?.id;
+  if (!accountId) return Promise.reject(new Error('session_missing'));
+  const generation = sessionGeneration;
+  const key = `${accountId}:${peerUserId}`;
+  const assertActive = () => {
+    if (generation !== sessionGeneration || getCurrentUser()?.id !== accountId) {
+      throw new Error('session_invalidated');
+    }
+  };
+  const execute = () => {
+    assertActive();
+    return run(assertActive);
+  };
+  const previous = peerSendLocks.get(key) ?? Promise.resolve();
+  const next = previous.then(execute, execute);
+  peerSendLocks.set(key, next.catch(() => undefined));
   return next;
 }
 
@@ -141,7 +159,9 @@ export async function loadSession(peerUserId: string): Promise<SessionRecord | n
 
 /** Drop cached sessions — call on logout so nothing outlives the account. */
 export function clearSessionCache(): void {
+  sessionGeneration += 1;
   sessionCache.clear();
+  peerSendLocks.clear();
 }
 
 async function saveSession(s: SessionRecord): Promise<void> {
@@ -357,8 +377,9 @@ export async function encryptForPeer(
   plaintext: string,
   opts?: { peerUsername?: string },
 ): Promise<string> {
-	return withPeerSendLock(peerUserId, async () => {
+	return withPeerSendLock(peerUserId, async (assertActive) => {
 		let session = await loadSession(peerUserId);
+		assertActive();
 		if (!session && opts?.peerUsername) {
 			session = await establishSessionAsInitiator(peerUserId, opts.peerUsername);
 		}
@@ -367,6 +388,7 @@ export async function encryptForPeer(
 		}
 
 		const ikPublic = await getIdentityPublic();
+		assertActive();
 		if (!ikPublic) throw new Error('local_keys_missing');
 
 		const root = b64urlToBytes(session.rootKey);
@@ -393,6 +415,7 @@ export async function encryptForPeer(
 
 		session.sendN = n + 1;
 		await saveSession(session);
+		assertActive();
 
 		const headerB64 = bytesToB64url(utf8Encode(JSON.stringify(header)));
 		const bodyB64 = bytesToB64url(boxed);

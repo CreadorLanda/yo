@@ -82,6 +82,10 @@ type JWTConfig struct {
 	Secret          string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
+	// OTPPepper is a server-only key used to derive OTP verifiers. It must
+	// never be stored alongside Redis, because Redis compromise is the threat
+	// this key is intended to limit.
+	OTPPepper string
 }
 
 func Load() (Config, error) {
@@ -103,6 +107,7 @@ func Load() (Config, error) {
 			Secret:          os.Getenv("JWT_SECRET"),
 			AccessTokenTTL:  getenvDuration("JWT_ACCESS_TTL", 15*time.Minute),
 			RefreshTokenTTL: getenvDuration("JWT_REFRESH_TTL", 30*24*time.Hour),
+			OTPPepper:       os.Getenv("OTP_PEPPER"),
 		},
 		Crypto: CryptoConfig{
 			// Encrypts message content at rest (see internal/crypto).
@@ -157,6 +162,9 @@ func Load() (Config, error) {
 	}
 	if cfg.Env == "prod" && cfg.Crypto.MessageKey == "" {
 		return cfg, errors.New("MESSAGE_KEY is required in prod")
+	}
+	if cfg.Env == "prod" && len(cfg.JWT.OTPPepper) < 32 {
+		return cfg, errors.New("OTP_PEPPER must be at least 32 bytes in prod")
 	}
 	return cfg, nil
 }

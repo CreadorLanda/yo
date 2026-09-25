@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -63,7 +64,7 @@ func (s *Service) Start(ctx context.Context, phone string) (code string, err err
 	code = randomDigits(6)
 	// Never keep the OTP itself in Redis. A read-only Redis compromise must
 	// not immediately become an account takeover.
-	if err := s.rdb.Set(ctx, otpKey(phone), otpDigest(phone, code), otpTTL).Err(); err != nil {
+	if err := s.rdb.Set(ctx, otpKey(phone), otpDigest(phone, code, s.cfg.OTPPepper), otpTTL).Err(); err != nil {
 		return "", fmt.Errorf("store otp: %w", err)
 	}
 	_ = s.rdb.Del(ctx, otpVerifyAttemptsKey(phone)).Err()
@@ -79,7 +80,7 @@ func (s *Service) Verify(ctx context.Context, in VerifyRequest) (*Tokens, *User,
 	if err := s.takeBucket(ctx, otpVerifyAttemptsKey(in.Phone), maxOTPVerifyAttempts, time.Minute); err != nil {
 		return nil, nil, err
 	}
-	result, err := s.rdb.Eval(ctx, consumeOTPScript, []string{otpKey(in.Phone)}, otpDigest(in.Phone, in.Code)).Int()
+	result, err := s.rdb.Eval(ctx, consumeOTPScript, []string{otpKey(in.Phone)}, otpDigest(in.Phone, in.Code, s.cfg.OTPPepper)).Int()
 	if err != nil {
 		return nil, nil, fmt.Errorf("verify otp: %w", err)
 	}
@@ -239,7 +240,11 @@ func (s *Service) takeBucket(ctx context.Context, key string, max int64, window 
 
 func otpKey(phone string) string               { return "otp:" + sha256Hex(phone) }
 func otpVerifyAttemptsKey(phone string) string { return "rl:auth:verify:" + sha256Hex(phone) }
-func otpDigest(phone, code string) string      { return sha256Hex(phone + ":" + code) }
+func otpDigest(phone, code string, pepper string) string {
+	mac := hmac.New(sha256.New, []byte(pepper))
+	_, _ = mac.Write([]byte(phone + ":" + code))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
 
 // suggestUsername produces a deterministic placeholder until the client
 // completes the profile-setup flow that already exists in the mobile app.

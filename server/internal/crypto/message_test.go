@@ -40,7 +40,11 @@ func TestTamperedCiphertext(t *testing.T) {
 	if len(enc) < 4 {
 		t.Fatal("ciphertext too short to test tamper")
 	}
-	corrupt := enc[:2] + "0" + enc[3:]
+	replacement := byte('0')
+	if enc[2] == replacement {
+		replacement = '1'
+	}
+	corrupt := enc[:2] + string(replacement) + enc[3:]
 	_, err = crypto.Decrypt(corrupt, testKey)
 	if err == nil {
 		t.Fatal("expected error for tampered ciphertext, got nil")
