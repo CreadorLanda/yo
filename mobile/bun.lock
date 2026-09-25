@@ -79,7 +79,7 @@
         "tweetnacl": "^1.0.3",
       },
       "devDependencies": {
-        "@config-plugins/react-native-webrtc": "^15.0.1",
+        "@config-plugins/react-native-webrtc": "^13.0.0",
         "@types/react": "~19.1.0",
         "eslint": "^9.25.0",
         "eslint-config-expo": "~10.0.0",
@@ -280,7 +280,7 @@
 
     "@bufbuild/protobuf": ["@bufbuild/protobuf@1.10.1", "", {}, "sha512-wJ8ReQbHxsAfXhrf9ixl0aYbZorRuOWpBNzm8pL8ftmSxQx/wnJD5Eg861NwJU/czy2VXFIebCeZnZrI9rktIQ=="],
 
-    "@config-plugins/react-native-webrtc": ["@config-plugins/react-native-webrtc@15.0.1", "", { "peerDependencies": { "expo": "^56" } }, "sha512-1/RSRnMOWPqHmEJCGEhElzFvkXUiNkGYsbAIxJl/3+t9OW2l26Qsjo8Ei7v/OMJ7g0Ek6qnKkjCxYrrLSfJi2A=="],
+    "@config-plugins/react-native-webrtc": ["@config-plugins/react-native-webrtc@13.0.0", "", { "peerDependencies": { "expo": "^54" } }, "sha512-EtRRLXmsU4GcDA3TgIxtqg++eh/CjbI6EV8N/1EFQTtaWI2lpww0fg+S0wd+ndXE0dFWaLqUFvZuyTAaAoOSeA=="],
 
     "@dicebear/core": ["@dicebear/core@9.4.3", "", { "dependencies": { "@types/json-schema": "^7.0.15" } }, "sha512-9ITrQI57k3p5hKuU8HZJ1d0kPdrmTKEJDOdlKQ8CpaChbtmnD1R+dtWmNz5IesYThXM8F64pJ0ZvJ2rsY8Hciw=="],
 

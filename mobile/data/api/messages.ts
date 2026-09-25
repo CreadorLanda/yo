@@ -341,7 +341,10 @@ export function openRealtimeWithToken(
   onClose?: () => void,
 ): WebSocket {
   const base = BASE_URL.replace(/^http/, 'ws');
-  const ws = new WebSocket(`${base}/api/ws?token=${encodeURIComponent(token)}`);
+  // Put the access token in the WebSocket handshake protocol instead of the
+  // URL. Query parameters are routinely captured by reverse-proxy and access
+  // logs. The server accepts `yo-bearer.<jwt>` and never echoes it back.
+  const ws = new WebSocket(`${base}/api/ws`, [`yo-bearer.${token}`]);
   ws.onmessage = (e) => {
     try {
       onEvent(JSON.parse(String(e.data)) as RealtimeEvent);

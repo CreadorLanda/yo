@@ -78,6 +78,20 @@ func (r *Repository) Get(ctx context.Context, id, viewer uuid.UUID) (row, error)
 		FROM stories s
 		JOIN users u ON u.id = s.author_id
 		WHERE s.id = $1 AND s.expires_at > NOW()
+		  AND (
+		    s.author_id = $2
+		    OR s.visibility = 'public'
+		    OR (
+		      s.visibility IN ('contacts', 'close')
+		      AND EXISTS (
+		        SELECT 1
+		        FROM chat_participants mine
+		        JOIN chat_participants theirs ON theirs.chat_id = mine.chat_id
+		        WHERE mine.user_id = $2
+		          AND theirs.user_id = s.author_id
+		      )
+		    )
+		  )
 	`
 	var x row
 	err := r.db.QueryRow(ctx, q, id, viewer).Scan(
@@ -89,8 +103,10 @@ func (r *Repository) Get(ctx context.Context, id, viewer uuid.UUID) (row, error)
 	return x, err
 }
 
-// Feed returns active stories visible to viewer (own + public + contacts heuristic:
-// for v1 contacts/close ≈ all non-expired stories from others + own).
+// Feed returns active stories visible to viewer. Contacts and close friends
+// use a shared chat as this application's contact relation. There is no
+// separate close-friends table yet, so both restricted modes fail closed to
+// that relation instead of exposing every user's story.
 func (r *Repository) Feed(ctx context.Context, viewer uuid.UUID) ([]row, error) {
 	const q = `
 		SELECT s.id, s.author_id, s.kind, s.caption, s.media_url, s.accent, s.visibility,
@@ -105,7 +121,16 @@ func (r *Repository) Feed(ctx context.Context, viewer uuid.UUID) ([]row, error) 
 		  AND (
 		    s.author_id = $1
 		    OR s.visibility = 'public'
-		    OR s.visibility IN ('contacts', 'close')
+		    OR (
+		      s.visibility IN ('contacts', 'close')
+		      AND EXISTS (
+		        SELECT 1
+		        FROM chat_participants mine
+		        JOIN chat_participants theirs ON theirs.chat_id = mine.chat_id
+		        WHERE mine.user_id = $1
+		          AND theirs.user_id = s.author_id
+		      )
+		    )
 		  )
 		ORDER BY
 		  CASE WHEN s.author_id = $1 THEN 0 ELSE 1 END,

@@ -25,6 +25,19 @@ var (
 	ErrNotImplemented = errors.New("not_implemented")
 )
 
+const (
+	otpTTL               = 5 * time.Minute
+	maxOTPVerifyAttempts = 5
+)
+
+const consumeOTPScript = `
+local stored = redis.call("GET", KEYS[1])
+if not stored then return 0 end
+if stored ~= ARGV[1] then return -1 end
+redis.call("DEL", KEYS[1])
+return 1
+`
+
 // Service holds the business logic for auth. Controllers stay thin.
 type Service struct {
 	repo *Repository
@@ -48,9 +61,12 @@ func (s *Service) Start(ctx context.Context, phone string) (code string, err err
 		return "", err
 	}
 	code = randomDigits(6)
-	if err := s.rdb.Set(ctx, otpKey(phone), code, 5*time.Minute).Err(); err != nil {
+	// Never keep the OTP itself in Redis. A read-only Redis compromise must
+	// not immediately become an account takeover.
+	if err := s.rdb.Set(ctx, otpKey(phone), otpDigest(phone, code), otpTTL).Err(); err != nil {
 		return "", fmt.Errorf("store otp: %w", err)
 	}
+	_ = s.rdb.Del(ctx, otpVerifyAttemptsKey(phone)).Err()
 	return code, nil
 }
 
@@ -60,18 +76,22 @@ func (s *Service) Start(ctx context.Context, phone string) (code string, err err
 // Skeleton: this is the canonical happy path; pre-key bundle upload and
 // device-trust events land in backend/auth.
 func (s *Service) Verify(ctx context.Context, in VerifyRequest) (*Tokens, *User, error) {
-	got, err := s.rdb.Get(ctx, otpKey(in.Phone)).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil, ErrCodeExpired
+	if err := s.takeBucket(ctx, otpVerifyAttemptsKey(in.Phone), maxOTPVerifyAttempts, time.Minute); err != nil {
+		return nil, nil, err
 	}
+	result, err := s.rdb.Eval(ctx, consumeOTPScript, []string{otpKey(in.Phone)}, otpDigest(in.Phone, in.Code)).Int()
 	if err != nil {
-		return nil, nil, fmt.Errorf("read otp: %w", err)
+		return nil, nil, fmt.Errorf("verify otp: %w", err)
 	}
-	if got != in.Code {
+	switch result {
+	case 0:
+		return nil, nil, ErrCodeExpired
+	case -1:
 		return nil, nil, ErrInvalidCode
 	}
-	// one-time use
-	_ = s.rdb.Del(ctx, otpKey(in.Phone)).Err()
+	if result != 1 {
+		return nil, nil, ErrInvalidCode
+	}
 
 	phoneHash := sha256Bytes(in.Phone)
 	user, err := s.repo.UserByPhoneHash(ctx, phoneHash)
@@ -217,7 +237,9 @@ func (s *Service) takeBucket(ctx context.Context, key string, max int64, window 
 	return nil
 }
 
-func otpKey(phone string) string { return "otp:" + sha256Hex(phone) }
+func otpKey(phone string) string               { return "otp:" + sha256Hex(phone) }
+func otpVerifyAttemptsKey(phone string) string { return "rl:auth:verify:" + sha256Hex(phone) }
+func otpDigest(phone, code string) string      { return sha256Hex(phone + ":" + code) }
 
 // suggestUsername produces a deterministic placeholder until the client
 // completes the profile-setup flow that already exists in the mobile app.

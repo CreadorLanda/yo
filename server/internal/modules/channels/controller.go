@@ -220,11 +220,12 @@ func writeErr(ctx *gin.Context, err error) {
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrMemberNotFound),
 		errors.Is(err, ErrInviteNotFound):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case errors.Is(err, ErrForbidden), errors.Is(err, ErrCannotPost):
+	case errors.Is(err, ErrForbidden), errors.Is(err, ErrCannotPost), errors.Is(err, ErrJoinApproval), errors.Is(err, ErrInviteOnly):
 		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrHandleTaken):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrInvalidHandle), errors.Is(err, ErrInvalidName),
+		errors.Is(err, ErrInvalidVisibility), errors.Is(err, ErrInvalidPostPolicy), errors.Is(err, ErrInvalidJoinMode),
 		errors.Is(err, ErrCommentsOff), errors.Is(err, ErrReactionsOff),
 		errors.Is(err, ErrInvalidRole), errors.Is(err, ErrCannotDemote),
 		errors.Is(err, ErrSelfRole):

@@ -75,7 +75,17 @@ export async function getDevicePushToken(): Promise<string | null> {
   }
 
   try {
-    // The device's own FCM registration token, not an Expo one.
+    // iOS returns an APNs token from getDevicePushTokenAsync. The server's
+    // native sender is FCM-only, so APNs tokens would be rejected as if they
+    // were Android registration tokens. Route iOS through Expo, which owns
+    // the APNs provider configuration for this EAS project.
+    if (Platform.OS === 'ios') {
+      const token = await Notifications.getExpoPushTokenAsync();
+      return typeof token.data === 'string' ? token.data : null;
+    }
+
+    // Android returns the device's own FCM registration token, not an Expo
+    // token. This keeps Android delivery direct through our FCM sender.
     //
     // An Expo token is delivered by Expo's servers, which means every
     // notification this app sends passes through a third party. The native

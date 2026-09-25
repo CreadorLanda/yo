@@ -45,6 +45,10 @@ func NewService(repo *Repository, rootDir string, maxSize int64, ttl time.Durati
 	return &Service{repo: repo, rootDir: rootDir, maxSize: maxSize, ttl: ttl}
 }
 
+// MaxRequestBytes includes a small multipart envelope allowance. The HTTP
+// layer must reject oversized bodies before multipart parsing allocates them.
+func (s *Service) MaxRequestBytes() int64 { return s.maxSize + 1<<20 }
+
 func (s *Service) toObject(row objectRow) Object {
 	name := ""
 	if row.OriginalName != nil {
@@ -227,6 +231,24 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (Object, error) {
 	return s.toObject(row), nil
 }
 
+// GetForUser is the authenticated metadata path. Until media grants are
+// persisted at attachment time, only the uploader can retrieve an object by
+// id. Returning not-found for another user avoids turning this endpoint into
+// an object-existence oracle.
+func (s *Service) GetForUser(ctx context.Context, id, userID uuid.UUID) (Object, error) {
+	row, err := s.repo.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Object{}, ErrNotFound
+		}
+		return Object{}, err
+	}
+	if row.OwnerID != userID {
+		return Object{}, ErrNotFound
+	}
+	return s.toObject(row), nil
+}
+
 // ErrPurged means the bytes were swept after delivery; the row survives so
 // the client can show "media no longer available" rather than an error.
 var ErrPurged = errors.New("media_purged")
@@ -242,6 +264,34 @@ func (s *Service) Open(ctx context.Context, id uuid.UUID) (Object, *os.File, err
 	}
 	abs := filepath.Join(s.rootDir, filepath.FromSlash(row.StoragePath))
 	// Prevent path escape.
+	if !strings.HasPrefix(filepath.Clean(abs), filepath.Clean(s.rootDir)) {
+		return Object{}, nil, ErrNotFound
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Object{}, nil, ErrNotFound
+		}
+		return Object{}, nil, err
+	}
+	return s.toObject(row), f, nil
+}
+
+// OpenForUser is the byte-stream equivalent of GetForUser. A future media
+// grant table can widen this check for message/channel/story recipients
+// without weakening the controller contract.
+func (s *Service) OpenForUser(ctx context.Context, id, userID uuid.UUID) (Object, *os.File, error) {
+	row, err := s.repo.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Object{}, nil, ErrNotFound
+		}
+		return Object{}, nil, err
+	}
+	if row.OwnerID != userID {
+		return Object{}, nil, ErrNotFound
+	}
+	abs := filepath.Join(s.rootDir, filepath.FromSlash(row.StoragePath))
 	if !strings.HasPrefix(filepath.Clean(abs), filepath.Clean(s.rootDir)) {
 		return Object{}, nil, ErrNotFound
 	}

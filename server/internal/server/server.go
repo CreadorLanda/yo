@@ -507,6 +507,9 @@ func (s *Server) ListenAndServe() {
 		Addr:              s.cfg.HTTP.Addr,
 		Handler:           s.router,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       2 * time.Minute,
+		WriteTimeout:      2 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
 	}
 	go func() {
 		err := s.pubSrv.ListenAndServe()

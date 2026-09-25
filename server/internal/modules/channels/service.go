@@ -11,14 +11,19 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("channel_not_found")
-	ErrHandleTaken   = errors.New("handle_taken")
-	ErrInvalidHandle = errors.New("invalid_handle")
-	ErrInvalidName   = errors.New("invalid_name")
-	ErrForbidden     = errors.New("forbidden")
-	ErrCannotPost    = errors.New("cannot_post")
-	ErrCommentsOff   = errors.New("comments_disabled")
-	ErrReactionsOff  = errors.New("reactions_disabled")
+	ErrNotFound          = errors.New("channel_not_found")
+	ErrHandleTaken       = errors.New("handle_taken")
+	ErrInvalidHandle     = errors.New("invalid_handle")
+	ErrInvalidName       = errors.New("invalid_name")
+	ErrInvalidVisibility = errors.New("invalid_visibility")
+	ErrInvalidPostPolicy = errors.New("invalid_post_policy")
+	ErrInvalidJoinMode   = errors.New("invalid_join_mode")
+	ErrForbidden         = errors.New("forbidden")
+	ErrJoinApproval      = errors.New("join_requires_approval")
+	ErrInviteOnly        = errors.New("channel_invite_only")
+	ErrCannotPost        = errors.New("cannot_post")
+	ErrCommentsOff       = errors.New("comments_disabled")
+	ErrReactionsOff      = errors.New("reactions_disabled")
 )
 
 var handleRe = regexp.MustCompile(`^[a-z0-9_]{2,24}$`)
@@ -99,13 +104,22 @@ func (s *Service) Create(ctx context.Context, owner uuid.UUID, req CreateChannel
 	if vis == "" {
 		vis = VisPublic
 	}
+	if vis != VisPublic && vis != VisPrivate {
+		return Channel{}, ErrInvalidVisibility
+	}
 	who := req.WhoCanPost
 	if who == "" {
 		who = PostAdmins
 	}
+	if who != PostAdmins && who != PostPublishers && who != PostEveryone {
+		return Channel{}, ErrInvalidPostPolicy
+	}
 	join := req.JoinMode
 	if join == "" {
 		join = JoinOpen
+	}
+	if join != JoinOpen && join != JoinRequest && join != JoinInvite {
+		return Channel{}, ErrInvalidJoinMode
 	}
 	cat := req.Category
 	if cat == "" {
@@ -187,6 +201,15 @@ func (s *Service) Patch(ctx context.Context, id, user uuid.UUID, req PatchChanne
 	if !s.canManage(ch, user) {
 		return Channel{}, ErrForbidden
 	}
+	if req.Visibility != nil && *req.Visibility != VisPublic && *req.Visibility != VisPrivate {
+		return Channel{}, ErrInvalidVisibility
+	}
+	if req.WhoCanPost != nil && *req.WhoCanPost != PostAdmins && *req.WhoCanPost != PostPublishers && *req.WhoCanPost != PostEveryone {
+		return Channel{}, ErrInvalidPostPolicy
+	}
+	if req.JoinMode != nil && *req.JoinMode != JoinOpen && *req.JoinMode != JoinRequest && *req.JoinMode != JoinInvite {
+		return Channel{}, ErrInvalidJoinMode
+	}
 	var handle *string
 	if req.Handle != nil {
 		h := normalizeHandle(*req.Handle)
@@ -225,6 +248,18 @@ func (s *Service) Follow(ctx context.Context, id, user uuid.UUID) (Channel, erro
 	}
 	if ch.Following {
 		return ch, nil
+	}
+	switch ch.JoinMode {
+	case JoinRequest:
+		// There is no persisted request workflow yet. Refusing here is safer
+		// than silently turning an approval-only channel into an open one.
+		return Channel{}, ErrJoinApproval
+	case JoinInvite:
+		return Channel{}, ErrInviteOnly
+	case JoinOpen:
+		// continue
+	default:
+		return Channel{}, ErrForbidden
 	}
 	if err := s.repo.Follow(ctx, id, user, RoleMember); err != nil {
 		return Channel{}, err

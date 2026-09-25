@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -23,8 +24,13 @@ func NewController(svc *Service) *Controller {
 
 // PostUpload — POST /media/upload  (multipart field "file")
 func (c *Controller) PostUpload(ctx *gin.Context) {
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, c.svc.MaxRequestBytes())
 	file, err := ctx.FormFile("file")
 	if err != nil {
+		if strings.Contains(err.Error(), "request body too large") {
+			ctx.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "media_too_large"})
+			return
+		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "missing_file"})
 		return
 	}
@@ -77,7 +83,7 @@ func (c *Controller) GetMeta(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
 		return
 	}
-	obj, err := c.svc.Get(ctx.Request.Context(), id)
+	obj, err := c.svc.GetForUser(ctx.Request.Context(), id, middleware.UserIDFrom(ctx))
 	if err != nil {
 		writeErr(ctx, err)
 		return
@@ -92,7 +98,7 @@ func (c *Controller) GetFile(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
 		return
 	}
-	obj, f, err := c.svc.Open(ctx.Request.Context(), id)
+	obj, f, err := c.svc.OpenForUser(ctx.Request.Context(), id, middleware.UserIDFrom(ctx))
 	if err != nil {
 		writeErr(ctx, err)
 		return

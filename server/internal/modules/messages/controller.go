@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -348,19 +349,27 @@ func (c *Controller) GetMessages(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, msgs)
 }
 
-// GetWS — GET /ws  (token via query or Authorization)
+// GetWS — GET /ws (token via Authorization or the WebSocket subprotocol).
 // Upgrades to WebSocket. Auth middleware is not used so we parse the token
-// ourselves (browsers cannot set headers on WS easily; mobile can use either).
+// ourselves. Query-string tokens are deliberately rejected: URLs routinely
+// reach proxy, access and browser history logs.
 func (c *Controller) GetWS(ctx *gin.Context) {
 	if c.hub == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "realtime_unavailable"})
 		return
 	}
-	raw := ctx.Query("token")
+	raw := ""
+	h := ctx.GetHeader("Authorization")
+	if len(h) > 7 && (h[:7] == "Bearer " || h[:7] == "bearer ") {
+		raw = h[7:]
+	}
 	if raw == "" {
-		h := ctx.GetHeader("Authorization")
-		if len(h) > 7 && (h[:7] == "Bearer " || h[:7] == "bearer ") {
-			raw = h[7:]
+		for _, protocol := range strings.Split(ctx.GetHeader("Sec-WebSocket-Protocol"), ",") {
+			protocol = strings.TrimSpace(protocol)
+			if strings.HasPrefix(protocol, "yo-bearer.") {
+				raw = strings.TrimPrefix(protocol, "yo-bearer.")
+				break
+			}
 		}
 	}
 	if raw == "" {
