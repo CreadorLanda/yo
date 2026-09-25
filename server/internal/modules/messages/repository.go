@@ -430,7 +430,7 @@ func (r *Repository) InsertMessage(ctx context.Context, chatID, senderID uuid.UU
 //
 // Enforced here rather than on the device: a reinstall would otherwise
 // reset the count, which would make "view once" a suggestion.
-func (r *Repository) RegisterView(ctx context.Context, messageID int64, userID uuid.UUID) (limit *int, left *int, err error) {
+func (r *Repository) RegisterView(ctx context.Context, chatID uuid.UUID, messageID int64, userID uuid.UUID) (limit *int, left *int, err error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -438,7 +438,7 @@ func (r *Repository) RegisterView(ctx context.Context, messageID int64, userID u
 	defer tx.Rollback(ctx)
 
 	if err = tx.QueryRow(ctx,
-		`SELECT view_limit FROM messages WHERE id = $1`, messageID).Scan(&limit); err != nil {
+		`SELECT view_limit FROM messages WHERE id = $1 AND chat_id = $2`, messageID, chatID).Scan(&limit); err != nil {
 		return nil, nil, err
 	}
 	// Unlimited messages are not tracked at all.

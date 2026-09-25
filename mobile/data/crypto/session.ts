@@ -107,6 +107,18 @@ function sessionKey(peerUserId: string) {
  */
 const sessionCache = new Map<string, SessionRecord | null>();
 
+// A direct-message counter is part of the cryptographic state. Serialise
+// sends per peer so two rapid sends cannot both read the same counter and
+// reuse the same secretbox nonce.
+const peerSendLocks = new Map<string, Promise<unknown>>();
+
+function withPeerSendLock<T>(peerUserId: string, run: () => Promise<T>): Promise<T> {
+  const previous = peerSendLocks.get(peerUserId) ?? Promise.resolve();
+  const next = previous.then(run, run);
+  peerSendLocks.set(peerUserId, next.catch(() => undefined));
+  return next;
+}
+
 export async function loadSession(peerUserId: string): Promise<SessionRecord | null> {
   // Cache under the namespaced key too — keyed by peer alone it would carry
   // account A's session into account B for the life of the process, which is
@@ -345,45 +357,47 @@ export async function encryptForPeer(
   plaintext: string,
   opts?: { peerUsername?: string },
 ): Promise<string> {
-  let session = await loadSession(peerUserId);
-  if (!session && opts?.peerUsername) {
-    session = await establishSessionAsInitiator(peerUserId, opts.peerUsername);
-  }
-  if (!session) {
-    throw new Error('session_missing');
-  }
+	return withPeerSendLock(peerUserId, async () => {
+		let session = await loadSession(peerUserId);
+		if (!session && opts?.peerUsername) {
+			session = await establishSessionAsInitiator(peerUserId, opts.peerUsername);
+		}
+		if (!session) {
+			throw new Error('session_missing');
+		}
 
-  const ikPublic = await getIdentityPublic();
-  if (!ikPublic) throw new Error('local_keys_missing');
+		const ikPublic = await getIdentityPublic();
+		if (!ikPublic) throw new Error('local_keys_missing');
 
-  const root = b64urlToBytes(session.rootKey);
-  const n = session.sendN;
-  const mk = messageKey(root, n);
-  const nonce = nonceFromCounter(n);
-  const boxed = nacl.secretbox(utf8Encode(plaintext), nonce, mk);
-  if (!boxed) throw new Error('encrypt_failed');
+		const root = b64urlToBytes(session.rootKey);
+		const n = session.sendN;
+		const mk = messageKey(root, n);
+		const nonce = nonceFromCounter(n);
+		const boxed = nacl.secretbox(utf8Encode(plaintext), nonce, mk);
+		if (!boxed) throw new Error('encrypt_failed');
 
-  const header: EnvelopeHeader = {
-    v: 1,
-    ik: ikPublic,
-    n,
-  };
-  // Repeat the handshake until the peer proves they can decrypt, rather than
-  // sending it once on message zero. Anything can drop the first message —
-  // a reload, a chat never opened, the parallel decrypt below racing past
-  // it — and every message after that was unrecoverable for the peer.
-  if (session.handshake) {
-    header.ek = session.handshake.ek;
-    if (session.handshake.otkId != null) header.otk_id = session.handshake.otkId;
-    if (session.handshake.spkId != null) header.spk_id = session.handshake.spkId;
-  }
+		const header: EnvelopeHeader = {
+			v: 1,
+			ik: ikPublic,
+			n,
+		};
+		// Repeat the handshake until the peer proves they can decrypt, rather than
+		// sending it once on message zero. Anything can drop the first message —
+		// a reload, a chat never opened, the parallel decrypt below racing past
+		// it — and every message after that was unrecoverable for the peer.
+		if (session.handshake) {
+			header.ek = session.handshake.ek;
+			if (session.handshake.otkId != null) header.otk_id = session.handshake.otkId;
+			if (session.handshake.spkId != null) header.spk_id = session.handshake.spkId;
+		}
 
-  session.sendN = n + 1;
-  await saveSession(session);
+		session.sendN = n + 1;
+		await saveSession(session);
 
-  const headerB64 = bytesToB64url(utf8Encode(JSON.stringify(header)));
-  const bodyB64 = bytesToB64url(boxed);
-  return `${ENVELOPE_PREFIX}${headerB64}.${bodyB64}`;
+		const headerB64 = bytesToB64url(utf8Encode(JSON.stringify(header)));
+		const bodyB64 = bytesToB64url(boxed);
+		return `${ENVELOPE_PREFIX}${headerB64}.${bodyB64}`;
+	});
 }
 
 /** Decrypt an envelope. Falls back to raw content if not encrypted. */

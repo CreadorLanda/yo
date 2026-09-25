@@ -236,7 +236,7 @@ func (s *Service) OpenLimitedMessage(ctx context.Context, chatID uuid.UUID, mess
 	if err := s.requireParticipant(ctx, chatID, viewer); err != nil {
 		return nil, nil, err
 	}
-	limit, left, err := s.repo.RegisterView(ctx, messageID, viewer)
+	limit, left, err := s.repo.RegisterView(ctx, chatID, messageID, viewer)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil, ErrMessageNotFound
