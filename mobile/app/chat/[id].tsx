@@ -992,7 +992,9 @@ export default function ChatScreen() {
               durationMs: duration * 1000,
             });
             const body = encodeMediaContent(uploaded.url, '', voiceKey);
-            const dto = await apiSendMessage(id, await encryptBody(body), 'audio');
+            const dto = await apiSendMessage(id, await encryptBody(body), 'audio', undefined, null, {
+              mediaIds: [uploaded.id],
+            });
             const mapped = mapApiMessage(dto, meId);
             setMessages((prev) => {
               if (prev.some((m) => m.id === mapped.id)) {
@@ -1542,6 +1544,9 @@ export default function ChatScreen() {
         id,
         await encryptBody(encodeMediaContent(sticker.url)),
         'sticker',
+        undefined,
+        null,
+        { mediaIds: [sticker.media_id] },
       );
       setMessages((prev) => {
         const mapped = mapApiMessage(dto, meId);
@@ -1614,6 +1619,7 @@ export default function ChatScreen() {
         kind,
         undefined,
         viewLimit,
+        { mediaIds: [uploaded.id] },
       );
       const mapped = mapApiMessage(dto, meId);
       setMessages((prev) => {
@@ -1747,6 +1753,9 @@ export default function ChatScreen() {
         id,
         await encryptBody(encodeMediaContent(uploaded.url, asset.name, audioKey)),
         'audio',
+        undefined,
+        null,
+        { mediaIds: [uploaded.id] },
       );
       setMessages((prev) => [...prev, mapApiMessage(dto, meId)]);
       await refreshChats();
@@ -1856,7 +1865,9 @@ export default function ChatScreen() {
           mimeType: asset.mimeType ?? 'application/octet-stream',
         });
         const body = encodeMediaContent(uploaded.url, asset.name, docKey);
-        await apiSendMessage(id, await encryptBody(body), 'document');
+        await apiSendMessage(id, await encryptBody(body), 'document', undefined, null, {
+          mediaIds: [uploaded.id],
+        });
       } catch (err) {
         appAlert(t('chats.action_failed_title'), describeError(err));
       }

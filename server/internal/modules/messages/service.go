@@ -26,6 +26,7 @@ var (
 	ErrUnencryptedMessage  = errors.New("message_must_be_e2ee_envelope")
 	ErrInvalidMessageType  = errors.New("invalid_message_type")
 	ErrInvalidEnvelopeChat = errors.New("invalid_e2ee_envelope_for_chat")
+	ErrInvalidMediaAttach  = errors.New("invalid_media_attachment")
 )
 
 // Broadcaster is satisfied by *realtime.Hub. Kept as an interface so the
@@ -38,6 +39,13 @@ type Broadcaster interface {
 // PushNotifier enqueues offline push jobs (notifications module).
 type PushNotifier interface {
 	NotifyUser(ctx context.Context, userID uuid.UUID, category, title, body string, data map[string]string) error
+}
+
+// MediaGrants authorizes opaque media ids for the recipients of a message.
+// Messages stay E2EE, so this is the narrow metadata needed to protect the
+// authenticated file endpoint without decrypting message content server-side.
+type MediaGrants interface {
+	GrantToChat(ctx context.Context, mediaID, chatID, ownerID uuid.UUID) error
 }
 
 // BlockList answers the one question this module asks about blocking.
@@ -60,6 +68,7 @@ type Service struct {
 	hub    Broadcaster
 	push   PushNotifier
 	blocks BlockList
+	media  MediaGrants
 }
 
 func NewService(repo *Repository, usersRepo *users.Repository, hub Broadcaster, push PushNotifier) *Service {
@@ -73,6 +82,11 @@ func NewService(repo *Repository, usersRepo *users.Repository, hub Broadcaster, 
 // of them have an opinion about.
 func (s *Service) WithBlocks(b BlockList) *Service {
 	s.blocks = b
+	return s
+}
+
+func (s *Service) WithMediaGrants(m MediaGrants) *Service {
+	s.media = m
 	return s
 }
 
@@ -305,6 +319,19 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	}
 	if !validateEnvelopeForChat(req.Content, senderID, chat.Type) {
 		return Message{}, envelopeError(req.Content)
+	}
+	if len(req.MediaIDs) > 10 {
+		return Message{}, ErrInvalidMediaAttach
+	}
+	if len(req.MediaIDs) > 0 {
+		if s.media == nil {
+			return Message{}, ErrInvalidMediaAttach
+		}
+		for _, mediaID := range req.MediaIDs {
+			if err := s.media.GrantToChat(ctx, mediaID, chatID, senderID); err != nil {
+				return Message{}, ErrInvalidMediaAttach
+			}
+		}
 	}
 	// One more hop than the client claims, and never fewer than zero. Taking
 	// the number at face value would let a client reset a chain that has been

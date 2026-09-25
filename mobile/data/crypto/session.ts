@@ -424,9 +424,19 @@ export async function encryptForPeer(
 }
 
 /** Decrypt an envelope. Falls back to raw content if not encrypted. */
-export async function decryptFromPeer(
+export function decryptFromPeer(
   peerUserId: string,
   content: string,
+): Promise<string> {
+  return withPeerSendLock(peerUserId, (assertActive) =>
+    decryptFromPeerLocked(peerUserId, content, assertActive),
+  );
+}
+
+async function decryptFromPeerLocked(
+  peerUserId: string,
+  content: string,
+  assertActive: () => void,
 ): Promise<string> {
   if (!isEnvelope(content)) return content;
 
@@ -442,8 +452,10 @@ export async function decryptFromPeer(
   const body = b64urlToBytes(rest.slice(dot + 1));
 
   let session = await loadSession(peerUserId);
+  assertActive();
   if (!session && header.ek) {
     session = await establishSessionAsResponder(peerUserId, header);
+    assertActive();
   }
   if (!session) {
     return '[encrypted message — missing keys]';
@@ -474,6 +486,7 @@ export async function decryptFromPeer(
   // envelopes, whose ik/ek are ours and would derive pure noise.
   if (!opened && header.ek && header.ik) {
     const candidate = await deriveResponderRoot(header);
+    assertActive();
     if (candidate) {
       opened = nacl.secretbox.open(body, nonce, messageKey(candidate, header.n));
       if (opened) {
@@ -493,6 +506,7 @@ export async function decryptFromPeer(
           establishedAt: new Date().toISOString(),
           pastRoots: superseded,
         };
+        assertActive();
         await saveSession(session);
       }
     }
@@ -506,11 +520,13 @@ export async function decryptFromPeer(
   // and no longer needs repeating on every message we send.
   if (session.handshake) {
     session.handshake = undefined;
+    assertActive();
     await saveSession(session);
   }
 
   if (header.n >= session.recvN) {
     session.recvN = header.n + 1;
+    assertActive();
     await saveSession(session);
   }
   return utf8Decode(opened);

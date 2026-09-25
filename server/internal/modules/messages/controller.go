@@ -410,7 +410,8 @@ func writeErr(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrInvalidReceipt), errors.Is(err, ErrInvalidReport),
 		errors.Is(err, ErrInvalidTTL), errors.Is(err, ErrUnencryptedMessage),
-		errors.Is(err, ErrInvalidMessageType), errors.Is(err, ErrInvalidEnvelopeChat):
+		errors.Is(err, ErrInvalidMessageType), errors.Is(err, ErrInvalidEnvelopeChat),
+		errors.Is(err, ErrInvalidMediaAttach):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})

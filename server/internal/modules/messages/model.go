@@ -207,7 +207,12 @@ type CreateChatResponse struct {
 type SendMessageRequest struct {
 	Content     string      `json:"content" binding:"required"`
 	MessageType MessageType `json:"message_type"`
-	ReplyToID   *int64      `json:"reply_to_id,omitempty"`
+	// MediaIDs are the server-side objects referenced by the E2EE payload.
+	// The server cannot inspect the encrypted content, so the sender declares
+	// the ids separately and the media module verifies ownership before
+	// granting access to the chat participants.
+	MediaIDs  []uuid.UUID `json:"media_ids,omitempty"`
+	ReplyToID *int64      `json:"reply_to_id,omitempty"`
 	// ViewLimit makes this a limited-view message. Nil = unlimited.
 	ViewLimit *int `json:"view_limit,omitempty"`
 	// ForwardCount is the count carried by the content being forwarded. The

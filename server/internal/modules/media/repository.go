@@ -2,12 +2,16 @@ package media
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrMediaNotFound = errors.New("media_not_found")
+var ErrMediaNotOwner = errors.New("media_not_owner")
 
 type Repository struct {
 	db *pgxpool.Pool
@@ -63,6 +67,74 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (objectRow, error) {
 		&row.StoragePath, &row.CreatedAt,
 	)
 	return row, err
+}
+
+func (r *Repository) GetForUser(ctx context.Context, id, userID uuid.UUID) (objectRow, error) {
+	const q = `
+		SELECT m.id, m.owner_id, m.kind, m.mime_type, m.size_bytes, m.width, m.height,
+		       m.duration_ms, m.original_name, m.storage_path, m.created_at
+		FROM media_objects m
+		WHERE m.id = $1
+		  AND (
+		    m.owner_id = $2
+		    OR EXISTS (
+		      SELECT 1 FROM media_grants g
+		      WHERE g.media_id = m.id AND g.user_id = $2
+		    )
+		  )
+	`
+	var row objectRow
+	err := r.db.QueryRow(ctx, q, id, userID).Scan(
+		&row.ID, &row.OwnerID, &row.Kind, &row.MimeType, &row.SizeBytes,
+		&row.Width, &row.Height, &row.DurationMs, &row.OriginalName,
+		&row.StoragePath, &row.CreatedAt,
+	)
+	return row, err
+}
+
+// GrantToChat gives every current participant except the uploader access to
+// an attachment. The owner check is server-side so a caller cannot turn a
+// leaked UUID into access for another account.
+func (r *Repository) GrantToChat(ctx context.Context, mediaID, chatID, ownerID uuid.UUID) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var actualOwner uuid.UUID
+	if err := tx.QueryRow(ctx,
+		`SELECT owner_id FROM media_objects WHERE id = $1 FOR SHARE`, mediaID,
+	).Scan(&actualOwner); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrMediaNotFound
+		}
+		return err
+	}
+	if actualOwner != ownerID {
+		return ErrMediaNotOwner
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO media_grants (media_id, user_id)
+		SELECT $1, cp.user_id
+		FROM chat_participants cp
+		WHERE cp.chat_id = $2 AND cp.user_id <> $3
+		ON CONFLICT (media_id, user_id) DO NOTHING
+	`, mediaID, chatID, ownerID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE media_objects m
+		SET expected_recipients = (
+			SELECT COUNT(*) FROM media_grants g
+			WHERE g.media_id = m.id AND g.user_id <> m.owner_id
+		)
+		WHERE m.id = $1
+	`, mediaID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) Delete(ctx context.Context, id, ownerID uuid.UUID) (objectRow, error) {
@@ -136,7 +208,8 @@ func (r *Repository) DuePurge(ctx context.Context, limit int) ([]purgeCandidate,
 		        (m.expires_at IS NOT NULL AND m.expires_at <= NOW())
 		     OR (
 		          m.expected_recipients > 0
-		          AND (SELECT COUNT(*) FROM media_fetches f WHERE f.media_id = m.id)
+		          AND (SELECT COUNT(*) FROM media_fetches f
+		               WHERE f.media_id = m.id AND f.user_id <> m.owner_id)
 		              >= m.expected_recipients
 		        )
 		      )

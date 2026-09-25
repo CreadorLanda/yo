@@ -148,6 +148,12 @@ func (s *Service) AttachToMessage(ctx context.Context, id uuid.UUID, recipients 
 	return s.repo.SetExpiry(ctx, id, time.Now().Add(s.ttl), recipients)
 }
 
+// GrantToChat authorizes the current members of a chat to fetch an owned
+// attachment. It is called while the message request is authenticated.
+func (s *Service) GrantToChat(ctx context.Context, mediaID, chatID, ownerID uuid.UUID) error {
+	return s.repo.GrantToChat(ctx, mediaID, chatID, ownerID)
+}
+
 // NoteFetched records a recipient's download so the blob can be released.
 func (s *Service) NoteFetched(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.MarkFetched(ctx, id, userID)
@@ -231,20 +237,16 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (Object, error) {
 	return s.toObject(row), nil
 }
 
-// GetForUser is the authenticated metadata path. Until media grants are
-// persisted at attachment time, only the uploader can retrieve an object by
-// id. Returning not-found for another user avoids turning this endpoint into
-// an object-existence oracle.
+// GetForUser is the authenticated metadata path. The uploader or an explicit
+// recipient grant may retrieve an object; all other callers get not-found so
+// the endpoint does not become an object-existence oracle.
 func (s *Service) GetForUser(ctx context.Context, id, userID uuid.UUID) (Object, error) {
-	row, err := s.repo.Get(ctx, id)
+	row, err := s.repo.GetForUser(ctx, id, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Object{}, ErrNotFound
 		}
 		return Object{}, err
-	}
-	if row.OwnerID != userID {
-		return Object{}, ErrNotFound
 	}
 	return s.toObject(row), nil
 }
@@ -276,19 +278,15 @@ func (s *Service) Open(ctx context.Context, id uuid.UUID) (Object, *os.File, err
 	return s.toObject(row), f, nil
 }
 
-// OpenForUser is the byte-stream equivalent of GetForUser. A future media
-// grant table can widen this check for message/channel/story recipients
-// without weakening the controller contract.
+// OpenForUser is the byte-stream equivalent of GetForUser. Context-specific
+// grants can widen access without weakening the controller contract.
 func (s *Service) OpenForUser(ctx context.Context, id, userID uuid.UUID) (Object, *os.File, error) {
-	row, err := s.repo.Get(ctx, id)
+	row, err := s.repo.GetForUser(ctx, id, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Object{}, nil, ErrNotFound
 		}
 		return Object{}, nil, err
-	}
-	if row.OwnerID != userID {
-		return Object{}, nil, ErrNotFound
 	}
 	abs, ok := mediaPath(s.rootDir, row.StoragePath)
 	if !ok {

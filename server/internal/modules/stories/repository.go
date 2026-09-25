@@ -82,14 +82,20 @@ func (r *Repository) Get(ctx context.Context, id, viewer uuid.UUID) (row, error)
 		    s.author_id = $2
 		    OR s.visibility = 'public'
 		    OR (
-		      s.visibility IN ('contacts', 'close')
+		      s.visibility = 'contacts'
 		      AND EXISTS (
 		        SELECT 1
 		        FROM chat_participants mine
 		        JOIN chat_participants theirs ON theirs.chat_id = mine.chat_id
 		        JOIN chats c ON c.id = mine.chat_id AND c.type = 'direct'
-		        WHERE mine.user_id = $2
+		        WHERE c.status = 'active'
+		          AND mine.user_id = $2
 		          AND theirs.user_id = s.author_id
+		          AND NOT EXISTS (
+		            SELECT 1 FROM blocks b
+		            WHERE (b.blocker_id = $2 AND b.blocked_id = s.author_id)
+		               OR (b.blocker_id = s.author_id AND b.blocked_id = $2)
+		          )
 		      )
 		    )
 		  )
@@ -104,10 +110,10 @@ func (r *Repository) Get(ctx context.Context, id, viewer uuid.UUID) (row, error)
 	return x, err
 }
 
-// Feed returns active stories visible to viewer. Contacts and close friends
-// use a shared chat as this application's contact relation. There is no
-// separate close-friends table yet, so both restricted modes fail closed to
-// that relation instead of exposing every user's story.
+// Feed returns active stories visible to viewer. Contacts require an active,
+// unblocked direct chat. Close-friends stories fail closed until an explicit
+// close-friends ACL exists; treating every contact as a close friend leaks
+// the most restricted audience.
 func (r *Repository) Feed(ctx context.Context, viewer uuid.UUID) ([]row, error) {
 	const q = `
 		SELECT s.id, s.author_id, s.kind, s.caption, s.media_url, s.accent, s.visibility,
@@ -123,14 +129,20 @@ func (r *Repository) Feed(ctx context.Context, viewer uuid.UUID) ([]row, error) 
 		    s.author_id = $1
 		    OR s.visibility = 'public'
 		    OR (
-		      s.visibility IN ('contacts', 'close')
+		      s.visibility = 'contacts'
 		      AND EXISTS (
 		        SELECT 1
 		        FROM chat_participants mine
 		        JOIN chat_participants theirs ON theirs.chat_id = mine.chat_id
 		        JOIN chats c ON c.id = mine.chat_id AND c.type = 'direct'
-		        WHERE mine.user_id = $1
+		        WHERE c.status = 'active'
+		          AND mine.user_id = $1
 		          AND theirs.user_id = s.author_id
+		          AND NOT EXISTS (
+		            SELECT 1 FROM blocks b
+		            WHERE (b.blocker_id = $1 AND b.blocked_id = s.author_id)
+		               OR (b.blocker_id = s.author_id AND b.blocked_id = $1)
+		          )
 		      )
 		    )
 		  )

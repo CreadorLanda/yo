@@ -161,6 +161,8 @@ export type MessageOrigin = {
   forwardCount?: number;
   sourceChannelId?: string;
   sourcePostId?: string;
+  /** Server media ids referenced by the encrypted message body. */
+  mediaIds?: string[];
 };
 
 export function sendMessage(
@@ -179,6 +181,7 @@ export function sendMessage(
     forward_count: origin?.forwardCount,
     source_channel_id: origin?.sourceChannelId,
     source_post_id: origin?.sourcePostId,
+    media_ids: origin?.mediaIds,
   });
 }
 

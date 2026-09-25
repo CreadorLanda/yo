@@ -118,6 +118,10 @@ func New(cfg config.Config) (*Server, error) {
 
 	// Native E2E-encrypted messaging (push for offline peers via notifSvc).
 	msgRepo := messages.NewRepository(pg, cfg.Crypto.MessageKey)
+	// Media must exist before messages so SendMessage can grant the current
+	// chat participants access to explicitly declared encrypted attachments.
+	mediaRepo := media.NewRepository(pg)
+	mediaSvc := media.NewService(mediaRepo, cfg.Media.Dir, cfg.Media.MaxUploadBytes, cfg.Media.TTL)
 	// Blocking, which both messages and calls consult through a narrow
 	// interface rather than importing this module.
 	blocksRepo := blocks.NewRepo(pg)
@@ -126,15 +130,14 @@ func New(cfg config.Config) (*Server, error) {
 	}))
 
 	msgSvc := messages.NewService(msgRepo, usersRepo, hub, notifSvc).
-		WithBlocks(blocksRepo)
+		WithBlocks(blocksRepo).
+		WithMediaGrants(mediaSvc)
 	msgCtl := messages.NewController(msgSvc, hub, []byte(cfg.JWT.Secret))
 	messages.Register(authed, msgCtl)
 	// WS lives on the public /api group — token is validated inside the handler.
 	messages.RegisterWS(api, msgCtl)
 
-	// Media uploads (auth) + public file streaming by UUID.
-	mediaRepo := media.NewRepository(pg)
-	mediaSvc := media.NewService(mediaRepo, cfg.Media.Dir, cfg.Media.MaxUploadBytes, cfg.Media.TTL)
+	// Media uploads (auth) + recipient-authorized file streaming.
 	mediaCtl := media.NewController(mediaSvc)
 	media.Register(authed, mediaCtl)
 
