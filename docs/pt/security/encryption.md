@@ -21,8 +21,10 @@
 > que se segue descreve o que o código faz.
 
 A cifra acontece no dispositivo com [TweetNaCl](https://tweetnacl.js.org/)
-(`mobile/data/crypto/`). O servidor guarda texto cifrado e não tem material de
-chaves.
+(`mobile/data/crypto/`). O servidor guarda o texto cifrado resultante e não
+tem as chaves E2EE do cliente. Existe uma camada separada e opcional no
+servidor, com `MESSAGE_KEY`, descrita em [Em repouso](#em-repouso); não é uma
+chave E2EE.
 
 ### Chaves
 
@@ -70,10 +72,12 @@ não um estado assente.
 
 ### No servidor
 
-- Ficheiros de dados Postgres: encriptação completa de disco no host (LUKS / encryption at rest gerida pela cloud).
-- Colunas sensíveis (push tokens, blobs de sessão da ponte, refresh tokens): envelope-encrypted a nível aplicacional com uma KEK em KMS / Vault. As tabelas nunca veem claro.
-- Object storage: cada ficheiro de média tem uma Data Encryption Key (DEK), embrulhada pela KEK. A DEK fica nos metadados do objeto; perder a KEK torna o storage ilegível.
-- Backups: cifrados com uma KEK de backup separada, rotacionada independentemente.
+- **Ficheiros de dados Postgres:** a encriptação de disco no host ou no fornecedor não foi verificada. Não assumas que está activa.
+- **Tokens push:** `push_devices.token` é guardado em texto simples. A coluna antiga `devices.push_token_enc` não é usada pelo código de notificações.
+- **Tokens de sessão:** os tokens de acesso e de atualização são guardados como hashes SHA-256 em `sessions.token_hash` e `sessions.refresh_hash`; os tokens bearer originais não ficam guardados nessas colunas.
+- **Conteúdo das mensagens:** quando existe um `MESSAGE_KEY` válido de 32 bytes, o servidor acrescenta encriptação AES-256-GCM ao conteúdo. A chave é lida do ambiente do servidor; não está guardada em KMS ou Vault. Sem uma chave válida, o repositório guarda o conteúdo como o recebe. Esta camada no servidor é separada da encriptação ponta-a-ponta no cliente e não protege os dados contra o comprometimento do servidor.
+- **Ficheiros de média:** o servidor não cifra uploads com chaves individuais por ficheiro. Ficheiros cifrados no cliente antes do upload continuam a ser texto cifrado; os restantes são guardados como recebidos.
+- **Backups:** este repositório não configura backups automáticos nem um processo de cifragem de backups. Não assumas que existem backups cifrados.
 
 ### No dispositivo
 
@@ -117,8 +121,7 @@ A ponte do WhatsApp rejeitada e o raciocínio completo estão em
 | One-time pre-keys          | Consumidas continuamente; cliente repõe quando baixo |
 | Session keys               | Não rodam por mensagem — ver acima |
 | Refresh tokens             | A cada uso                         |
-| Server KEK (Vault/KMS)     | Anualmente, ou em incidente        |
-| Backup KEK                 | Anualmente                         |
+| `MESSAGE_KEY` (camada de mensagens no servidor) | Não há rotação automática documentada; a rotação precisa de um plano de migração |
 | Certificados TLS           | 90 dias (ACME automatizado)        |
 
 ---
@@ -129,5 +132,7 @@ Dizemos em voz alta para ninguém ser apanhado de surpresa:
 
 - **Metadados.** O servidor vê quem fala com quem e quando. Mitigações estilo sealed-sender estão no seguimento.
 - **Um dispositivo comprometido enquanto desbloqueado.** Quem tem o telefone desbloqueado pode ler tudo; SQLCipher não defende disso.
+- **Dados em repouso no servidor.** Tokens push estão em texto simples. O `MESSAGE_KEY` do servidor é um segredo de ambiente, não uma chave gerida por KMS/Vault, e o servidor consegue ler dados protegidos apenas por ela. A encriptação de disco do host e os backups cifrados não foram verificados.
+- **Média fora de uploads de chat cifrados.** O servidor guarda os bytes recebidos; só ficheiros cifrados no cliente antes do upload ficam ilegíveis para o servidor.
 
-Qualquer coisa para além desta lista deve ser reportada como bug, não como feature.
+Não deduzas uma protecção que não esteja descrita aqui. Se o estado de um fluxo de dados não for claro, considera-o desprotegido até a implementação ser verificada.
