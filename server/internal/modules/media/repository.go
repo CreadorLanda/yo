@@ -90,7 +90,30 @@ func (r *Repository) CanRead(ctx context.Context, id, userID uuid.UUID) (bool, e
 			    OR EXISTS (
 			      SELECT 1 FROM stories s
 			      WHERE s.expires_at > NOW()
-			        AND (s.author_id = $2 OR s.visibility = 'public' OR s.visibility IN ('contacts', 'close'))
+			        AND (
+			          s.author_id = $2
+			          OR s.visibility = 'public'
+			          OR (
+			            s.visibility = 'contacts'
+			            AND EXISTS (
+			              SELECT 1
+			              FROM chats c
+			              JOIN chat_participants author_cp
+			                ON author_cp.chat_id = c.id AND author_cp.user_id = s.author_id
+			              JOIN chat_participants viewer_cp
+			                ON viewer_cp.chat_id = c.id AND viewer_cp.user_id = $2
+			              WHERE c.type = 'direct'
+			                AND c.status = 'active'
+			                AND NOT EXISTS (
+			                  SELECT 1 FROM blocks b
+			                  WHERE (b.blocker_id = s.author_id AND b.blocked_id = $2)
+			                     OR (b.blocker_id = $2 AND b.blocked_id = s.author_id)
+			                )
+			            )
+			          )
+			          -- There is no close-friends ACL yet. Fail closed instead of
+			          -- treating a private audience as public.
+			        )
 			        AND split_part(regexp_replace(s.media_url, '^https?://[^/]+', ''), '?', 1)
 			            IN ('/api/media/' || $1::text, '/api/media/' || $1::text || '/file')
 			    )
