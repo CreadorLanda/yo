@@ -39,7 +39,6 @@ test('starred filter only includes messages saved by the current participant', (
   expect(matchesChatSearchFilter(message({ isStarred: false }), 'starred')).toBe(false);
   expect(filterChatMessages([starred, message()], '', 'starred')).toEqual([starred]);
 });
-
 test('documents and audio match their attachment types', () => {
   expect(matchesChatSearchFilter(message({ attachment: { kind: 'document', name: 'a.pdf', ext: 'PDF', sizeLabel: '' } }), 'documents')).toBe(true);
   expect(matchesChatSearchFilter(message({ media: { type: 'audio', uri: 'audio' } }), 'audio')).toBe(true);

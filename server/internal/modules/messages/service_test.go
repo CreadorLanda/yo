@@ -163,15 +163,15 @@ func TestNonParticipantCannotAccessChat(t *testing.T) {
 	}
 }
 
-// TestListMessagesCarriesReceiptCounts locks in the tick state the sender
-// sees after reopening a chat.
+// TestListMessagesCarriesReceiptCountsAndUnreadState locks in the tick state
+// the sender sees after reopening a chat and the reader's unread cursor.
 //
 // The Message struct always had DeliveredTo/ReadBy fields, but no query ever
 // populated them: they were serialized as zero on every history load, so a
 // reloaded thread showed a single tick even for messages the peer had read.
 // Only the live WebSocket receipt event moved the ticks, and that is gone the
 // moment the screen unmounts.
-func TestListMessagesCarriesReceiptCounts(t *testing.T) {
+func TestListMessagesCarriesReceiptCountsAndUnreadState(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
 	svc := newTestService(pool)
@@ -194,6 +194,16 @@ func TestListMessagesCarriesReceiptCounts(t *testing.T) {
 	untouched, err := svc.SendMessage(ctx, chat.ID, alice, SendMessageRequest{Content: testDirectEnvelope("ignore this")})
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
+	}
+
+	// The read cursor belongs to the viewer, so the receiver sees both
+	// messages as unread before opening the conversation.
+	bobHistory, err := svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages for receiver: %v", err)
+	}
+	if !findMessage(t, bobHistory, sent.ID).IsUnread || !findMessage(t, bobHistory, untouched.ID).IsUnread {
+		t.Fatal("new incoming messages must be marked unread for the receiver")
 	}
 
 	find := func(msgs []Message, id int64) Message {
@@ -235,6 +245,13 @@ func TestListMessagesCarriesReceiptCounts(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetReceipts read: %v", err)
 	}
+	bobHistory, err = svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages after partial receiver read: %v", err)
+	}
+	if findMessage(t, bobHistory, sent.ID).IsUnread || !findMessage(t, bobHistory, untouched.ID).IsUnread {
+		t.Fatal("the read cursor must leave only later incoming messages unread")
+	}
 
 	msgs, err = svc.ListMessages(ctx, chat.ID, alice, 50, 0)
 	if err != nil {
@@ -250,6 +267,30 @@ func TestListMessagesCarriesReceiptCounts(t *testing.T) {
 	if m := find(msgs, untouched.ID); m.DeliveredTo != 0 || m.ReadBy != 0 {
 		t.Fatalf("untouched message: delivered=%d read=%d, want 0/0", m.DeliveredTo, m.ReadBy)
 	}
+
+	if err := svc.SetReceipts(ctx, chat.ID, bob, ReceiptRequest{
+		MessageIDs: []int64{untouched.ID}, Status: ReceiptRead,
+	}); err != nil {
+		t.Fatalf("SetReceipts read remaining message: %v", err)
+	}
+	bobHistory, err = svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages after receiver read: %v", err)
+	}
+	if findMessage(t, bobHistory, sent.ID).IsUnread || findMessage(t, bobHistory, untouched.ID).IsUnread {
+		t.Fatal("messages at or before the receiver's read cursor must not be unread")
+	}
+}
+
+func findMessage(t *testing.T, messages []Message, id int64) Message {
+	t.Helper()
+	for _, message := range messages {
+		if message.ID == id {
+			return message
+		}
+	}
+	t.Fatalf("message %d missing from history", id)
+	return Message{}
 }
 
 func findMessage(t *testing.T, messages []Message, id int64) Message {

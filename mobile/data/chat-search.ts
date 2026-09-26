@@ -1,6 +1,7 @@
 import type { Message } from './mock';
 
 export type ChatSearchFilter = 'all' | 'unread' | 'starred' | 'media' | 'documents' | 'links' | 'audio';
+ 
 
 const LINK_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>()]+/i;
 
