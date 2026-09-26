@@ -104,6 +104,50 @@ func TestCanReadUsesCurrentAudience(t *testing.T) {
 		t.Fatalf("public active story access = %v, err %v; want allowed", allowed, err)
 	}
 
+	contactsMedia := seedAccessMedia(t, ctx, pool, repo, owner)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO stories (author_id, kind, media_url, visibility, expires_at)
+		VALUES ($1, 'image', $2, 'contacts', NOW() + interval '1 hour')
+	`, owner, "/api/media/"+contactsMedia.String()+"/file"); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := repo.CanRead(ctx, contactsMedia, stranger); err != nil || allowed {
+		t.Fatalf("contacts story without direct chat = %v, err %v; want denied", allowed, err)
+	}
+
+	contactsChatID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO chats (id, type, status, created_by) VALUES ($1, 'direct', 'active', $2)`, contactsChatID, owner); err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []uuid.UUID{owner, stranger} {
+		if _, err := pool.Exec(ctx, `INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2)`, contactsChatID, userID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if allowed, err := repo.CanRead(ctx, contactsMedia, stranger); err != nil || !allowed {
+		t.Fatalf("contacts story with active direct chat = %v, err %v; want allowed", allowed, err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2)`, owner, stranger); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := repo.CanRead(ctx, contactsMedia, stranger); err != nil || allowed {
+		t.Fatalf("contacts story with blocked viewer = %v, err %v; want denied", allowed, err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2`, owner, stranger); err != nil {
+		t.Fatal(err)
+	}
+
+	closeMedia := seedAccessMedia(t, ctx, pool, repo, owner)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO stories (author_id, kind, media_url, visibility, expires_at)
+		VALUES ($1, 'image', $2, 'close', NOW() + interval '1 hour')
+	`, owner, "/api/media/"+closeMedia.String()+"/file"); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := repo.CanRead(ctx, closeMedia, stranger); err != nil || allowed {
+		t.Fatalf("close story without ACL = %v, err %v; want denied", allowed, err)
+	}
+
 	channelMedia := seedAccessMedia(t, ctx, pool, repo, owner)
 	var channelID uuid.UUID
 	if err := pool.QueryRow(ctx, `
@@ -130,25 +174,25 @@ func TestCanReadUsesCurrentAudience(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE users SET avatar_uri = $2, photo_visibility = 'nobody' WHERE id = $1`, owner, "/api/media/"+profileMedia.String()+"/file"); err != nil {
 		t.Fatal(err)
 	}
-	if allowed, err := repo.CanRead(ctx, profileMedia, stranger); err != nil || allowed {
+	if allowed, err := repo.CanRead(ctx, profileMedia, member); err != nil || allowed {
 		t.Fatalf("private profile photo access = %v, err %v; want denied", allowed, err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE users SET photo_visibility = 'contacts' WHERE id = $1`, owner); err != nil {
 		t.Fatal(err)
 	}
-	if allowed, err := repo.CanRead(ctx, profileMedia, stranger); err != nil || allowed {
+	if allowed, err := repo.CanRead(ctx, profileMedia, member); err != nil || allowed {
 		t.Fatalf("contacts-only profile photo without shared chat = %v, err %v; want denied", allowed, err)
 	}
 	directID := uuid.New()
 	if _, err := pool.Exec(ctx, `INSERT INTO chats (id, type, created_by) VALUES ($1, 'direct', $2)`, directID, owner); err != nil {
 		t.Fatal(err)
 	}
-	for _, userID := range []uuid.UUID{owner, stranger} {
+	for _, userID := range []uuid.UUID{owner, member} {
 		if _, err := pool.Exec(ctx, `INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2)`, directID, userID); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if allowed, err := repo.CanRead(ctx, profileMedia, stranger); err != nil || !allowed {
+	if allowed, err := repo.CanRead(ctx, profileMedia, member); err != nil || !allowed {
 		t.Fatalf("contacts-only profile photo with shared chat = %v, err %v; want allowed", allowed, err)
 	}
 }
