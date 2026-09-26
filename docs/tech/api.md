@@ -496,6 +496,17 @@ Content-Type: application/json
 }
 ```
 
+#### POST /chats/:id/messages/:message_id/star
+
+Star a message for the authenticated participant. This operation is
+idempotent and returns `204 No Content`.
+
+#### DELETE /chats/:id/messages/:message_id/star
+
+Remove the authenticated participant's star from a message. This operation
+is idempotent and returns `204 No Content`. Message history includes
+`is_starred` for the requesting participant.
+
 ---
 
 ### 5. WebSocket (Real-time)

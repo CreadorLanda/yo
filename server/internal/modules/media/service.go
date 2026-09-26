@@ -148,12 +148,6 @@ func (s *Service) AttachToMessage(ctx context.Context, id uuid.UUID, recipients 
 	return s.repo.SetExpiry(ctx, id, time.Now().Add(s.ttl), recipients)
 }
 
-// GrantToChat authorizes the current members of a chat to fetch an owned
-// attachment. It is called while the message request is authenticated.
-func (s *Service) GrantToChat(ctx context.Context, mediaID, chatID, ownerID uuid.UUID) error {
-	return s.repo.GrantToChat(ctx, mediaID, chatID, ownerID)
-}
-
 // NoteFetched records a recipient's download so the blob can be released.
 func (s *Service) NoteFetched(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.MarkFetched(ctx, id, userID)
@@ -250,20 +244,6 @@ func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Object, error)
 	return s.toObject(row), nil
 }
 
-// GetForUser is the authenticated metadata path. The uploader or an explicit
-// recipient grant may retrieve an object; all other callers get not-found so
-// the endpoint does not become an object-existence oracle.
-func (s *Service) GetForUser(ctx context.Context, id, userID uuid.UUID) (Object, error) {
-	row, err := s.repo.GetForUser(ctx, id, userID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return Object{}, ErrNotFound
-		}
-		return Object{}, err
-	}
-	return s.toObject(row), nil
-}
-
 // ErrPurged means the bytes were swept after delivery; the row survives so
 // the client can show "media no longer available" rather than an error.
 var ErrPurged = errors.New("media_purged")
@@ -278,30 +258,6 @@ func (s *Service) Open(ctx context.Context, id, userID uuid.UUID) (Object, *os.F
 		return Object{}, nil, ErrNotFound
 	}
 	row, err := s.repo.Get(ctx, id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return Object{}, nil, ErrNotFound
-		}
-		return Object{}, nil, err
-	}
-	abs, ok := mediaPath(s.rootDir, row.StoragePath)
-	if !ok {
-		return Object{}, nil, ErrNotFound
-	}
-	f, err := os.Open(abs)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return Object{}, nil, ErrNotFound
-		}
-		return Object{}, nil, err
-	}
-	return s.toObject(row), f, nil
-}
-
-// OpenForUser is the byte-stream equivalent of GetForUser. Context-specific
-// grants can widen access without weakening the controller contract.
-func (s *Service) OpenForUser(ctx context.Context, id, userID uuid.UUID) (Object, *os.File, error) {
-	row, err := s.repo.GetForUser(ctx, id, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Object{}, nil, ErrNotFound

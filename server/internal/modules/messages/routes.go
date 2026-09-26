@@ -31,6 +31,8 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	// Reactions
 	rg.POST("/chats/:id/messages/:mid/reactions", c.PostReact)
 	rg.DELETE("/chats/:id/messages/:mid/reactions", c.DeleteReact)
+	rg.POST("/chats/:id/messages/:mid/star", c.PostStarMessage)
+	rg.DELETE("/chats/:id/messages/:mid/star", c.DeleteStarMessage)
 
 	// Chat actions
 	rg.POST("/chats/:id/accept", c.PostAcceptChat)

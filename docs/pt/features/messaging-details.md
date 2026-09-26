@@ -10,7 +10,6 @@
 |--------|------|-------------|
 | Todas | 💬 | Todas as mensagens |
 | Não lidas | 🔵 | Mensagens não lidas |
-| Lidas | ✅ | Mensagens lidas |
 | Favoritas | ⭐ | Mensagens favoritadas |
 | Mídia | 🖼️ | Apenas mídia |
 | Documentos | 📄 | Apenas documentos |
@@ -30,15 +29,9 @@
 | Encaminhar | Encaminhar para outro chat |
 | Favoritar | Adicionar aos favoritos |
 | Reagir | Adicionar reação |
-| Responder Privado | Responder ao remetente em privado |
 | Excluir | Excluir mensagem |
 
-### Ações de Deslizar
-
-| Deslizar Esquerda | Deslizar Direita |
-|-----------|-----------|
-| Responder | Favoritar |
-| Excluir | Ler/Não lida |
+As ações da mensagem aparecem ao manter a mensagem pressionada. Deslizar a mensagem para a direita responde a essa mensagem.
 
 ---
 

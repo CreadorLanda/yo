@@ -77,6 +77,10 @@ export interface MessageDTO {
   sender_avatar?: string;
   delivered_to?: number;
   read_by?: number;
+  /** Whether this inbound message was beyond the caller's read cursor at history load. */
+  is_unread?: boolean;
+  /** Whether this message is starred by the current participant. */
+  is_starred?: boolean;
   /** Set once read, in a chat with a timer. The countdown runs to this. */
   expires_at?: string;
   /** 0 when written here; 1+ once it has been passed along. */
@@ -272,6 +276,12 @@ export function removeReaction(chatId: string, messageId: number, emoji: string)
   return api.del<ReactionDTO[]>(
     `/api/chats/${chatId}/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`,
   );
+}
+
+/** Save or remove a personal star from a message. */
+export function setMessageStarred(chatId: string, messageId: number, starred: boolean) {
+  const path = `/api/chats/${chatId}/messages/${messageId}/star`;
+  return starred ? api.post<void>(path) : api.del<void>(path);
 }
 
 export interface ReceiptDetail {

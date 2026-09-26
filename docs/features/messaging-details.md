@@ -12,7 +12,6 @@
 |--------|------|-------------|
 | All | 💬 | All messages |
 | Unread | 🔵 | Unread messages |
-| Read | ✅ | Read messages |
 | Starred | ⭐ | Starred/favorite messages |
 | Media | 🖼️ | Media only |
 | Documents | 📄 | Documents only |
@@ -22,7 +21,7 @@
 ### Usage
 
 ```
-Chat → Filter Bar (swipe down)
+Chat → Search → Filter bar
      ↓
 [All] [Unread] [⭐] [🖼️] [📄]
      ↓
@@ -42,15 +41,11 @@ Tap filter to apply
 | Forward | Forward to another chat |
 | Star | Add to favorites |
 | React | Add reaction |
-| Reply privately | Reply to sender in private |
 | Delete | Delete message |
 
 ### Swipe Actions
 
-| Swipe Left | Swipe Right |
-|-----------|-----------|
-| Reply | Star |
-| Delete | Read/Unread |
+Message actions open on long press. Swiping a message to the right replies to it.
 
 ---
 

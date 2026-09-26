@@ -252,6 +252,66 @@ func TestListMessagesCarriesReceiptCounts(t *testing.T) {
 	}
 }
 
+func TestMessageStarsArePerParticipant(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+
+	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_"+uuid.NewString()[:8])
+	eve := createTestUser(t, pool, "eve_"+uuid.NewString()[:8])
+	chat, err := svc.CreateDirectChat(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("CreateDirectChat: %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, chat.ID, bob); err != nil {
+		t.Fatalf("AcceptChat: %v", err)
+	}
+	message, err := svc.SendMessage(ctx, chat.ID, alice, SendMessageRequest{Content: testDirectEnvelope("save this")})
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+
+	if err := svc.SetMessageStar(ctx, chat.ID, bob, message.ID, true); err != nil {
+		t.Fatalf("star message: %v", err)
+	}
+	if err := svc.SetMessageStar(ctx, chat.ID, bob, message.ID, true); err != nil {
+		t.Fatalf("star message idempotently: %v", err)
+	}
+
+	bobMessages, err := svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages for starred user: %v", err)
+	}
+	aliceMessages, err := svc.ListMessages(ctx, chat.ID, alice, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages for other participant: %v", err)
+	}
+	if !findMessage(t, bobMessages, message.ID).IsStarred {
+		t.Fatal("star must appear in the caller's history")
+	}
+	if findMessage(t, aliceMessages, message.ID).IsStarred {
+		t.Fatal("star must not appear in another participant's history")
+	}
+
+	if err := svc.SetMessageStar(ctx, chat.ID, bob, message.ID, false); err != nil {
+		t.Fatalf("unstar message: %v", err)
+	}
+	bobMessages, err = svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages after unstar: %v", err)
+	}
+	if findMessage(t, bobMessages, message.ID).IsStarred {
+		t.Fatal("removed star must not appear in history")
+	}
+	if err := svc.SetMessageStar(ctx, chat.ID, bob, message.ID+100, true); !errors.Is(err, ErrMessageNotFound) {
+		t.Fatalf("star missing message: got %v, want ErrMessageNotFound", err)
+	}
+	if err := svc.SetMessageStar(ctx, chat.ID, eve, message.ID, true); !errors.Is(err, ErrNotParticipant) {
+		t.Fatalf("star message as non-participant: got %v, want ErrNotParticipant", err)
+	}
+}
+
 // TestVoteOnAnotherUsersPoll is the case that used to be impossible.
 //
 // Voting was implemented as an edit of the message carrying the poll, and
