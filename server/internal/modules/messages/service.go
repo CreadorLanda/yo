@@ -12,20 +12,20 @@ import (
 )
 
 var (
-	ErrChatNotFound        = errors.New("chat_not_found")
-	ErrNotParticipant      = errors.New("not_participant")
-	ErrChatBlocked         = errors.New("chat_blocked")
-	ErrPendingChatLimit    = errors.New("pending_chat_limit")
-	ErrCannotAcceptOwn     = errors.New("cannot_accept_own_request")
-	ErrChatNotPending      = errors.New("chat_not_pending")
-	ErrMessageNotFound     = errors.New("message_not_found")
-	ErrInvalidReport       = errors.New("invalid_report")
-	ErrNotSender           = errors.New("not_message_sender")
-	ErrInvalidReceipt      = errors.New("invalid_receipt_status")
-	ErrViewsExhausted      = errors.New("views_exhausted")
-	ErrUnencryptedMessage  = errors.New("message_must_be_e2ee_envelope")
-	ErrInvalidMessageType  = errors.New("invalid_message_type")
-	ErrInvalidEnvelopeChat = errors.New("invalid_e2ee_envelope_for_chat")
+	ErrChatNotFound          = errors.New("chat_not_found")
+	ErrNotParticipant        = errors.New("not_participant")
+	ErrChatBlocked           = errors.New("chat_blocked")
+	ErrPendingChatLimit      = errors.New("pending_chat_limit")
+	ErrCannotAcceptOwn       = errors.New("cannot_accept_own_request")
+	ErrChatNotPending        = errors.New("chat_not_pending")
+	ErrMessageNotFound       = errors.New("message_not_found")
+	ErrInvalidReport         = errors.New("invalid_report")
+	ErrNotSender             = errors.New("not_message_sender")
+	ErrInvalidReceipt        = errors.New("invalid_receipt_status")
+	ErrViewsExhausted        = errors.New("views_exhausted")
+	ErrUnencryptedMessage    = errors.New("message_must_be_e2ee_envelope")
+	ErrInvalidMessageType    = errors.New("invalid_message_type")
+	ErrInvalidEnvelopeChat   = errors.New("invalid_e2ee_envelope_for_chat")
 	ErrInvalidMediaReference = errors.New("invalid_media_reference")
 )
 
@@ -66,6 +66,7 @@ type Service struct {
 	users  *users.Repository
 	hub    Broadcaster
 	push   PushNotifier
+	blocks BlockList
 	media  MediaAccess
 }
 

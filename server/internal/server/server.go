@@ -120,10 +120,6 @@ func New(cfg config.Config) (*Server, error) {
 
 	// Native E2E-encrypted messaging (push for offline peers via notifSvc).
 	msgRepo := messages.NewRepository(pg, cfg.Crypto.MessageKey)
-	// Media must exist before messages so SendMessage can grant the current
-	// chat participants access to explicitly declared encrypted attachments.
-	mediaRepo := media.NewRepository(pg)
-	mediaSvc := media.NewService(mediaRepo, cfg.Media.Dir, cfg.Media.MaxUploadBytes, cfg.Media.TTL)
 	// Blocking, which both messages and calls consult through a narrow
 	// interface rather than importing this module.
 	blocksRepo := blocks.NewRepo(pg)
