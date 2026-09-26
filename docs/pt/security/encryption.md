@@ -131,6 +131,7 @@ A ponte do WhatsApp rejeitada e o raciocínio completo estão em
 Dizemos em voz alta para ninguém ser apanhado de surpresa:
 
 - **Metadados.** O servidor vê quem fala com quem e quando. Mitigações estilo sealed-sender estão no seguimento.
+- **Média das chamadas de grupo.** As chamadas de grupo ainda não usam E2EE do LiveKit. O SFU pode aceder ao áudio e vídeo; a app agora avisa disso no ecrã da chamada.
 - **Um dispositivo comprometido enquanto desbloqueado.** Quem tem o telefone desbloqueado pode ler tudo; SQLCipher não defende disso.
 - **Dados em repouso no servidor.** Tokens push estão em texto simples. O `MESSAGE_KEY` do servidor é um segredo de ambiente, não uma chave gerida por KMS/Vault, e o servidor consegue ler dados protegidos apenas por ela. A encriptação de disco do host e os backups cifrados não foram verificados.
 - **Média fora de uploads de chat cifrados.** O servidor guarda os bytes recebidos; só ficheiros cifrados no cliente antes do upload ficam ilegíveis para o servidor.

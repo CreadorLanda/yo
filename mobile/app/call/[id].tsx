@@ -22,6 +22,7 @@ import { startCallKeepAlive, stopCallKeepAlive } from '@/modules/call-keepalive'
 import { Text } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { callToken, hangupCall, inviteToCall, type CallGrant } from '@/data/api/calls';
+import { getCallSecurityState } from '@/data/call-security';
 import { RING_TIMEOUT_MS } from '@/data/incoming-call';
 import { listChats } from '@/data/api/messages';
 import { callKeyFingerprint, callKeyFor } from '@/data/crypto/call-key';
@@ -75,18 +76,23 @@ export default function CallScreen() {
         // placing the call and the other phones should ring.
         const g = await callToken(id, { ring: incoming !== '1', mode: callMode });
         if (cancelled) return;
-        setGrant(g);
 
         // The media key is derived from the pairwise session, so both sides
         // arrive at the same bytes without anything being transmitted. A
         // group has no single pairwise session; those calls run without the
         // extra layer until the key is derived from the group's sender key.
         const chat = (await listChats()).find((c) => c.id === id);
-        if (!cancelled) setIsGroup(chat?.type === 'group');
+        if (cancelled) return;
         if (chat?.type !== 'group' && chat?.peer_user_id) {
           const key = await callKeyFor(id, chat.peer_user_id);
-          if (!cancelled) setE2eeKey(key);
+          if (cancelled) return;
+          setE2eeKey(key);
         }
+        // Don't connect the media room until the call type and encryption
+        // state are known. Otherwise a group call briefly starts without
+        // showing that the SFU can access its streams.
+        setIsGroup(chat?.type === 'group');
+        setGrant(g);
       } catch {
         if (!cancelled) setFailure(t('call.failed_to_join'));
       }
@@ -338,6 +344,7 @@ function CallStage({
       tr.publication.kind === Track.Kind.Video &&
       !tr.publication.isMuted,
   );
+  const callSecurity = getCallSecurityState(isGroup, e2eeKey);
 
   const inviteMore = async (people: PickablePerson[]) => {
     if (people.length === 0) return;
@@ -405,12 +412,28 @@ function CallStage({
           both phones, so two people reading the same four bytes to each other
           is a check the server cannot fake.
         */}
-        {e2eeKey ? (
+        {callSecurity === 'encrypted' && e2eeKey ? (
           <View style={styles.e2eeBadge}>
             <Ionicons name="lock-closed" size={11} color={Palette.brand[300]} />
             <Text style={styles.e2eeText}>{callKeyFingerprint(e2eeKey)}</Text>
           </View>
-        ) : null}
+        ) : (
+          <View
+            style={styles.e2eeWarning}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Ionicons name="warning-outline" size={16} color={Palette.semantic.warning} />
+            <View style={styles.e2eeWarningCopy}>
+              <Text style={styles.e2eeWarningTitle}>
+                {callSecurity === 'group-unencrypted'
+                  ? t('call.group_not_e2ee_title')
+                  : t('call.not_e2ee_title')}
+              </Text>
+              <Text style={styles.e2eeWarningBody}>{t('call.not_e2ee_body')}</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       <View style={styles.stage}>
@@ -532,6 +555,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   e2eeText: { ...Typography.micro, color: Palette.brand[300], letterSpacing: 1 },
+  e2eeWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+    marginHorizontal: Spacing.lg,
+    padding: Spacing.sm,
+    borderRadius: Radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Palette.semantic.warning,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+  },
+  e2eeWarningCopy: { flex: 1, gap: 2 },
+  e2eeWarningTitle: { ...Typography.caption, color: '#FFFFFF' },
+  e2eeWarningBody: { ...Typography.micro, color: 'rgba(255,255,255,0.75)' },
   stage: { flex: 1, padding: Spacing.md },
   grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   tile: {

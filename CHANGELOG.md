@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✏️ Changed (Alterado)
 
+#### Chamadas
+- Chamadas sem E2EE agora mostram um aviso de que o servidor pode aceder ao áudio e vídeo; chamadas de grupo também estão listadas como não protegidas na documentação de segurança
+
 #### Stories
 - `POST /api/stories/:id/react` aceita `{"reactions": [...]}` e responde com o story e as contagens novas. A forma antiga `{"emoji": "..."}` continua a funcionar e substitui o conjunto, como sempre fez
 - `GET /api/stories/:id/viewers` traz `emojis` por espectador; `emoji` fica a ser o primeiro deles, para clientes que não conhecem a lista

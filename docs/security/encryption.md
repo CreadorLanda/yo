@@ -128,6 +128,7 @@ The rejected WhatsApp bridge and the full reasoning are in
 We say this aloud so it doesn't surprise anyone:
 
 - **Metadata.** The server sees who messages whom and when. Sealed-sender style mitigations are tracked as a follow-up.
+- **Group call media.** Group calls currently omit LiveKit E2EE. The SFU can access call audio and video; the app now labels this on the call screen.
 - **A compromised device while unlocked.** Anyone holding the unlocked phone can read everything; SQLCipher cannot defend against that.
 - **Server-side data at rest.** Push tokens are plaintext. The server's `MESSAGE_KEY` is an environment secret, not a KMS/Vault-managed key, and the server can read data protected only by it. Host disk encryption and encrypted backups have not been verified.
 - **Media outside encrypted chat uploads.** The server stores uploaded bytes as received; only files encrypted on the client before upload remain unreadable to it.
