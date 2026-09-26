@@ -992,7 +992,7 @@ export default function ChatScreen() {
               durationMs: duration * 1000,
             });
             const body = encodeMediaContent(uploaded.url, '', voiceKey);
-            const dto = await apiSendMessage(id, await encryptBody(body), 'audio', undefined, null, {
+            const dto = await apiSendMessage(id, await encryptBody(body), 'audio', undefined, undefined, {
               mediaIds: [uploaded.id],
             });
             const mapped = mapApiMessage(dto, meId);
@@ -1389,6 +1389,8 @@ export default function ChatScreen() {
 
     try {
       for (const msg of toSend) {
+        const attachmentUri = msg.attachment && 'uri' in msg.attachment ? msg.attachment.uri : '';
+        const mediaId = (msg.media?.uri ?? attachmentUri).match(/media\/([0-9a-f-]{36})\/file/i)?.[1];
         // Forwarding is not exempt: a message that was encrypted in one
         // conversation must not leave in the clear from another, and an
         // unknown destination is not a licence to send in the clear.
@@ -1407,6 +1409,7 @@ export default function ChatScreen() {
           forwardCount: msg.forwardCount ?? 0,
           sourceChannelId: msg.sourceChannelId,
           sourcePostId: msg.sourcePostId,
+          mediaIds: mediaId ? [mediaId] : [],
         });
       }
       await refreshChats();
@@ -1545,7 +1548,7 @@ export default function ChatScreen() {
         await encryptBody(encodeMediaContent(sticker.url)),
         'sticker',
         undefined,
-        null,
+        undefined,
         { mediaIds: [sticker.media_id] },
       );
       setMessages((prev) => {
@@ -1754,7 +1757,7 @@ export default function ChatScreen() {
         await encryptBody(encodeMediaContent(uploaded.url, asset.name, audioKey)),
         'audio',
         undefined,
-        null,
+        undefined,
         { mediaIds: [uploaded.id] },
       );
       setMessages((prev) => [...prev, mapApiMessage(dto, meId)]);
@@ -1865,7 +1868,7 @@ export default function ChatScreen() {
           mimeType: asset.mimeType ?? 'application/octet-stream',
         });
         const body = encodeMediaContent(uploaded.url, asset.name, docKey);
-        await apiSendMessage(id, await encryptBody(body), 'document', undefined, null, {
+        await apiSendMessage(id, await encryptBody(body), 'document', undefined, undefined, {
           mediaIds: [uploaded.id],
         });
       } catch (err) {

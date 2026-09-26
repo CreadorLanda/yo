@@ -69,72 +69,83 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (objectRow, error) {
 	return row, err
 }
 
-func (r *Repository) GetForUser(ctx context.Context, id, userID uuid.UUID) (objectRow, error) {
+// CanRead checks every currently supported media audience. Chat grants point
+// at messages rather than users so membership, history cutoffs, deletion and
+// disappearing-message expiry are evaluated live on every request.
+func (r *Repository) CanRead(ctx context.Context, id, userID uuid.UUID) (bool, error) {
 	const q = `
-		SELECT m.id, m.owner_id, m.kind, m.mime_type, m.size_bytes, m.width, m.height,
-		       m.duration_ms, m.original_name, m.storage_path, m.created_at
-		FROM media_objects m
-		WHERE m.id = $1
-		  AND (
-		    m.owner_id = $2
-		    OR EXISTS (
-		      SELECT 1 FROM media_grants g
-		      WHERE g.media_id = m.id AND g.user_id = $2
-		    )
-		  )
-	`
-	var row objectRow
-	err := r.db.QueryRow(ctx, q, id, userID).Scan(
-		&row.ID, &row.OwnerID, &row.Kind, &row.MimeType, &row.SizeBytes,
-		&row.Width, &row.Height, &row.DurationMs, &row.OriginalName,
-		&row.StoragePath, &row.CreatedAt,
-	)
-	return row, err
-}
-
-// GrantToChat gives every current participant except the uploader access to
-// an attachment. The owner check is server-side so a caller cannot turn a
-// leaked UUID into access for another account.
-func (r *Repository) GrantToChat(ctx context.Context, mediaID, chatID, ownerID uuid.UUID) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	var actualOwner uuid.UUID
-	if err := tx.QueryRow(ctx,
-		`SELECT owner_id FROM media_objects WHERE id = $1 FOR SHARE`, mediaID,
-	).Scan(&actualOwner); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrMediaNotFound
-		}
-		return err
-	}
-	if actualOwner != ownerID {
-		return ErrMediaNotOwner
-	}
-
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO media_grants (media_id, user_id)
-		SELECT $1, cp.user_id
-		FROM chat_participants cp
-		WHERE cp.chat_id = $2 AND cp.user_id <> $3
-		ON CONFLICT (media_id, user_id) DO NOTHING
-	`, mediaID, chatID, ownerID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE media_objects m
-		SET expected_recipients = (
-			SELECT COUNT(*) FROM media_grants g
-			WHERE g.media_id = m.id AND g.user_id <> m.owner_id
+		SELECT EXISTS (
+			SELECT 1 FROM media_objects m
+			WHERE m.id = $1
+			  AND m.purged_at IS NULL
+			  AND (m.expires_at IS NULL OR m.expires_at > NOW())
+			  AND (
+			    m.owner_id = $2
+			    OR EXISTS (
+			      SELECT 1
+			      FROM chat_media_access a
+			      JOIN messages msg ON msg.id = a.message_id
+			      JOIN chat_participants cp ON cp.chat_id = msg.chat_id AND cp.user_id = $2
+			      WHERE a.media_id = m.id
+			        AND msg.deleted_at IS NULL
+			        AND (msg.expires_at IS NULL OR msg.expires_at > NOW())
+			        AND (cp.history_from IS NULL OR msg.created_at >= cp.history_from)
+			    )
+			    OR EXISTS (
+			      SELECT 1 FROM stories s
+			      WHERE s.expires_at > NOW()
+			        AND (s.author_id = $2 OR s.visibility = 'public' OR s.visibility IN ('contacts', 'close'))
+			        AND split_part(regexp_replace(s.media_url, '^https?://[^/]+', ''), '?', 1)
+			            IN ('/api/media/' || $1::text, '/api/media/' || $1::text || '/file')
+			    )
+			    OR EXISTS (
+			      SELECT 1 FROM channels c
+			      WHERE (c.visibility = 'public' OR EXISTS (
+			        SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = $2
+			      ))
+			      AND (
+			        split_part(regexp_replace(c.avatar_url, '^https?://[^/]+', ''), '?', 1)
+			          IN ('/api/media/' || $1::text, '/api/media/' || $1::text || '/file')
+			        OR split_part(regexp_replace(c.cover_url, '^https?://[^/]+', ''), '?', 1)
+			          IN ('/api/media/' || $1::text, '/api/media/' || $1::text || '/file')
+			        OR EXISTS (
+			          SELECT 1 FROM channel_posts p
+			          WHERE p.channel_id = c.id
+			            AND split_part(regexp_replace(p.media_url, '^https?://[^/]+', ''), '?', 1)
+			                IN ('/api/media/' || $1::text, '/api/media/' || $1::text || '/file')
+			        )
+			      )
+			    )
+			    OR EXISTS (
+			      SELECT 1 FROM chats c
+			      JOIN chat_participants cp ON cp.chat_id = c.id AND cp.user_id = $2
+			      WHERE c.type = 'group'
+			        AND split_part(regexp_replace(c.avatar_url, '^https?://[^/]+', ''), '?', 1)
+			            IN ('/api/media/' || $1::text, '/api/media/' || $1::text || '/file')
+			    )
+			    OR EXISTS (
+			      SELECT 1 FROM users u
+			      WHERE split_part(regexp_replace(u.avatar_uri, '^https?://[^/]+', ''), '?', 1)
+			              IN ('/api/media/' || $1::text, '/api/media/' || $1::text || '/file')
+			        AND (
+			          u.id = $2 OR u.photo_visibility = 'everyone'
+			          OR (u.photo_visibility = 'contacts' AND EXISTS (
+			            SELECT 1 FROM chats c
+			            JOIN chat_participants own ON own.chat_id = c.id AND own.user_id = u.id
+			            JOIN chat_participants viewer ON viewer.chat_id = c.id AND viewer.user_id = $2
+			            WHERE c.type = 'direct' AND c.status = 'active'
+			          ))
+			        )
+			    )
+			    OR EXISTS (
+			      SELECT 1 FROM sticker_packs p WHERE p.tray_media_id = m.id AND p.owner_id = $2
+			    )
+			  )
 		)
-		WHERE m.id = $1
-	`, mediaID); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	`
+	var allowed bool
+	err := r.db.QueryRow(ctx, q, id, userID).Scan(&allowed)
+	return allowed, err
 }
 
 func (r *Repository) Delete(ctx context.Context, id, ownerID uuid.UUID) (objectRow, error) {

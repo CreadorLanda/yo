@@ -26,7 +26,7 @@ var (
 	ErrUnencryptedMessage  = errors.New("message_must_be_e2ee_envelope")
 	ErrInvalidMessageType  = errors.New("invalid_message_type")
 	ErrInvalidEnvelopeChat = errors.New("invalid_e2ee_envelope_for_chat")
-	ErrInvalidMediaAttach  = errors.New("invalid_media_attachment")
+	ErrInvalidMediaReference = errors.New("invalid_media_reference")
 )
 
 // Broadcaster is satisfied by *realtime.Hub. Kept as an interface so the
@@ -39,13 +39,6 @@ type Broadcaster interface {
 // PushNotifier enqueues offline push jobs (notifications module).
 type PushNotifier interface {
 	NotifyUser(ctx context.Context, userID uuid.UUID, category, title, body string, data map[string]string) error
-}
-
-// MediaGrants authorizes opaque media ids for the recipients of a message.
-// Messages stay E2EE, so this is the narrow metadata needed to protect the
-// authenticated file endpoint without decrypting message content server-side.
-type MediaGrants interface {
-	GrantToChat(ctx context.Context, mediaID, chatID, ownerID uuid.UUID) error
 }
 
 // BlockList answers the one question this module asks about blocking.
@@ -62,13 +55,18 @@ type BlockList interface {
 	Block(ctx context.Context, blocker, blocked uuid.UUID) error
 }
 
+// MediaAccess checks the caller's current right to reference an attachment.
+// Kept as an interface so messages do not own media audience policy.
+type MediaAccess interface {
+	CanRead(ctx context.Context, mediaID, userID uuid.UUID) (bool, error)
+}
+
 type Service struct {
 	repo   *Repository
 	users  *users.Repository
 	hub    Broadcaster
 	push   PushNotifier
-	blocks BlockList
-	media  MediaGrants
+	media  MediaAccess
 }
 
 func NewService(repo *Repository, usersRepo *users.Repository, hub Broadcaster, push PushNotifier) *Service {
@@ -85,8 +83,10 @@ func (s *Service) WithBlocks(b BlockList) *Service {
 	return s
 }
 
-func (s *Service) WithMediaGrants(m MediaGrants) *Service {
-	s.media = m
+// WithMediaAccess validates attachment references before the message and its
+// grants are committed together.
+func (s *Service) WithMediaAccess(access MediaAccess) *Service {
+	s.media = access
 	return s
 }
 
@@ -320,16 +320,22 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	if !validateEnvelopeForChat(req.Content, senderID, chat.Type) {
 		return Message{}, envelopeError(req.Content)
 	}
-	if len(req.MediaIDs) > 10 {
-		return Message{}, ErrInvalidMediaAttach
-	}
 	if len(req.MediaIDs) > 0 {
 		if s.media == nil {
-			return Message{}, ErrInvalidMediaAttach
+			return Message{}, ErrInvalidMediaReference
 		}
+		seen := make(map[uuid.UUID]struct{}, len(req.MediaIDs))
 		for _, mediaID := range req.MediaIDs {
-			if err := s.media.GrantToChat(ctx, mediaID, chatID, senderID); err != nil {
-				return Message{}, ErrInvalidMediaAttach
+			if _, ok := seen[mediaID]; ok {
+				continue
+			}
+			seen[mediaID] = struct{}{}
+			allowed, err := s.media.CanRead(ctx, mediaID, senderID)
+			if err != nil {
+				return Message{}, err
+			}
+			if !allowed {
+				return Message{}, ErrInvalidMediaReference
 			}
 		}
 	}
@@ -348,7 +354,7 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	origin.PostID = req.SourcePostID
 
 	id, err := s.repo.InsertMessage(ctx, chatID, senderID, req.Content, msgType,
-		req.ReplyToID, req.ViewLimit, origin)
+		req.ReplyToID, req.ViewLimit, origin, req.MediaIDs)
 	if err != nil {
 		return Message{}, err
 	}

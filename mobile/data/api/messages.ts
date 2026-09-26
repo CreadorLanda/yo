@@ -161,7 +161,7 @@ export type MessageOrigin = {
   forwardCount?: number;
   sourceChannelId?: string;
   sourcePostId?: string;
-  /** Server media ids referenced by the encrypted message body. */
+  /** Plaintext attachment ids needed for server-side access grants. */
   mediaIds?: string[];
 };
 

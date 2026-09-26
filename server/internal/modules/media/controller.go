@@ -84,7 +84,7 @@ func (c *Controller) GetMeta(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
 		return
 	}
-	obj, err := c.svc.GetForUser(ctx.Request.Context(), id, middleware.UserIDFrom(ctx))
+	obj, err := c.svc.Get(ctx.Request.Context(), id, middleware.UserIDFrom(ctx))
 	if err != nil {
 		writeErr(ctx, err)
 		return
@@ -99,7 +99,7 @@ func (c *Controller) GetFile(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
 		return
 	}
-	obj, f, err := c.svc.OpenForUser(ctx.Request.Context(), id, middleware.UserIDFrom(ctx))
+	obj, f, err := c.svc.Open(ctx.Request.Context(), id, middleware.UserIDFrom(ctx))
 	if err != nil {
 		writeErr(ctx, err)
 		return

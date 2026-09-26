@@ -101,6 +101,8 @@ func New(cfg config.Config) (*Server, error) {
 
 	// Realtime hub (WebSocket fan-out for messaging events).
 	hub := realtime.NewHub()
+	mediaRepo := media.NewRepository(pg)
+	mediaSvc := media.NewService(mediaRepo, cfg.Media.Dir, cfg.Media.MaxUploadBytes, cfg.Media.TTL)
 
 	// Notifications — device tokens, prefs, Redis push queue + worker.
 	notifRepo := notifications.NewRepository(pg)
@@ -131,13 +133,13 @@ func New(cfg config.Config) (*Server, error) {
 
 	msgSvc := messages.NewService(msgRepo, usersRepo, hub, notifSvc).
 		WithBlocks(blocksRepo).
-		WithMediaGrants(mediaSvc)
+		WithMediaAccess(mediaSvc)
 	msgCtl := messages.NewController(msgSvc, hub, []byte(cfg.JWT.Secret))
 	messages.Register(authed, msgCtl)
 	// WS lives on the public /api group — token is validated inside the handler.
 	messages.RegisterWS(api, msgCtl)
 
-	// Media uploads (auth) + recipient-authorized file streaming.
+	// Media uploads (auth) + public file streaming by UUID.
 	mediaCtl := media.NewController(mediaSvc)
 	media.Register(authed, mediaCtl)
 
@@ -463,7 +465,7 @@ type callTrace struct {
 
 func (c callTrace) RecordCall(ctx context.Context, chatID, caller, callID uuid.UUID, mode string) {
 	body := fmt.Sprintf(`{"call_id":%q,"mode":%q}`, callID.String(), mode)
-	id, err := c.repo.InsertMessage(ctx, chatID, caller, body, messages.MsgCall, nil, nil, messages.Origin{})
+	id, err := c.repo.InsertMessage(ctx, chatID, caller, body, messages.MsgCall, nil, nil, messages.Origin{}, nil)
 	if err != nil || c.hub == nil {
 		return
 	}
