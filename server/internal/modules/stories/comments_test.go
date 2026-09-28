@@ -23,7 +23,7 @@ func TestAnonymousCommentHidesItsAuthor(t *testing.T) {
 	commenter := createUser(t, pool, "shy_"+uuid.NewString()[:8])
 	bystander := createUser(t, pool, "other_"+uuid.NewString()[:8])
 
-	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestCommentPolicyIsTheAuthors(t *testing.T) {
 	no := false
 
 	closed, err := svc.Create(ctx, author, CreateRequest{
-		Kind: KindText, Caption: "x", AllowComments: &no,
+		Kind: KindText, Caption: "x", Visibility: VisPublic, AllowComments: &no,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -88,7 +88,7 @@ func TestCommentPolicyIsTheAuthors(t *testing.T) {
 	}
 
 	noAnon, err := svc.Create(ctx, author, CreateRequest{
-		Kind: KindText, Caption: "x", AllowAnonymousReplies: &no,
+		Kind: KindText, Caption: "x", Visibility: VisPublic, AllowAnonymousReplies: &no,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -103,7 +103,7 @@ func TestCommentPolicyIsTheAuthors(t *testing.T) {
 
 	// Omitting the fields must leave both on, or an older client would
 	// publish every story with comments disabled.
-	def, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	def, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestCommentRepliesStayOneLevel(t *testing.T) {
 	a := createUser(t, pool, "a_"+uuid.NewString()[:8])
 	b := createUser(t, pool, "b_"+uuid.NewString()[:8])
 
-	story, _ := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	story, _ := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 
 	top, err := svc.AddComment(ctx, story.ID, a, nil, "primeiro", false)
 	if err != nil {
@@ -157,7 +157,7 @@ func TestCommentDeletion(t *testing.T) {
 	writer := createUser(t, pool, "writer_"+uuid.NewString()[:8])
 	stranger := createUser(t, pool, "stranger_"+uuid.NewString()[:8])
 
-	story, _ := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	story, _ := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 	c1, _ := svc.AddComment(ctx, story.ID, writer, nil, "um", false)
 	c2, _ := svc.AddComment(ctx, story.ID, writer, nil, "dois", false)
 

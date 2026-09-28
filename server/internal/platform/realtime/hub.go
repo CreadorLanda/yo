@@ -5,6 +5,8 @@ package realtime
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,8 +38,21 @@ type client struct {
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	// Mobile/dev clients may open from different origins; auth is the real gate.
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" { // native clients do not send Origin
+			return true
+		}
+		u, err := url.Parse(origin)
+		if err != nil || u.Host == "" {
+			return false
+		}
+		if u.Host == r.Host {
+			return true
+		}
+		host := strings.Split(u.Host, ":")[0]
+		return host == "localhost" || host == "127.0.0.1" || host == "[::1]"
+	},
 }
 
 func NewHub() *Hub {
@@ -131,6 +146,7 @@ func (h *Hub) unregister(c *client) {
 
 func (c *client) readPump() {
 	defer c.hub.unregister(c)
+	c.conn.SetReadLimit(64 << 10)
 	_ = c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 	c.conn.SetPongHandler(func(string) error {
 		return c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))

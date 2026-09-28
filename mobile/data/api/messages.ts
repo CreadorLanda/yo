@@ -77,6 +77,10 @@ export interface MessageDTO {
   sender_avatar?: string;
   delivered_to?: number;
   read_by?: number;
+  /** Whether this inbound message was beyond the caller's read cursor at history load. */
+  is_unread?: boolean;
+  /** Whether this message is starred by the current participant. */
+  is_starred?: boolean;
   /** Set once read, in a chat with a timer. The countdown runs to this. */
   expires_at?: string;
   /** 0 when written here; 1+ once it has been passed along. */
@@ -161,6 +165,8 @@ export type MessageOrigin = {
   forwardCount?: number;
   sourceChannelId?: string;
   sourcePostId?: string;
+  /** Plaintext attachment ids needed for server-side access grants. */
+  mediaIds?: string[];
 };
 
 export function sendMessage(
@@ -179,6 +185,7 @@ export function sendMessage(
     forward_count: origin?.forwardCount,
     source_channel_id: origin?.sourceChannelId,
     source_post_id: origin?.sourcePostId,
+    media_ids: origin?.mediaIds,
   });
 }
 
@@ -271,6 +278,12 @@ export function removeReaction(chatId: string, messageId: number, emoji: string)
   );
 }
 
+/** Save or remove a personal star from a message. */
+export function setMessageStarred(chatId: string, messageId: number, starred: boolean) {
+  const path = `/api/chats/${chatId}/messages/${messageId}/star`;
+  return starred ? api.post<void>(path) : api.del<void>(path);
+}
+
 export interface ReceiptDetail {
   user_id: string;
   display_name: string;
@@ -341,7 +354,10 @@ export function openRealtimeWithToken(
   onClose?: () => void,
 ): WebSocket {
   const base = BASE_URL.replace(/^http/, 'ws');
-  const ws = new WebSocket(`${base}/api/ws?token=${encodeURIComponent(token)}`);
+  // Put the access token in the WebSocket handshake protocol instead of the
+  // URL. Query parameters are routinely captured by reverse-proxy and access
+  // logs. The server accepts `yo-bearer.<jwt>` and never echoes it back.
+  const ws = new WebSocket(`${base}/api/ws`, [`yo-bearer.${token}`]);
   ws.onmessage = (e) => {
     try {
       onEvent(JSON.parse(String(e.data)) as RealtimeEvent);

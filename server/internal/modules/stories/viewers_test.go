@@ -57,7 +57,7 @@ func TestViewersIsAuthorOnly(t *testing.T) {
 	watcher := createUser(t, pool, "watcher_"+uuid.NewString()[:8])
 	other := createUser(t, pool, "other_"+uuid.NewString()[:8])
 
-	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "olá"})
+	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "olá", Visibility: VisPublic})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestDeleteIsAuthorOnly(t *testing.T) {
 	author := createUser(t, pool, "author_"+uuid.NewString()[:8])
 	other := createUser(t, pool, "other_"+uuid.NewString()[:8])
 
-	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "apaga-me"})
+	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "apaga-me", Visibility: VisPublic})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

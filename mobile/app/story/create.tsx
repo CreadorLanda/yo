@@ -159,7 +159,7 @@ export default function CreateStoryScreen() {
   /**
    * Pinch to zoom.
    *
-   * The camera takes zoom as 0–1 rather than a lens factor, so the gesture's
+   * `FilteredCamera` takes zoom as 0–1 and maps it onto the lens, so the gesture's
    * scale is folded in as a delta from where the pinch started. Clamped, or a
    * fast pinch drives it past the end and the next one starts from nowhere.
    */
@@ -177,6 +177,7 @@ export default function CreateStoryScreen() {
     setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true }).catch(() => {});
     return () => {
       if (audioTimer.current) clearInterval(audioTimer.current);
+      if (stopTimer.current) clearTimeout(stopTimer.current);
     };
   }, []);
 
@@ -283,6 +284,13 @@ export default function CreateStoryScreen() {
     }
   };
 
+  // The cap timer outlives the recording it was set for unless something
+  // clears it — and a leftover one fires into the next recording.
+  const clearStopTimer = () => {
+    if (stopTimer.current) clearTimeout(stopTimer.current);
+    stopTimer.current = null;
+  };
+
   const takePhoto = async () => {
     shutterScale.value = withSequence(
       withSpring(0.86, { damping: 12, stiffness: 280 }),
@@ -335,12 +343,14 @@ export default function CreateStoryScreen() {
       // it was never true: the old path handed off to the system camera, which
       // has its own button and its own idea of how long a recording lasts.
       if (recording) {
+        clearStopTimer();
         await cam.stopRecording();
         return;
       }
       setRecording(true);
       try {
         await cam.startRecording((path: string) => {
+          clearStopTimer();
           setRecording(false);
           enterEdit({ uri: path, video: true });
         });
@@ -351,6 +361,7 @@ export default function CreateStoryScreen() {
           void cam.stopRecording();
         }, cap * 1000);
       } catch {
+        clearStopTimer();
         setRecording(false);
         appAlert(t('stories.capture_failed_title'), t('stories.capture_failed_body'));
       }

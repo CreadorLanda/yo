@@ -7,7 +7,7 @@
     "dev": "./scripts/dev.sh",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
-    "ios": "expo start --ios",
+    "ios": "expo start --ios --dev-client",
     "web": "expo start --web",
     "lint": "expo lint"
   },
@@ -86,7 +86,7 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
-    "@config-plugins/react-native-webrtc": "^15.0.1",
+    "@config-plugins/react-native-webrtc": "^13.0.0",
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",

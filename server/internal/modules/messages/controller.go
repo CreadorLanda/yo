@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -207,6 +208,28 @@ func (c *Controller) DeleteReact(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, list)
 }
 
+// PostStarMessage — POST /chats/:id/messages/:mid/star
+func (c *Controller) PostStarMessage(ctx *gin.Context) {
+	c.setMessageStar(ctx, true)
+}
+
+// DeleteStarMessage — DELETE /chats/:id/messages/:mid/star
+func (c *Controller) DeleteStarMessage(ctx *gin.Context) {
+	c.setMessageStar(ctx, false)
+}
+
+func (c *Controller) setMessageStar(ctx *gin.Context, starred bool) {
+	chatID, msgID, ok := parseChatMsg(ctx)
+	if !ok {
+		return
+	}
+	if err := c.svc.SetMessageStar(ctx.Request.Context(), chatID, middleware.UserIDFrom(ctx), msgID, starred); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
 // PostMessageOpen — POST /chats/:id/messages/:mid/open
 //
 // Consumes one view of a limited-view message. Separate from listing so
@@ -348,19 +371,27 @@ func (c *Controller) GetMessages(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, msgs)
 }
 
-// GetWS — GET /ws  (token via query or Authorization)
+// GetWS — GET /ws (token via Authorization or the WebSocket subprotocol).
 // Upgrades to WebSocket. Auth middleware is not used so we parse the token
-// ourselves (browsers cannot set headers on WS easily; mobile can use either).
+// ourselves. Query-string tokens are deliberately rejected: URLs routinely
+// reach proxy, access and browser history logs.
 func (c *Controller) GetWS(ctx *gin.Context) {
 	if c.hub == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "realtime_unavailable"})
 		return
 	}
-	raw := ctx.Query("token")
+	raw := ""
+	h := ctx.GetHeader("Authorization")
+	if len(h) > 7 && (h[:7] == "Bearer " || h[:7] == "bearer ") {
+		raw = h[7:]
+	}
 	if raw == "" {
-		h := ctx.GetHeader("Authorization")
-		if len(h) > 7 && (h[:7] == "Bearer " || h[:7] == "bearer ") {
-			raw = h[7:]
+		for _, protocol := range strings.Split(ctx.GetHeader("Sec-WebSocket-Protocol"), ",") {
+			protocol = strings.TrimSpace(protocol)
+			if strings.HasPrefix(protocol, "yo-bearer.") {
+				raw = strings.TrimPrefix(protocol, "yo-bearer.")
+				break
+			}
 		}
 	}
 	if raw == "" {
@@ -401,7 +432,8 @@ func writeErr(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrInvalidReceipt), errors.Is(err, ErrInvalidReport),
 		errors.Is(err, ErrInvalidTTL), errors.Is(err, ErrUnencryptedMessage),
-		errors.Is(err, ErrInvalidMessageType), errors.Is(err, ErrInvalidEnvelopeChat):
+		errors.Is(err, ErrInvalidMessageType), errors.Is(err, ErrInvalidEnvelopeChat),
+		errors.Is(err, ErrInvalidMediaReference):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})

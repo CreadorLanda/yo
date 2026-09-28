@@ -12,20 +12,21 @@ import (
 )
 
 var (
-	ErrChatNotFound        = errors.New("chat_not_found")
-	ErrNotParticipant      = errors.New("not_participant")
-	ErrChatBlocked         = errors.New("chat_blocked")
-	ErrPendingChatLimit    = errors.New("pending_chat_limit")
-	ErrCannotAcceptOwn     = errors.New("cannot_accept_own_request")
-	ErrChatNotPending      = errors.New("chat_not_pending")
-	ErrMessageNotFound     = errors.New("message_not_found")
-	ErrInvalidReport       = errors.New("invalid_report")
-	ErrNotSender           = errors.New("not_message_sender")
-	ErrInvalidReceipt      = errors.New("invalid_receipt_status")
-	ErrViewsExhausted      = errors.New("views_exhausted")
-	ErrUnencryptedMessage  = errors.New("message_must_be_e2ee_envelope")
-	ErrInvalidMessageType  = errors.New("invalid_message_type")
-	ErrInvalidEnvelopeChat = errors.New("invalid_e2ee_envelope_for_chat")
+	ErrChatNotFound          = errors.New("chat_not_found")
+	ErrNotParticipant        = errors.New("not_participant")
+	ErrChatBlocked           = errors.New("chat_blocked")
+	ErrPendingChatLimit      = errors.New("pending_chat_limit")
+	ErrCannotAcceptOwn       = errors.New("cannot_accept_own_request")
+	ErrChatNotPending        = errors.New("chat_not_pending")
+	ErrMessageNotFound       = errors.New("message_not_found")
+	ErrInvalidReport         = errors.New("invalid_report")
+	ErrNotSender             = errors.New("not_message_sender")
+	ErrInvalidReceipt        = errors.New("invalid_receipt_status")
+	ErrViewsExhausted        = errors.New("views_exhausted")
+	ErrUnencryptedMessage    = errors.New("message_must_be_e2ee_envelope")
+	ErrInvalidMessageType    = errors.New("invalid_message_type")
+	ErrInvalidEnvelopeChat   = errors.New("invalid_e2ee_envelope_for_chat")
+	ErrInvalidMediaReference = errors.New("invalid_media_reference")
 )
 
 // Broadcaster is satisfied by *realtime.Hub. Kept as an interface so the
@@ -54,12 +55,19 @@ type BlockList interface {
 	Block(ctx context.Context, blocker, blocked uuid.UUID) error
 }
 
+// MediaAccess checks the caller's current right to reference an attachment.
+// Kept as an interface so messages do not own media audience policy.
+type MediaAccess interface {
+	CanRead(ctx context.Context, mediaID, userID uuid.UUID) (bool, error)
+}
+
 type Service struct {
 	repo   *Repository
 	users  *users.Repository
 	hub    Broadcaster
 	push   PushNotifier
 	blocks BlockList
+	media  MediaAccess
 }
 
 func NewService(repo *Repository, usersRepo *users.Repository, hub Broadcaster, push PushNotifier) *Service {
@@ -73,6 +81,13 @@ func NewService(repo *Repository, usersRepo *users.Repository, hub Broadcaster, 
 // of them have an opinion about.
 func (s *Service) WithBlocks(b BlockList) *Service {
 	s.blocks = b
+	return s
+}
+
+// WithMediaAccess validates attachment references before the message and its
+// grants are committed together.
+func (s *Service) WithMediaAccess(access MediaAccess) *Service {
+	s.media = access
 	return s
 }
 
@@ -236,7 +251,7 @@ func (s *Service) OpenLimitedMessage(ctx context.Context, chatID uuid.UUID, mess
 	if err := s.requireParticipant(ctx, chatID, viewer); err != nil {
 		return nil, nil, err
 	}
-	limit, left, err := s.repo.RegisterView(ctx, messageID, viewer)
+	limit, left, err := s.repo.RegisterView(ctx, chatID, messageID, viewer)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil, ErrMessageNotFound
@@ -306,6 +321,25 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	if !validateEnvelopeForChat(req.Content, senderID, chat.Type) {
 		return Message{}, envelopeError(req.Content)
 	}
+	if len(req.MediaIDs) > 0 {
+		if s.media == nil {
+			return Message{}, ErrInvalidMediaReference
+		}
+		seen := make(map[uuid.UUID]struct{}, len(req.MediaIDs))
+		for _, mediaID := range req.MediaIDs {
+			if _, ok := seen[mediaID]; ok {
+				continue
+			}
+			seen[mediaID] = struct{}{}
+			allowed, err := s.media.CanRead(ctx, mediaID, senderID)
+			if err != nil {
+				return Message{}, err
+			}
+			if !allowed {
+				return Message{}, ErrInvalidMediaReference
+			}
+		}
+	}
 	// One more hop than the client claims, and never fewer than zero. Taking
 	// the number at face value would let a client reset a chain that has been
 	// round the block ten times back to "written just for you".
@@ -321,7 +355,7 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	origin.PostID = req.SourcePostID
 
 	id, err := s.repo.InsertMessage(ctx, chatID, senderID, req.Content, msgType,
-		req.ReplyToID, req.ViewLimit, origin)
+		req.ReplyToID, req.ViewLimit, origin, req.MediaIDs)
 	if err != nil {
 		return Message{}, err
 	}
@@ -488,6 +522,29 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID uuid.UUID, messag
 		MessageIDs: []int64{messageID},
 		Status:     ReceiptRead,
 	})
+}
+
+// SetMessageStar saves or removes a participant's own star for a message.
+func (s *Service) SetMessageStar(ctx context.Context, chatID, userID uuid.UUID, messageID int64, starred bool) error {
+	if err := s.requireParticipant(ctx, chatID, userID); err != nil {
+		return err
+	}
+	if err := s.repo.SetMessageStar(ctx, chatID, userID, messageID, starred); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrMessageNotFound
+		}
+		return err
+	}
+	if s.hub != nil {
+		// Stars are personal; sync them to this user's other sessions without
+		// exposing their choices to the rest of the conversation.
+		s.hub.PublishJSON([]uuid.UUID{userID}, "message.starred", chatID.String(), map[string]any{
+			"message_id": messageID,
+			"user_id":    userID,
+			"is_starred": starred,
+		})
+	}
+	return nil
 }
 
 // Typing broadcasts a composing indicator (ephemeral — not persisted).

@@ -224,6 +224,10 @@ export type Message = {
   fromMe: boolean;
   timestamp: string;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  /** Snapshot from the server's per-chat read cursor when history was loaded. */
+  isUnread?: boolean;
+  /** Whether the current participant has starred this message. */
+  isStarred?: boolean;
   media?: MediaAttachment;
   /** Display name of the sender — shown in group threads for incoming messages. */
   senderName?: string;
@@ -569,4 +573,3 @@ export type Channel = {
   rules?: string[];
   posts: ChannelPost[];
 };
-

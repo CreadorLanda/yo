@@ -412,25 +412,55 @@ type Origin struct {
 	PostID       *string
 }
 
-func (r *Repository) InsertMessage(ctx context.Context, chatID, senderID uuid.UUID, content string, msgType MessageType, replyToID *int64, viewLimit *int, origin Origin) (int64, error) {
+func (r *Repository) InsertMessage(ctx context.Context, chatID, senderID uuid.UUID, content string, msgType MessageType, replyToID *int64, viewLimit *int, origin Origin, mediaIDs []uuid.UUID) (int64, error) {
 	const q = `
 		INSERT INTO messages (chat_id, sender_id, content, message_type, reply_to_id, view_limit,
 		                      forward_count, source_channel_id, source_post_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	ids := make([]string, 0, len(mediaIDs))
+	seen := make(map[uuid.UUID]struct{}, len(mediaIDs))
+	for _, mediaID := range mediaIDs {
+		if _, ok := seen[mediaID]; ok {
+			continue
+		}
+		seen[mediaID] = struct{}{}
+		ids = append(ids, mediaID.String())
+	}
 	encrypted := r.encrypt(content)
 	var id int64
-	err := r.db.QueryRow(ctx, q, chatID, senderID, encrypted, string(msgType), replyToID, viewLimit,
+	err = tx.QueryRow(ctx, q, chatID, senderID, encrypted, string(msgType), replyToID, viewLimit,
 		origin.ForwardCount, origin.ChannelID, origin.PostID).Scan(&id)
-	return id, err
+	if err != nil {
+		return 0, err
+	}
+	for _, mediaID := range ids {
+		parsed, err := uuid.Parse(mediaID)
+		if err != nil {
+			return 0, ErrInvalidMediaReference
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO chat_media_access (message_id, media_id)
+			VALUES ($1, $2) ON CONFLICT DO NOTHING
+		`, id, parsed); err != nil {
+			return 0, err
+		}
+	}
+	return id, tx.Commit(ctx)
 }
 
 // RegisterView records one open and reports how many remain.
 //
 // Enforced here rather than on the device: a reinstall would otherwise
 // reset the count, which would make "view once" a suggestion.
-func (r *Repository) RegisterView(ctx context.Context, messageID int64, userID uuid.UUID) (limit *int, left *int, err error) {
+func (r *Repository) RegisterView(ctx context.Context, chatID uuid.UUID, messageID int64, userID uuid.UUID) (limit *int, left *int, err error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -438,7 +468,7 @@ func (r *Repository) RegisterView(ctx context.Context, messageID int64, userID u
 	defer tx.Rollback(ctx)
 
 	if err = tx.QueryRow(ctx,
-		`SELECT view_limit FROM messages WHERE id = $1`, messageID).Scan(&limit); err != nil {
+		`SELECT view_limit FROM messages WHERE id = $1 AND chat_id = $2`, messageID, chatID).Scan(&limit); err != nil {
 		return nil, nil, err
 	}
 	// Unlimited messages are not tracked at all.
@@ -501,6 +531,8 @@ const messageSelectBase = `
 	       m.created_at, m.edited_at, m.deleted_at,
 	       COALESCE(u.display_name, ''), COALESCE(u.avatar_uri, ''),
 	       rc.delivered_to, rc.read_by,
+	       COALESCE(m.sender_id <> $1 AND (cpv.last_read_message_id IS NULL OR m.id > cpv.last_read_message_id), FALSE) AS is_unread,
+	       (ms.message_id IS NOT NULL) AS is_starred,
 	       m.forward_count, m.source_channel_id::text, m.source_post_id::text,
 	       m.expires_at,
 	       m.view_limit, COALESCE(mv.views, 0),
@@ -518,6 +550,7 @@ const messageSelectBase = `
 	-- rule applied anywhere else is a rule a different client can skip.
 	JOIN chat_participants cpv
 	     ON cpv.chat_id = m.chat_id AND cpv.user_id = $1
+	LEFT JOIN message_stars ms ON ms.message_id = m.id AND ms.user_id = $1
 	-- Reactions came back only over the websocket, so reopening a chat lost
 	-- every one of them: the map started empty and nothing on the read path
 	-- refilled it. Aggregated here rather than queried per message — a page
@@ -613,6 +646,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 		var m messageRow
 		var senderName, senderAvatar string
 		var deliveredTo, readBy, forwardCount int
+		var isUnread, isStarred bool
 		var srcChannel, srcPost *string
 		var expiresAt *time.Time
 		var viewLimit *int
@@ -620,7 +654,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 		var reactionsJSON string
 		if err := rows.Scan(&m.ID, &m.ChatID, &m.SenderID, &m.Content,
 			&m.MessageType, &m.ReplyToID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt,
-			&senderName, &senderAvatar, &deliveredTo, &readBy,
+			&senderName, &senderAvatar, &deliveredTo, &readBy, &isUnread, &isStarred,
 			&forwardCount, &srcChannel, &srcPost, &expiresAt,
 			&viewLimit, &viewsUsed, &reactionsJSON); err != nil {
 			return nil, err
@@ -655,6 +689,8 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 			SenderAvatar:    senderAvatar,
 			DeliveredTo:     deliveredTo,
 			ReadBy:          readByFor(readBy, hideRead),
+			IsUnread:        isUnread,
+			IsStarred:       isStarred,
 			ForwardCount:    forwardCount,
 			ViewLimit:       viewLimit,
 			ViewsLeft:       viewsLeft,
@@ -804,6 +840,30 @@ func (r *Repository) SetLastRead(ctx context.Context, chatID, userID uuid.UUID, 
 		last_read_at = NOW()
 		WHERE chat_id = $1 AND user_id = $2
 	`, chatID, userID, messageID)
+	return err
+}
+
+// SetMessageStar changes one participant's saved state for a message.
+func (r *Repository) SetMessageStar(ctx context.Context, chatID, userID uuid.UUID, messageID int64, starred bool) error {
+	var exists bool
+	if err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM messages WHERE id = $1 AND chat_id = $2 AND deleted_at IS NULL)
+	`, messageID, chatID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return pgx.ErrNoRows
+	}
+	if starred {
+		_, err := r.db.Exec(ctx, `
+			INSERT INTO message_stars (message_id, user_id)
+			VALUES ($1, $2) ON CONFLICT DO NOTHING
+		`, messageID, userID)
+		return err
+	}
+	_, err := r.db.Exec(ctx, `
+		DELETE FROM message_stars WHERE message_id = $1 AND user_id = $2
+	`, messageID, userID)
 	return err
 }
 

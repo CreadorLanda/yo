@@ -39,7 +39,7 @@ test('virar a lente vale tambem para video', () => {
 
 test('o flash deixou de ser um icone que so muda de forma', () => {
   expect(screen).toContain('torch={flash}');
-  expect(camera).toContain('torchMode=');
+  expect(camera).toMatch(/torchMode[=:]/);
 });
 
 test('as duracoes dos modos sao nomeadas uma vez', () => {
@@ -104,10 +104,45 @@ test('cada fotograma e devolvido ao lote', () => {
   expect(camera).toContain('previous?.dispose()');
 });
 
-test('sem filtro, o caminho dos fotogramas nem e ligado', () => {
-  // The common case must not be slower than it was, and an output that is
-  // never created cannot leak.
-  expect(camera).toMatch(/matrix\s*\n?\s*\?\s*\[photoOutput, videoOutput, frameOutput\]/);
+test('sem filtro, o caminho dos fotogramas nem e criado', () => {
+  // Not attaching the frame output was not enough: `useFrameOutput` builds a
+  // worklet runtime on mount whether or not the output is used, and it sat in
+  // the component that always renders — so the camera died on open with no
+  // filter picked. It now lives only in the component rendered for a filter.
+  const plain = camera.slice(
+    camera.indexOf('function PlainCamera'),
+    camera.indexOf('function FilteredPreview'),
+  );
+  expect(plain).toContain('outputs={[photoOutput, videoOutput]}');
+  expect(plain).not.toContain('useFrameOutput(');
+  const main = camera.slice(
+    camera.indexOf('export const FilteredCamera'),
+    camera.indexOf('function PlainCamera'),
+  );
+  expect(main).not.toContain('useFrameOutput(');
+  expect(main).toMatch(/matrix \? \(\s*<FilteredPreview/);
+  expect(camera).toContain('outputs={[photoOutput, videoOutput, frameOutput]}');
+});
+
+test('uma falha da camara nao leva o ecra consigo', () => {
+  expect(camera).toContain('getDerivedStateFromError');
+  expect(camera).toContain('<CameraGuard');
+});
+
+test('o zoom e um fator da lente, nao 0-1', () => {
+  // VisionCamera rejects zoom outside device.minZoom..maxZoom. The composer
+  // still speaks 0–1, so the camera opened at 0 and every pinch was refused.
+  expect(camera).toContain('zoom: lensZoom(device, zoom)');
+  expect(camera).toContain('device.minZoom');
+  expect(camera).toContain('device.maxZoom');
+});
+
+test('o limite de gravacao consegue parar a gravacao', () => {
+  // The recorder was state, so the cap timer held a handle from before the
+  // recording started and its stopRecording saw nothing to stop.
+  expect(camera).toContain('recorderRef.current = rec');
+  expect(camera).not.toContain('setRecorder(');
+  expect(screen).toContain('clearStopTimer()');
 });
 
 test('a pre-visualizacao nativa fica por baixo, para falhar em segurança', () => {

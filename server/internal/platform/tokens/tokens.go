@@ -63,7 +63,7 @@ func Parse(secret []byte, token string) (Claims, error) {
 			return nil, fmt.Errorf("%w: %v", ErrUnsupported, tok.Method.Alg())
 		}
 		return secret, nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return Claims{}, ErrExpired
@@ -84,8 +84,17 @@ func Parse(secret []byte, token string) (Claims, error) {
 		return Claims{}, ErrInvalid
 	}
 
-	iat, _ := mc["iat"].(float64)
-	exp, _ := mc["exp"].(float64)
+	iat, ok := mc["iat"].(float64)
+	if !ok || iat <= 0 {
+		return Claims{}, ErrInvalid
+	}
+	exp, ok := mc["exp"].(float64)
+	if !ok || exp <= iat {
+		return Claims{}, ErrInvalid
+	}
+	if Type(typ) != TypeAccess && Type(typ) != TypeRefresh {
+		return Claims{}, ErrWrongType
+	}
 
 	return Claims{
 		UserID:   userID,

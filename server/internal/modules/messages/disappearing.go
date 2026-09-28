@@ -111,7 +111,7 @@ func (s *Service) SetDisappearing(ctx context.Context, chatID, userID uuid.UUID,
 	// client has to render it in the reader's language and name the actor
 	// from their own contact list.
 	notice := fmt.Sprintf("disappearing:%d:%s", seconds, userID.String())
-	if id, err := s.repo.InsertMessage(ctx, chatID, userID, notice, MsgSystem, nil, nil, Origin{}); err == nil {
+	if id, err := s.repo.InsertMessage(ctx, chatID, userID, notice, MsgSystem, nil, nil, Origin{}, nil); err == nil {
 		if msg, err := s.getMessage(ctx, chatID, id); err == nil {
 			s.broadcast(ctx, chatID, "message.new", msg)
 		}

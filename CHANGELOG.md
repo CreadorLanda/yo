@@ -19,9 +19,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✏️ Changed (Alterado)
 
+#### Chamadas
+- Chamadas sem E2EE agora mostram um aviso de que o servidor pode aceder ao áudio e vídeo; chamadas de grupo também estão listadas como não protegidas na documentação de segurança
+
+#### Definições
+- A opção de FAQ abre a documentação; a opção de contacto sem canal de suporte foi removida
+- O botão redundante e sem ação para adicionar membros foi removido; administradores continuam a usar a opção funcional na secção de membros
+
+#### Mensagens
+- A pesquisa dentro da conversa permite filtrar por não lidas, favoritas, multimédia, documentos, links e áudio, além de combinar cada filtro com texto de pesquisa
+- Mensagens podem ser adicionadas/removidas das favoritas no menu de pressão longa; esta escolha é privada por utilizador e sincronizada entre dispositivos
+
+#### iOS
+- Push notifications usam tokens Expo encaminhados pelo APNs, em vez de enviarem tokens APNs diretamente ao FCM
+- Perfis EAS de desenvolvimento, preview e produção agora incluem builds iOS
+
 #### Stories
 - `POST /api/stories/:id/react` aceita `{"reactions": [...]}` e responde com o story e as contagens novas. A forma antiga `{"emoji": "..."}` continua a funcionar e substitui o conjunto, como sempre fez
 - `GET /api/stories/:id/viewers` traz `emojis` por espectador; `emoji` fica a ser o primeiro deles, para clientes que não conhecem a lista
+
+### 🐛 Fixed (Corrigido)
+
+#### Câmara
+- Abrir a câmara dos stories já não passa pelo pipeline de fotogramas (worklets + Skia), a causa provável do crash ao abrir: só é criado quando há um filtro escolhido. Uma falha na árvore da câmara passa a mostrar "sem câmara" (o obturador abre a galeria) em vez de derrubar o ecrã
+- O pinch-to-zoom funciona: o zoom é convertido de 0–1 para o intervalo da lente (`minZoom`–`maxZoom`); antes a câmara abria em zoom 0 e cada gesto era rejeitado
+- O limite de duração do boomerang e do mãos-livres volta a parar a gravação, e um temporizador antigo já não dispara na gravação seguinte
 
 ## [0.0.2-alpha] - 2026-05-21
 
