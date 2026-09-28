@@ -207,6 +207,28 @@ func (c *Controller) DeleteReact(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, list)
 }
 
+// PostStarMessage — POST /chats/:id/messages/:mid/star
+func (c *Controller) PostStarMessage(ctx *gin.Context) {
+	c.setMessageStar(ctx, true)
+}
+
+// DeleteStarMessage — DELETE /chats/:id/messages/:mid/star
+func (c *Controller) DeleteStarMessage(ctx *gin.Context) {
+	c.setMessageStar(ctx, false)
+}
+
+func (c *Controller) setMessageStar(ctx *gin.Context, starred bool) {
+	chatID, msgID, ok := parseChatMsg(ctx)
+	if !ok {
+		return
+	}
+	if err := c.svc.SetMessageStar(ctx.Request.Context(), chatID, middleware.UserIDFrom(ctx), msgID, starred); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
 // PostMessageOpen — POST /chats/:id/messages/:mid/open
 //
 // Consumes one view of a limited-view message. Separate from listing so

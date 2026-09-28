@@ -163,15 +163,15 @@ func TestNonParticipantCannotAccessChat(t *testing.T) {
 	}
 }
 
-// TestListMessagesCarriesReceiptCounts locks in the tick state the sender
-// sees after reopening a chat.
+// TestListMessagesCarriesReceiptCountsAndUnreadState locks in the tick state
+// the sender sees after reopening a chat and the reader's unread cursor.
 //
 // The Message struct always had DeliveredTo/ReadBy fields, but no query ever
 // populated them: they were serialized as zero on every history load, so a
 // reloaded thread showed a single tick even for messages the peer had read.
 // Only the live WebSocket receipt event moved the ticks, and that is gone the
 // moment the screen unmounts.
-func TestListMessagesCarriesReceiptCounts(t *testing.T) {
+func TestListMessagesCarriesReceiptCountsAndUnreadState(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
 	svc := newTestService(pool)
@@ -194,6 +194,16 @@ func TestListMessagesCarriesReceiptCounts(t *testing.T) {
 	untouched, err := svc.SendMessage(ctx, chat.ID, alice, SendMessageRequest{Content: testDirectEnvelope("ignore this")})
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
+	}
+
+	// The read cursor belongs to the viewer, so the receiver sees both
+	// messages as unread before opening the conversation.
+	bobHistory, err := svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages for receiver: %v", err)
+	}
+	if !findMessage(t, bobHistory, sent.ID).IsUnread || !findMessage(t, bobHistory, untouched.ID).IsUnread {
+		t.Fatal("new incoming messages must be marked unread for the receiver")
 	}
 
 	find := func(msgs []Message, id int64) Message {
@@ -235,6 +245,13 @@ func TestListMessagesCarriesReceiptCounts(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetReceipts read: %v", err)
 	}
+	bobHistory, err = svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages after partial receiver read: %v", err)
+	}
+	if findMessage(t, bobHistory, sent.ID).IsUnread || !findMessage(t, bobHistory, untouched.ID).IsUnread {
+		t.Fatal("the read cursor must leave only later incoming messages unread")
+	}
 
 	msgs, err = svc.ListMessages(ctx, chat.ID, alice, 50, 0)
 	if err != nil {
@@ -249,6 +266,90 @@ func TestListMessagesCarriesReceiptCounts(t *testing.T) {
 	// The untouched message must not inherit its neighbour's receipts.
 	if m := find(msgs, untouched.ID); m.DeliveredTo != 0 || m.ReadBy != 0 {
 		t.Fatalf("untouched message: delivered=%d read=%d, want 0/0", m.DeliveredTo, m.ReadBy)
+	}
+
+	if err := svc.SetReceipts(ctx, chat.ID, bob, ReceiptRequest{
+		MessageIDs: []int64{untouched.ID}, Status: ReceiptRead,
+	}); err != nil {
+		t.Fatalf("SetReceipts read remaining message: %v", err)
+	}
+	bobHistory, err = svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages after receiver read: %v", err)
+	}
+	if findMessage(t, bobHistory, sent.ID).IsUnread || findMessage(t, bobHistory, untouched.ID).IsUnread {
+		t.Fatal("messages at or before the receiver's read cursor must not be unread")
+	}
+}
+
+func findMessage(t *testing.T, messages []Message, id int64) Message {
+	t.Helper()
+	for _, message := range messages {
+		if message.ID == id {
+			return message
+		}
+	}
+	t.Fatalf("message %d missing from history", id)
+	return Message{}
+}
+
+func TestMessageStarsArePerParticipant(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+
+	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_"+uuid.NewString()[:8])
+	eve := createTestUser(t, pool, "eve_"+uuid.NewString()[:8])
+	chat, err := svc.CreateDirectChat(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("CreateDirectChat: %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, chat.ID, bob); err != nil {
+		t.Fatalf("AcceptChat: %v", err)
+	}
+	message, err := svc.SendMessage(ctx, chat.ID, alice, SendMessageRequest{Content: testDirectEnvelope("save this")})
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+
+	if err := svc.SetMessageStar(ctx, chat.ID, bob, message.ID, true); err != nil {
+		t.Fatalf("star message: %v", err)
+	}
+	if err := svc.SetMessageStar(ctx, chat.ID, bob, message.ID, true); err != nil {
+		t.Fatalf("star message idempotently: %v", err)
+	}
+
+	bobMessages, err := svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages for starred user: %v", err)
+	}
+	aliceMessages, err := svc.ListMessages(ctx, chat.ID, alice, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages for other participant: %v", err)
+	}
+	if !findMessage(t, bobMessages, message.ID).IsStarred {
+		t.Fatal("star must appear in the caller's history")
+	}
+	if findMessage(t, aliceMessages, message.ID).IsStarred {
+		t.Fatal("star must not appear in another participant's history")
+	}
+
+	if err := svc.SetMessageStar(ctx, chat.ID, bob, message.ID, false); err != nil {
+		t.Fatalf("unstar message: %v", err)
+	}
+	bobMessages, err = svc.ListMessages(ctx, chat.ID, bob, 50, 0)
+	if err != nil {
+		t.Fatalf("ListMessages after unstar: %v", err)
+	}
+	if findMessage(t, bobMessages, message.ID).IsStarred {
+		t.Fatal("removed star must not appear in history")
+	}
+	if err := svc.SetMessageStar(ctx, chat.ID, bob, message.ID+100, true); !errors.Is(err, ErrMessageNotFound) {
+		t.Fatalf("star missing message: got %v, want ErrMessageNotFound", err)
+	}
+	if err := svc.SetMessageStar(ctx, chat.ID, eve, message.ID, true); !errors.Is(err, ErrNotParticipant) {
+		t.Fatalf("star message as non-participant: got %v, want ErrNotParticipant", err)
 	}
 }
 

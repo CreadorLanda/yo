@@ -101,6 +101,8 @@ curl -s -X POST localhost:8080/api/auth/verify \
 | `POST   /api/chats/:id/typing`           | required | ✅ typing indicator (WS)            |
 | `POST   /api/chats/:id/messages/:mid/reactions` | required | ✅ add reaction               |
 | `DELETE /api/chats/:id/messages/:mid/reactions?emoji=` | required | ✅ remove reaction |
+| `POST   /api/chats/:id/messages/:mid/star` | required | ✅ star for current participant |
+| `DELETE /api/chats/:id/messages/:mid/star` | required | ✅ remove participant's star |
 | `GET    /api/ws?token=`                  | token    | ✅ WebSocket realtime hub           |
 | `POST   /api/media/upload`               | required | ✅ multipart file upload            |
 | `GET    /api/media/:id`                  | required | ✅ media metadata                   |

@@ -490,6 +490,29 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID uuid.UUID, messag
 	})
 }
 
+// SetMessageStar saves or removes a participant's own star for a message.
+func (s *Service) SetMessageStar(ctx context.Context, chatID, userID uuid.UUID, messageID int64, starred bool) error {
+	if err := s.requireParticipant(ctx, chatID, userID); err != nil {
+		return err
+	}
+	if err := s.repo.SetMessageStar(ctx, chatID, userID, messageID, starred); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrMessageNotFound
+		}
+		return err
+	}
+	if s.hub != nil {
+		// Stars are personal; sync them to this user's other sessions without
+		// exposing their choices to the rest of the conversation.
+		s.hub.PublishJSON([]uuid.UUID{userID}, "message.starred", chatID.String(), map[string]any{
+			"message_id": messageID,
+			"user_id":    userID,
+			"is_starred": starred,
+		})
+	}
+	return nil
+}
+
 // Typing broadcasts a composing indicator (ephemeral — not persisted).
 //
 // `kind` says what they are doing: composing text, or holding the mic. Anything

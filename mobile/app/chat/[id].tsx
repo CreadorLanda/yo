@@ -52,6 +52,7 @@ import { GlassSurface } from '@/components/ui/glass-surface';
 import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { appAlert } from '@/data/dialog-store';
 import { ApiError } from '@/data/api/client';
+import { filterChatMessages, type ChatSearchFilter } from '@/data/chat-search';
 import { AppIcon } from '@/components/ui/app-icon';
 import { CachedImage } from '@/components/ui/cached-image';
 import { ForwardPicker } from '@/components/chat/forward-picker';
@@ -99,6 +100,7 @@ import {
   postReceipts,
   removeReaction,
   sendMessage as apiSendMessage,
+  setMessageStarred,
   setTyping as apiSetTyping,
   type ChatDTO,
   type MessageDTO,
@@ -308,6 +310,7 @@ export default function ChatScreen() {
   const [draft, setDraft] = useState('');
   const [searchMode, setSearchMode] = useState(false);
   const [query, setQuery] = useState('');
+  const [searchFilter, setSearchFilter] = useState<ChatSearchFilter>('all');
   const [reactionsMap, setReactionsMap] = useState<Record<string, ReactionEntry[]>>({});
   const [menuTarget, setMenuTarget] = useState<MenuTarget | null>(null);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
@@ -687,6 +690,18 @@ export default function ChatScreen() {
         return;
       }
 
+      if (ev.type === 'message.starred' && payload) {
+        const star = payload as { message_id?: number; user_id?: string; is_starred?: boolean };
+        if (star.user_id === meId && star.message_id != null) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === String(star.message_id) ? { ...m, isStarred: !!star.is_starred } : m,
+            ),
+          );
+        }
+        return;
+      }
+
       // Delivery ticks used to need a reopen — the server published these
       // all along, the chat just never listened.
       if (ev.type === 'receipt' && payload) {
@@ -855,12 +870,22 @@ export default function ChatScreen() {
 
   const trimmedQuery = query.trim();
   const searching = searchMode && trimmedQuery.length > 0;
+  const hasSearchCriteria = trimmedQuery.length > 0 || searchFilter !== 'all';
+  const searchActive = searchMode && hasSearchCriteria;
+  const searchFilterOptions: { value: ChatSearchFilter; label: string }[] = [
+    { value: 'all', label: t('chat.search_filter_all') },
+    { value: 'unread', label: t('chats.filter_unread') },
+    { value: 'starred', label: t('chat.search_filter_starred') },
+    { value: 'media', label: t('chat.search_filter_media') },
+    { value: 'documents', label: t('chat.search_filter_documents') },
+    { value: 'links', label: t('chat.search_filter_links') },
+    { value: 'audio', label: t('chat.search_filter_audio') },
+  ];
 
   const filtered = useMemo<Message[]>(() => {
-    if (!searching) return visible;
-    const q = trimmedQuery.toLowerCase();
-    return visible.filter((m) => !m.system && m.text.toLowerCase().includes(q));
-  }, [visible, searching, trimmedQuery]);
+    if (!searchActive) return visible;
+    return filterChatMessages(visible, trimmedQuery, searchFilter);
+  }, [visible, searchActive, trimmedQuery, searchFilter]);
 
   const grouped = useMemo(() => groupMessages(filtered), [filtered]);
 
@@ -1135,6 +1160,19 @@ export default function ChatScreen() {
     if (!menuTarget) return;
     handleReact(menuTarget.msg.id, emoji);
     Haptics.selectionAsync().catch(() => {});
+  };
+
+  const toggleStarFromMenu = () => {
+    const msg = menuTarget?.msg;
+    const mid = msg ? serverMessageId(msg.id) : null;
+    if (!id || !msg || mid == null) return;
+    const wasStarred = !!msg.isStarred;
+    const isStarred = !wasStarred;
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isStarred } : m)));
+    setMessageStarred(id, mid, isStarred).catch(() => {
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isStarred: wasStarred } : m)));
+      appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+    });
   };
 
   const replyFromMenu = () => {
@@ -2203,6 +2241,7 @@ export default function ChatScreen() {
   const closeSearch = () => {
     setSearchMode(false);
     setQuery('');
+    setSearchFilter('all');
   };
 
   /**
@@ -2307,31 +2346,64 @@ export default function ChatScreen() {
         ) : (
         <StateTransition transitionKey={searchMode}>
         {searchMode ? (
-          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-            <Pressable
-              onPress={closeSearch}
-              hitSlop={12}
-              style={styles.backBtn}
-              accessibilityLabel={t('chat.close_search')}
-            >
-              <Ionicons name="chevron-back" size={24} color={colors.text} />
-            </Pressable>
-            <View style={[styles.searchField, { backgroundColor: colors.surfaceMuted }]}>
-              <Ionicons name="search" size={16} color={colors.textMuted} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder={t('chat.search_placeholder')}
-                placeholderTextColor={colors.textMuted}
-                autoFocus
-                style={[styles.searchInput, { color: colors.text }]}
-              />
-              {trimmedQuery.length > 0 ? (
-                <Pressable onPress={() => setQuery('')} hitSlop={8}>
-                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-                </Pressable>
-              ) : null}
+          <View style={[styles.searchHeader, { borderBottomColor: colors.divider }]}>
+            <View style={styles.searchHeaderRow}>
+              <Pressable
+                onPress={closeSearch}
+                hitSlop={12}
+                style={styles.backBtn}
+                accessibilityLabel={t('chat.close_search')}
+              >
+                <Ionicons name="chevron-back" size={24} color={colors.text} />
+              </Pressable>
+              <View style={[styles.searchField, { backgroundColor: colors.surfaceMuted }]}>
+                <Ionicons name="search" size={16} color={colors.textMuted} />
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder={t('chat.search_placeholder')}
+                  placeholderTextColor={colors.textMuted}
+                  autoFocus
+                  style={[styles.searchInput, { color: colors.text }]}
+                />
+                {trimmedQuery.length > 0 ? (
+                  <Pressable onPress={() => setQuery('')} hitSlop={8}>
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.searchFilters}
+              keyboardShouldPersistTaps="handled"
+            >
+              {searchFilterOptions.map((option) => {
+                const selected = searchFilter === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setSearchFilter(option.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    style={[
+                      styles.searchFilterChip,
+                      { backgroundColor: selected ? colors.primary : colors.surfaceMuted },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.searchFilterText,
+                        { color: selected ? colors.onPrimary : colors.textSecondary },
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
         ) : (
           <View style={[styles.header, { borderBottomColor: colors.divider }]}>
@@ -2568,11 +2640,15 @@ export default function ChatScreen() {
               ) : null
             }
             ListEmptyComponent={
-              searching ? (
+              searchActive ? (
                 <EmptyState
                   icon="search-outline"
                   title={t('chat.search_empty_title')}
-                  description={t('chat.search_empty', { query: trimmedQuery })}
+                  description={
+                    trimmedQuery
+                      ? t('chat.search_empty', { query: trimmedQuery })
+                      : t('chat.search_filter_empty')
+                  }
                 />
               ) : null
             }
@@ -2855,6 +2931,8 @@ export default function ChatScreen() {
           onEdit={editFromMenu}
           onDelete={deleteFromMenu}
           onSelect={selectFromMenu}
+          onToggleStar={toggleStarFromMenu}
+          starred={!!menuTarget.msg.isStarred}
           onSaveSticker={toggleSavedSticker}
           stickerSaved={isStickerSaved(menuTarget.msg)}
           onInfo={() => {
@@ -3142,6 +3220,7 @@ function MetaRow({
       {msg.edited ? (
         <Text style={[styles.metaTime, { color: dim }]}>{t('chat.edited')} ·</Text>
       ) : null}
+      {msg.isStarred ? <Ionicons name="star" size={11} color={onMedia ? '#FFFFFF' : colors.warning} /> : null}
       {ttl ? (
         <View style={styles.metaInline}>
           <Ionicons name="timer-outline" size={11} color={dim} />
@@ -4090,6 +4169,8 @@ function ReactionMenu({
   onEdit,
   onDelete,
   onSelect,
+  onToggleStar,
+  starred,
   onSaveSticker,
   stickerSaved,
   onInfo,
@@ -4105,6 +4186,8 @@ function ReactionMenu({
   onEdit: () => void;
   onDelete: () => void;
   onSelect: () => void;
+  onToggleStar: () => void;
+  starred: boolean;
   onSaveSticker: () => void;
   stickerSaved: boolean;
   onInfo: () => void;
@@ -4137,6 +4220,7 @@ function ReactionMenu({
   // content lives on the original sender's side.
   const showEdit = mine && hasText && !msg.forwarded;
   const showSelect = true;
+  const showStar = !msg.deletedAt && /^\d+$/.test(msg.id);
   const showDelete = true;
   // Saving works both ways: a sticker someone sent me, and one I sent.
   const showSticker = msg.attachment?.kind === 'sticker';
@@ -4148,6 +4232,7 @@ function ReactionMenu({
     Number(showCopy) +
     Number(showEdit) +
     Number(showSelect) +
+    Number(showStar) +
     Number(showSticker) +
     Number(showInfo) +
     Number(showDelete);
@@ -4272,6 +4357,13 @@ function ReactionMenu({
             { show: showCopy, label: t('chat.copy'), icon: 'copy-outline', onPress: onCopy, destructive: false },
             { show: showEdit, label: t('chat.edit'), icon: 'create-outline', onPress: onEdit, destructive: false },
             { show: showSelect, label: t('chat.select'), icon: 'checkmark-circle-outline', onPress: onSelect, destructive: false },
+            {
+              show: showStar,
+              label: starred ? t('chat.unstar_message') : t('chat.star_message'),
+              icon: starred ? 'star' : 'star-outline',
+              onPress: onToggleStar,
+              destructive: false,
+            },
             {
               show: showSticker,
               label: stickerSaved ? t('stickers.remove_sticker') : t('stickers.save_sticker'),
@@ -4410,6 +4502,33 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     gap: Spacing.xs,
     borderBottomWidth: 1,
+  },
+  searchHeader: {
+    paddingHorizontal: Spacing.sm,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+    gap: Spacing.sm,
+    borderBottomWidth: 1,
+  },
+  searchHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  searchFilters: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingRight: Spacing.sm,
+  },
+  searchFilterChip: {
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  searchFilterText: {
+    ...Typography.caption,
+    fontWeight: '600',
   },
   backBtn: {
     width: 36,

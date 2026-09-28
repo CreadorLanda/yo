@@ -501,6 +501,8 @@ const messageSelectBase = `
 	       m.created_at, m.edited_at, m.deleted_at,
 	       COALESCE(u.display_name, ''), COALESCE(u.avatar_uri, ''),
 	       rc.delivered_to, rc.read_by,
+	       COALESCE(m.sender_id <> $1 AND (cpv.last_read_message_id IS NULL OR m.id > cpv.last_read_message_id), FALSE) AS is_unread,
+	       (ms.message_id IS NOT NULL) AS is_starred,
 	       m.forward_count, m.source_channel_id::text, m.source_post_id::text,
 	       m.expires_at,
 	       m.view_limit, COALESCE(mv.views, 0),
@@ -518,6 +520,7 @@ const messageSelectBase = `
 	-- rule applied anywhere else is a rule a different client can skip.
 	JOIN chat_participants cpv
 	     ON cpv.chat_id = m.chat_id AND cpv.user_id = $1
+	LEFT JOIN message_stars ms ON ms.message_id = m.id AND ms.user_id = $1
 	-- Reactions came back only over the websocket, so reopening a chat lost
 	-- every one of them: the map started empty and nothing on the read path
 	-- refilled it. Aggregated here rather than queried per message — a page
@@ -613,6 +616,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 		var m messageRow
 		var senderName, senderAvatar string
 		var deliveredTo, readBy, forwardCount int
+		var isUnread, isStarred bool
 		var srcChannel, srcPost *string
 		var expiresAt *time.Time
 		var viewLimit *int
@@ -620,7 +624,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 		var reactionsJSON string
 		if err := rows.Scan(&m.ID, &m.ChatID, &m.SenderID, &m.Content,
 			&m.MessageType, &m.ReplyToID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt,
-			&senderName, &senderAvatar, &deliveredTo, &readBy,
+			&senderName, &senderAvatar, &deliveredTo, &readBy, &isUnread, &isStarred,
 			&forwardCount, &srcChannel, &srcPost, &expiresAt,
 			&viewLimit, &viewsUsed, &reactionsJSON); err != nil {
 			return nil, err
@@ -655,6 +659,8 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 			SenderAvatar:    senderAvatar,
 			DeliveredTo:     deliveredTo,
 			ReadBy:          readByFor(readBy, hideRead),
+			IsUnread:        isUnread,
+			IsStarred:       isStarred,
 			ForwardCount:    forwardCount,
 			ViewLimit:       viewLimit,
 			ViewsLeft:       viewsLeft,
@@ -804,6 +810,30 @@ func (r *Repository) SetLastRead(ctx context.Context, chatID, userID uuid.UUID, 
 		last_read_at = NOW()
 		WHERE chat_id = $1 AND user_id = $2
 	`, chatID, userID, messageID)
+	return err
+}
+
+// SetMessageStar changes one participant's saved state for a message.
+func (r *Repository) SetMessageStar(ctx context.Context, chatID, userID uuid.UUID, messageID int64, starred bool) error {
+	var exists bool
+	if err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM messages WHERE id = $1 AND chat_id = $2 AND deleted_at IS NULL)
+	`, messageID, chatID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return pgx.ErrNoRows
+	}
+	if starred {
+		_, err := r.db.Exec(ctx, `
+			INSERT INTO message_stars (message_id, user_id)
+			VALUES ($1, $2) ON CONFLICT DO NOTHING
+		`, messageID, userID)
+		return err
+	}
+	_, err := r.db.Exec(ctx, `
+		DELETE FROM message_stars WHERE message_id = $1 AND user_id = $2
+	`, messageID, userID)
 	return err
 }
 

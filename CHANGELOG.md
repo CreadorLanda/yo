@@ -19,8 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✏️ Changed (Alterado)
 
-#### Chamadas
-- Chamadas sem E2EE agora mostram um aviso de que o servidor pode aceder ao áudio e vídeo; chamadas de grupo também estão listadas como não protegidas na documentação de segurança
+#### Mensagens
+- A pesquisa dentro da conversa permite filtrar por não lidas, favoritas, multimédia, documentos, links e áudio, além de combinar cada filtro com texto de pesquisa
+- Mensagens podem ser adicionadas/removidas das favoritas no menu de pressão longa; esta escolha é privada por utilizador e sincronizada entre dispositivos
 
 #### Stories
 - `POST /api/stories/:id/react` aceita `{"reactions": [...]}` e responde com o story e as contagens novas. A forma antiga `{"emoji": "..."}` continua a funcionar e substitui o conjunto, como sempre fez

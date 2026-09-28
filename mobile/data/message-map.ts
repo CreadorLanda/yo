@@ -42,6 +42,8 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
     edited: !!m.edited_at,
     deletedAt: m.deleted_at,
     status: m.read_by && m.read_by > 0 ? 'read' : m.delivered_to && m.delivered_to > 0 ? 'delivered' : 'sent',
+    isUnread: m.is_unread,
+    isStarred: m.is_starred,
     expiresAt: m.expires_at,
     // The whole limited-view feature was a UI flag nothing ever set: the
     // server has tracked the limit from the start and the client read
