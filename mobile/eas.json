@@ -11,6 +11,7 @@
       "android": {
         "buildType": "apk"
       },
+      "ios": {},
       "env": {
         "EXPO_PUBLIC_API_URL": "http://localhost:8080",
         "EXPO_PUBLIC_WS_URL": "ws://localhost:8080"
@@ -23,6 +24,7 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease"
       },
+      "ios": {},
       "env": {
         "EXPO_PUBLIC_API_URL": "https://yo.alexandrelanda.com",
         "EXPO_PUBLIC_WS_URL": "wss://yo.alexandrelanda.com"
@@ -37,7 +39,8 @@
       },
       "android": {
         "gradleCommand": ":app:bundleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease"
-      }
+      },
+      "ios": {}
     }
   },
   "submit": {

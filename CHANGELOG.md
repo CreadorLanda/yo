@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✏️ Changed (Alterado)
 
+#### iOS
+- Push notifications usam tokens Expo encaminhados pelo APNs, em vez de enviarem tokens APNs diretamente ao FCM
+- Perfis EAS de desenvolvimento, preview e produção agora incluem builds iOS
+
 #### Stories
 - `POST /api/stories/:id/react` aceita `{"reactions": [...]}` e responde com o story e as contagens novas. A forma antiga `{"emoji": "..."}` continua a funcionar e substitui o conjunto, como sempre fez
 - `GET /api/stories/:id/viewers` traz `emojis` por espectador; `emoji` fica a ser o primeiro deles, para clientes que não conhecem a lista

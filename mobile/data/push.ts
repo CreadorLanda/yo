@@ -1,4 +1,5 @@
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
@@ -75,7 +76,21 @@ export async function getDevicePushToken(): Promise<string | null> {
   }
 
   try {
-    // The device's own FCM registration token, not an Expo one.
+    // iOS returns an APNs token from getDevicePushTokenAsync. The server's
+    // native sender currently accepts FCM tokens only, so route iOS through
+    // Expo, which delivers to APNs using this EAS project's push credentials.
+    if (Platform.OS === 'ios') {
+      const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+      if (!projectId) {
+        throw new Error('EAS project ID is missing; cannot create an Expo push token');
+      }
+      const token = await Notifications.getExpoPushTokenAsync({ projectId });
+      return typeof token.data === 'string' ? token.data : null;
+    }
+
+    // Android returns the device's own FCM registration token, not an Expo
+    // token. This keeps Android delivery direct through our FCM sender.
     //
     // An Expo token is delivered by Expo's servers, which means every
     // notification this app sends passes through a third party. The native
@@ -87,10 +102,11 @@ export async function getDevicePushToken(): Promise<string | null> {
     // token that would be silently refused later.
     const token = await Notifications.getDevicePushTokenAsync();
     return typeof token.data === 'string' ? token.data : null;
-  } catch {
+  } catch (err) {
     // No Google Play services, or a build without the Firebase config.
     // Reported as "no token" rather than thrown: a device that cannot
     // receive push must still be able to use the app.
+    console.warn('[push] could not obtain a push token:', err);
     return null;
   }
 }
