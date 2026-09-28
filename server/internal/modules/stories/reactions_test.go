@@ -157,7 +157,7 @@ func TestReactionCountsAndReplacement(t *testing.T) {
 	alice := createUser(t, pool, "alice_"+uuid.NewString()[:8])
 	bob := createUser(t, pool, "bob_"+uuid.NewString()[:8])
 
-	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "olá"})
+	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "olá", Visibility: VisPublic})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

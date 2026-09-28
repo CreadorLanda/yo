@@ -26,7 +26,7 @@ func TestAnonChannelNeverNamesEitherParty(t *testing.T) {
 	sender := createUser(t, pool, "sender_"+uuid.NewString()[:8])
 
 	story, err := svc.Create(ctx, author, CreateRequest{
-		Kind: KindText, Caption: "anónimo", IsAnonymous: true,
+		Kind: KindText, Caption: "anónimo", IsAnonymous: true, Visibility: VisPublic,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -75,7 +75,7 @@ func TestAnonSenderCannotReachOwnStory(t *testing.T) {
 	svc := NewService(NewRepository(pool), nil)
 	author := createUser(t, pool, "self_"+uuid.NewString()[:8])
 
-	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestAnonBlockIsSilent(t *testing.T) {
 	author := createUser(t, pool, "author_"+uuid.NewString()[:8])
 	sender := createUser(t, pool, "pest_"+uuid.NewString()[:8])
 
-	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestAnonRateLimit(t *testing.T) {
 	author := createUser(t, pool, "author_"+uuid.NewString()[:8])
 	sender := createUser(t, pool, "flood_"+uuid.NewString()[:8])
 
-	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	story, err := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestAnonRevealNeedsBothSides(t *testing.T) {
 	author := createUser(t, pool, "author_"+uuid.NewString()[:8])
 	sender := createUser(t, pool, "sender_"+uuid.NewString()[:8])
 
-	story, _ := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	story, _ := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 	if err := svc.WriteAnon(ctx, story.ID, sender, "olá"); err != nil {
 		t.Fatalf("WriteAnon: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestAnonInboxServesBothSides(t *testing.T) {
 	sender := createUser(t, pool, "sender_"+uuid.NewString()[:8])
 
 	story, err := svc.Create(ctx, author, CreateRequest{
-		Kind: KindText, Caption: "x", IsAnonymous: true,
+		Kind: KindText, Caption: "x", IsAnonymous: true, Visibility: VisPublic,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -317,7 +317,7 @@ func TestAnonThreadCarriesStoryContext(t *testing.T) {
 	sender := createUser(t, pool, "sender_"+uuid.NewString()[:8])
 
 	story, err := svc.Create(ctx, author, CreateRequest{
-		Kind: KindText, Caption: "a minha pergunta", IsAnonymous: true,
+		Kind: KindText, Caption: "a minha pergunta", IsAnonymous: true, Visibility: VisPublic,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -390,7 +390,7 @@ func TestAnonThreadGraduates(t *testing.T) {
 	sender := createUser(t, pool, "sender_"+uuid.NewString()[:8])
 
 	story, err := svc.Create(ctx, author, CreateRequest{
-		Kind: KindText, Caption: "x", IsAnonymous: true,
+		Kind: KindText, Caption: "x", IsAnonymous: true, Visibility: VisPublic,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -460,7 +460,7 @@ func TestAnonGraduationKeepsThreadWhenChatFails(t *testing.T) {
 	author := createUser(t, pool, "author_"+uuid.NewString()[:8])
 	sender := createUser(t, pool, "sender_"+uuid.NewString()[:8])
 
-	story, _ := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x"})
+	story, _ := svc.Create(ctx, author, CreateRequest{Kind: KindText, Caption: "x", Visibility: VisPublic})
 	if err := svc.WriteAnon(ctx, story.ID, sender, "olá"); err != nil {
 		t.Fatalf("WriteAnon: %v", err)
 	}

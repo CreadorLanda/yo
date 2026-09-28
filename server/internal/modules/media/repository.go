@@ -2,12 +2,16 @@ package media
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrMediaNotFound = errors.New("media_not_found")
+var ErrMediaNotOwner = errors.New("media_not_owner")
 
 type Repository struct {
 	db *pgxpool.Pool
@@ -238,7 +242,8 @@ func (r *Repository) DuePurge(ctx context.Context, limit int) ([]purgeCandidate,
 		        (m.expires_at IS NOT NULL AND m.expires_at <= NOW())
 		     OR (
 		          m.expected_recipients > 0
-		          AND (SELECT COUNT(*) FROM media_fetches f WHERE f.media_id = m.id)
+		          AND (SELECT COUNT(*) FROM media_fetches f
+		               WHERE f.media_id = m.id AND f.user_id <> m.owner_id)
 		              >= m.expected_recipients
 		        )
 		      )

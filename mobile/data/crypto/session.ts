@@ -107,6 +107,36 @@ function sessionKey(peerUserId: string) {
  */
 const sessionCache = new Map<string, SessionRecord | null>();
 
+// A direct-message counter is part of the cryptographic state. Serialise
+// sends per account and peer so two rapid sends cannot both read the same
+// counter and reuse the same secretbox nonce. The generation also prevents a
+// send that was waiting across logout from running under the next account.
+const peerSendLocks = new Map<string, Promise<unknown>>();
+let sessionGeneration = 0;
+
+function withPeerSendLock<T>(
+  peerUserId: string,
+  run: (assertActive: () => void) => Promise<T>,
+): Promise<T> {
+  const accountId = getCurrentUser()?.id;
+  if (!accountId) return Promise.reject(new Error('session_missing'));
+  const generation = sessionGeneration;
+  const key = `${accountId}:${peerUserId}`;
+  const assertActive = () => {
+    if (generation !== sessionGeneration || getCurrentUser()?.id !== accountId) {
+      throw new Error('session_invalidated');
+    }
+  };
+  const execute = () => {
+    assertActive();
+    return run(assertActive);
+  };
+  const previous = peerSendLocks.get(key) ?? Promise.resolve();
+  const next = previous.then(execute, execute);
+  peerSendLocks.set(key, next.catch(() => undefined));
+  return next;
+}
+
 export async function loadSession(peerUserId: string): Promise<SessionRecord | null> {
   // Cache under the namespaced key too — keyed by peer alone it would carry
   // account A's session into account B for the life of the process, which is
@@ -129,7 +159,9 @@ export async function loadSession(peerUserId: string): Promise<SessionRecord | n
 
 /** Drop cached sessions — call on logout so nothing outlives the account. */
 export function clearSessionCache(): void {
+  sessionGeneration += 1;
   sessionCache.clear();
+  peerSendLocks.clear();
 }
 
 async function saveSession(s: SessionRecord): Promise<void> {
@@ -345,51 +377,66 @@ export async function encryptForPeer(
   plaintext: string,
   opts?: { peerUsername?: string },
 ): Promise<string> {
-  let session = await loadSession(peerUserId);
-  if (!session && opts?.peerUsername) {
-    session = await establishSessionAsInitiator(peerUserId, opts.peerUsername);
-  }
-  if (!session) {
-    throw new Error('session_missing');
-  }
+	return withPeerSendLock(peerUserId, async (assertActive) => {
+		let session = await loadSession(peerUserId);
+		assertActive();
+		if (!session && opts?.peerUsername) {
+			session = await establishSessionAsInitiator(peerUserId, opts.peerUsername);
+		}
+		if (!session) {
+			throw new Error('session_missing');
+		}
 
-  const ikPublic = await getIdentityPublic();
-  if (!ikPublic) throw new Error('local_keys_missing');
+		const ikPublic = await getIdentityPublic();
+		assertActive();
+		if (!ikPublic) throw new Error('local_keys_missing');
 
-  const root = b64urlToBytes(session.rootKey);
-  const n = session.sendN;
-  const mk = messageKey(root, n);
-  const nonce = nonceFromCounter(n);
-  const boxed = nacl.secretbox(utf8Encode(plaintext), nonce, mk);
-  if (!boxed) throw new Error('encrypt_failed');
+		const root = b64urlToBytes(session.rootKey);
+		const n = session.sendN;
+		const mk = messageKey(root, n);
+		const nonce = nonceFromCounter(n);
+		const boxed = nacl.secretbox(utf8Encode(plaintext), nonce, mk);
+		if (!boxed) throw new Error('encrypt_failed');
 
-  const header: EnvelopeHeader = {
-    v: 1,
-    ik: ikPublic,
-    n,
-  };
-  // Repeat the handshake until the peer proves they can decrypt, rather than
-  // sending it once on message zero. Anything can drop the first message —
-  // a reload, a chat never opened, the parallel decrypt below racing past
-  // it — and every message after that was unrecoverable for the peer.
-  if (session.handshake) {
-    header.ek = session.handshake.ek;
-    if (session.handshake.otkId != null) header.otk_id = session.handshake.otkId;
-    if (session.handshake.spkId != null) header.spk_id = session.handshake.spkId;
-  }
+		const header: EnvelopeHeader = {
+			v: 1,
+			ik: ikPublic,
+			n,
+		};
+		// Repeat the handshake until the peer proves they can decrypt, rather than
+		// sending it once on message zero. Anything can drop the first message —
+		// a reload, a chat never opened, the parallel decrypt below racing past
+		// it — and every message after that was unrecoverable for the peer.
+		if (session.handshake) {
+			header.ek = session.handshake.ek;
+			if (session.handshake.otkId != null) header.otk_id = session.handshake.otkId;
+			if (session.handshake.spkId != null) header.spk_id = session.handshake.spkId;
+		}
 
-  session.sendN = n + 1;
-  await saveSession(session);
+		session.sendN = n + 1;
+		await saveSession(session);
+		assertActive();
 
-  const headerB64 = bytesToB64url(utf8Encode(JSON.stringify(header)));
-  const bodyB64 = bytesToB64url(boxed);
-  return `${ENVELOPE_PREFIX}${headerB64}.${bodyB64}`;
+		const headerB64 = bytesToB64url(utf8Encode(JSON.stringify(header)));
+		const bodyB64 = bytesToB64url(boxed);
+		return `${ENVELOPE_PREFIX}${headerB64}.${bodyB64}`;
+	});
 }
 
 /** Decrypt an envelope. Falls back to raw content if not encrypted. */
-export async function decryptFromPeer(
+export function decryptFromPeer(
   peerUserId: string,
   content: string,
+): Promise<string> {
+  return withPeerSendLock(peerUserId, (assertActive) =>
+    decryptFromPeerLocked(peerUserId, content, assertActive),
+  );
+}
+
+async function decryptFromPeerLocked(
+  peerUserId: string,
+  content: string,
+  assertActive: () => void,
 ): Promise<string> {
   if (!isEnvelope(content)) return content;
 
@@ -405,8 +452,10 @@ export async function decryptFromPeer(
   const body = b64urlToBytes(rest.slice(dot + 1));
 
   let session = await loadSession(peerUserId);
+  assertActive();
   if (!session && header.ek) {
     session = await establishSessionAsResponder(peerUserId, header);
+    assertActive();
   }
   if (!session) {
     return '[encrypted message — missing keys]';
@@ -437,6 +486,7 @@ export async function decryptFromPeer(
   // envelopes, whose ik/ek are ours and would derive pure noise.
   if (!opened && header.ek && header.ik) {
     const candidate = await deriveResponderRoot(header);
+    assertActive();
     if (candidate) {
       opened = nacl.secretbox.open(body, nonce, messageKey(candidate, header.n));
       if (opened) {
@@ -456,6 +506,7 @@ export async function decryptFromPeer(
           establishedAt: new Date().toISOString(),
           pastRoots: superseded,
         };
+        assertActive();
         await saveSession(session);
       }
     }
@@ -469,11 +520,13 @@ export async function decryptFromPeer(
   // and no longer needs repeating on every message we send.
   if (session.handshake) {
     session.handshake = undefined;
+    assertActive();
     await saveSession(session);
   }
 
   if (header.n >= session.recvN) {
     session.recvN = header.n + 1;
+    assertActive();
     await saveSession(session);
   }
   return utf8Decode(opened);

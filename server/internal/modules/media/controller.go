@@ -2,9 +2,11 @@ package media
 
 import (
 	"errors"
+	"mime"
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -23,8 +25,13 @@ func NewController(svc *Service) *Controller {
 
 // PostUpload — POST /media/upload  (multipart field "file")
 func (c *Controller) PostUpload(ctx *gin.Context) {
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, c.svc.MaxRequestBytes())
 	file, err := ctx.FormFile("file")
 	if err != nil {
+		if strings.Contains(err.Error(), "request body too large") {
+			ctx.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "media_too_large"})
+			return
+		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "missing_file"})
 		return
 	}
@@ -110,7 +117,10 @@ func (c *Controller) GetFile(ctx *gin.Context) {
 	ctx.Header("Content-Type", obj.MimeType)
 	ctx.Header("Cache-Control", "private, max-age=86400")
 	if obj.OriginalName != "" {
-		ctx.Header("Content-Disposition", `inline; filename="`+obj.OriginalName+`"`)
+		disposition := mime.FormatMediaType("inline", map[string]string{
+			"filename": obj.OriginalName,
+		})
+		ctx.Header("Content-Disposition", disposition)
 	}
 
 	// ServeContent handles Range requests, conditional GETs and the

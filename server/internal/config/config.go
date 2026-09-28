@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -81,11 +82,18 @@ type JWTConfig struct {
 	Secret          string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
+	// OTPPepper is a server-only key used to derive OTP verifiers. It must
+	// never be stored alongside Redis, because Redis compromise is the threat
+	// this key is intended to limit.
+	OTPPepper string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Env: getenv("APP_ENV", "dev"),
+		// Production is the safe default. Local development declares APP_ENV=dev
+		// in server/.env; an omitted variable must never enable dev-only OTP
+		// responses in a deployed process.
+		Env: getenv("APP_ENV", "prod"),
 		HTTP: HTTPConfig{
 			Addr: getenv("HTTP_ADDR", ":8080"),
 		},
@@ -99,6 +107,7 @@ func Load() (Config, error) {
 			Secret:          os.Getenv("JWT_SECRET"),
 			AccessTokenTTL:  getenvDuration("JWT_ACCESS_TTL", 15*time.Minute),
 			RefreshTokenTTL: getenvDuration("JWT_REFRESH_TTL", 30*24*time.Hour),
+			OTPPepper:       os.Getenv("OTP_PEPPER"),
 		},
 		Crypto: CryptoConfig{
 			// Encrypts message content at rest (see internal/crypto).
@@ -141,6 +150,21 @@ func Load() (Config, error) {
 	}
 	if len(cfg.JWT.Secret) < 32 {
 		return cfg, errors.New("JWT_SECRET must be at least 32 bytes")
+	}
+	if cfg.Env != "dev" && cfg.Env != "prod" {
+		return cfg, errors.New("APP_ENV must be either dev or prod")
+	}
+	if cfg.Env == "prod" && cfg.Crypto.MessageKey != "" {
+		key, err := hex.DecodeString(cfg.Crypto.MessageKey)
+		if err != nil || len(key) != 32 {
+			return cfg, errors.New("MESSAGE_KEY must be exactly 32 bytes encoded as 64 hex characters")
+		}
+	}
+	if cfg.Env == "prod" && cfg.Crypto.MessageKey == "" {
+		return cfg, errors.New("MESSAGE_KEY is required in prod")
+	}
+	if cfg.Env == "prod" && len(cfg.JWT.OTPPepper) < 32 {
+		return cfg, errors.New("OTP_PEPPER must be at least 32 bytes in prod")
 	}
 	return cfg, nil
 }

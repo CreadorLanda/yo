@@ -3,8 +3,6 @@ package media
 import (
 	"context"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -75,9 +73,9 @@ func (s *Sweeper) sweep(ctx context.Context) {
 
 	var purged int
 	for _, c := range due {
-		abs := filepath.Join(s.rootDir, filepath.FromSlash(c.StoragePath))
+		abs, ok := mediaPath(s.rootDir, c.StoragePath)
 		// Refuse to touch anything outside the media root.
-		if !strings.HasPrefix(filepath.Clean(abs), filepath.Clean(s.rootDir)) {
+		if !ok {
 			log.Warn().Str("path", c.StoragePath).Msg("media sweep: path escapes root, skipping")
 			continue
 		}

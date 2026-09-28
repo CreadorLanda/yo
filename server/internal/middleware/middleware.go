@@ -12,7 +12,7 @@ import (
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.GetHeader("X-Request-Id")
-		if id == "" {
+		if parsed, err := uuid.Parse(id); err != nil || parsed == uuid.Nil {
 			id = uuid.NewString()
 		}
 		c.Set("request_id", id)
