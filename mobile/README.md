@@ -37,15 +37,19 @@ mobile/
 ## Push notifications
 
 On login / settings the app requests permission via `expo-notifications` and
-registers an Expo push token with `PUT /api/notifications/devices`
-(`mobile/data/push.ts`). The Go push worker delivers:
+registers a push token with `PUT /api/notifications/devices`
+(`mobile/data/push.ts`). iOS uses an Expo push token so Expo can deliver it
+through APNs; Android uses its native FCM token for direct FCM delivery:
 
 | Token shape | Backend |
 | --- | --- |
-| `ExponentPushToken[...]` | Expo Push API (→ FCM/APNs) |
-| native FCM token | FCM HTTP v1 when `FCM_PROJECT_ID` + credentials are set on the server |
+| iOS `ExponentPushToken[...]` | Expo Push API → APNs |
+| Android native FCM token | FCM HTTP v1 when `FCM_PROJECT_ID` + credentials are set on the server |
 
-Physical device recommended; iOS Simulator will skip registration.
+The EAS project must have an Apple Push Notification key configured for iOS
+delivery. The development, preview, and production EAS profiles can build iOS;
+Apple signing and APNs credentials are required for device builds. Physical
+device recommended; iOS Simulator will skip registration.
 
 ## Design system
 
