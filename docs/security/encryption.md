@@ -20,8 +20,9 @@
 > describes what the code does.
 
 Encryption happens on the device with [TweetNaCl](https://tweetnacl.js.org/)
-(`mobile/data/crypto/`). The server stores ciphertext and holds no key
-material.
+(`mobile/data/crypto/`). The server stores the resulting ciphertext and holds
+no client-side E2EE keys. A separate, optional server-side `MESSAGE_KEY` layer
+is described under [At rest](#at-rest); it is not an E2EE key.
 
 ### Keys
 
@@ -68,10 +69,12 @@ not a settled state.
 
 ### On the server
 
-- Postgres data files: full-disk encryption on the host (LUKS / cloud-managed encryption at rest).
-- Sensitive columns (push tokens, refresh tokens): envelope-encrypted at the application layer with a Key Encryption Key held in KMS / Vault. Tables don't see plaintext.
-- Object storage: every media file gets a per-file Data Encryption Key, wrapped by the KEK. The DEK is stored alongside the object metadata; loss of the KEK makes the storage unreadable.
-- Backups: encrypted with a separate backup KEK, rotated independently.
+- **Postgres data files:** host or provider-level disk encryption has not been verified. Do not assume it is enabled.
+- **Push tokens:** `push_devices.token` is stored as plaintext. The older `devices.push_token_enc` column is not used by the notification code.
+- **Session tokens:** access and refresh tokens are stored as SHA-256 hashes in `sessions.token_hash` and `sessions.refresh_hash`; the original bearer tokens are not stored there.
+- **Message content:** when a valid 32-byte `MESSAGE_KEY` is configured, the server adds AES-256-GCM encryption to message content. This key is read from the server environment; it is not held in KMS or Vault. If the key is missing or invalid, the repository falls back to storing message content as received. This server-side layer is separate from client-side end-to-end encryption and does not protect data from a server compromise.
+- **Media files:** the server does not encrypt uploaded files with per-file keys. Files already encrypted by the client before upload remain ciphertext; other uploads are stored as received.
+- **Backups:** this repository has no automated backup or backup-encryption pipeline. Backup encryption and retention must not be assumed.
 
 ### On the device
 
@@ -115,8 +118,7 @@ The rejected WhatsApp bridge and the full reasoning are in
 | One-time pre-keys          | Continuously consumed; client tops up when low |
 | Session keys               | Not rotated per message — see above |
 | Refresh tokens             | On every use                       |
-| Server KEK (Vault/KMS)     | Annually, or on incident           |
-| Backup KEK                 | Annually                           |
+| `MESSAGE_KEY` (server-side message layer) | No automated rotation process is documented; rotation needs a migration plan |
 | TLS certificates           | 90 days (ACME automated)           |
 
 ---
@@ -127,5 +129,7 @@ We say this aloud so it doesn't surprise anyone:
 
 - **Metadata.** The server sees who messages whom and when. Sealed-sender style mitigations are tracked as a follow-up.
 - **A compromised device while unlocked.** Anyone holding the unlocked phone can read everything; SQLCipher cannot defend against that.
+- **Server-side data at rest.** Push tokens are plaintext. The server's `MESSAGE_KEY` is an environment secret, not a KMS/Vault-managed key, and the server can read data protected only by it. Host disk encryption and encrypted backups have not been verified.
+- **Media outside encrypted chat uploads.** The server stores uploaded bytes as received; only files encrypted on the client before upload remain unreadable to it.
 
-Anything beyond this list should be reported as a bug, not a feature.
+Do not infer a protection that is not stated here. If a data path is unclear, treat it as unprotected until its implementation is verified.
