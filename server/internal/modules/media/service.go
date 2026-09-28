@@ -149,6 +149,12 @@ func (s *Service) NoteFetched(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.MarkFetched(ctx, id, userID)
 }
 
+// CanRead reports whether this user belongs to a current audience for the
+// media. It is also used by message sends to validate forwarded references.
+func (s *Service) CanRead(ctx context.Context, id, userID uuid.UUID) (bool, error) {
+	return s.repo.CanRead(ctx, id, userID)
+}
+
 // SetKeepForever exempts a blob from the sweep for users with backup on.
 func (s *Service) SetKeepForever(ctx context.Context, id uuid.UUID, keep bool) error {
 	return s.repo.SetKeepForever(ctx, id, keep)
@@ -216,7 +222,14 @@ func (s *Service) Duplicate(ctx context.Context, srcID, newOwner uuid.UUID) (Obj
 	return s.toObject(row), nil
 }
 
-func (s *Service) Get(ctx context.Context, id uuid.UUID) (Object, error) {
+func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Object, error) {
+	allowed, err := s.repo.CanRead(ctx, id, userID)
+	if err != nil {
+		return Object{}, err
+	}
+	if !allowed {
+		return Object{}, ErrNotFound
+	}
 	row, err := s.repo.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -232,7 +245,14 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (Object, error) {
 var ErrPurged = errors.New("media_purged")
 
 // Open returns a read handle + metadata for streaming the file.
-func (s *Service) Open(ctx context.Context, id uuid.UUID) (Object, *os.File, error) {
+func (s *Service) Open(ctx context.Context, id, userID uuid.UUID) (Object, *os.File, error) {
+	allowed, err := s.repo.CanRead(ctx, id, userID)
+	if err != nil {
+		return Object{}, nil, err
+	}
+	if !allowed {
+		return Object{}, nil, ErrNotFound
+	}
 	row, err := s.repo.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

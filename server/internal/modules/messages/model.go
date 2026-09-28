@@ -213,7 +213,10 @@ type CreateChatResponse struct {
 type SendMessageRequest struct {
 	Content     string      `json:"content" binding:"required"`
 	MessageType MessageType `json:"message_type"`
-	ReplyToID   *int64      `json:"reply_to_id,omitempty"`
+	// MediaIDs are plaintext attachment references. The message body remains
+	// end-to-end encrypted, so the server cannot discover these URLs itself.
+	MediaIDs  []uuid.UUID `json:"media_ids,omitempty"`
+	ReplyToID *int64      `json:"reply_to_id,omitempty"`
 	// ViewLimit makes this a limited-view message. Nil = unlimited.
 	ViewLimit *int `json:"view_limit,omitempty"`
 	// ForwardCount is the count carried by the content being forwarded. The

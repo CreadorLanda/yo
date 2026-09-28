@@ -412,18 +412,48 @@ type Origin struct {
 	PostID       *string
 }
 
-func (r *Repository) InsertMessage(ctx context.Context, chatID, senderID uuid.UUID, content string, msgType MessageType, replyToID *int64, viewLimit *int, origin Origin) (int64, error) {
+func (r *Repository) InsertMessage(ctx context.Context, chatID, senderID uuid.UUID, content string, msgType MessageType, replyToID *int64, viewLimit *int, origin Origin, mediaIDs []uuid.UUID) (int64, error) {
 	const q = `
 		INSERT INTO messages (chat_id, sender_id, content, message_type, reply_to_id, view_limit,
 		                      forward_count, source_channel_id, source_post_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	ids := make([]string, 0, len(mediaIDs))
+	seen := make(map[uuid.UUID]struct{}, len(mediaIDs))
+	for _, mediaID := range mediaIDs {
+		if _, ok := seen[mediaID]; ok {
+			continue
+		}
+		seen[mediaID] = struct{}{}
+		ids = append(ids, mediaID.String())
+	}
 	encrypted := r.encrypt(content)
 	var id int64
-	err := r.db.QueryRow(ctx, q, chatID, senderID, encrypted, string(msgType), replyToID, viewLimit,
+	err = tx.QueryRow(ctx, q, chatID, senderID, encrypted, string(msgType), replyToID, viewLimit,
 		origin.ForwardCount, origin.ChannelID, origin.PostID).Scan(&id)
-	return id, err
+	if err != nil {
+		return 0, err
+	}
+	for _, mediaID := range ids {
+		parsed, err := uuid.Parse(mediaID)
+		if err != nil {
+			return 0, ErrInvalidMediaReference
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO chat_media_access (message_id, media_id)
+			VALUES ($1, $2) ON CONFLICT DO NOTHING
+		`, id, parsed); err != nil {
+			return 0, err
+		}
+	}
+	return id, tx.Commit(ctx)
 }
 
 // RegisterView records one open and reports how many remain.
