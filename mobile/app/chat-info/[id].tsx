@@ -566,7 +566,6 @@ export default function ChatInfoScreen() {
                 label={t('call.video_call')}
                 onPress={() => router.push(`/call/${chat.id}?mode=video`)}
               />
-              <ActionButton icon="person-add-outline" label={t('chat_info.add')} />
             </>
           )}
         </View>

@@ -41,6 +41,7 @@ import { t } from '@/i18n';
 type Visibility = 'everyone' | 'contacts' | 'nobody';
 
 const APP_VERSION = '1.0.0';
+const FAQ_URL = 'https://github.com/CreadorLanda/yo/blob/main/docs/central/faq.md';
 
 export default function SettingsScreen() {
   const { colors, isDark, schemePreference } = useTheme();
@@ -599,8 +600,16 @@ export default function SettingsScreen() {
         </Group>
 
         <Group title={t('settings.section_help')}>
-          <Row icon="help-circle-outline" label={t('settings.help_faq')} onPress={() => {}} />
-          <Row icon="chatbox-ellipses-outline" label={t('settings.help_contact')} onPress={() => {}} last />
+          <Row
+            icon="help-circle-outline"
+            label={t('settings.help_faq')}
+            onPress={() => {
+              void Linking.openURL(FAQ_URL).catch(() =>
+                appAlert(t('chats.action_failed_title'), t('chats.action_failed_body')),
+              );
+            }}
+            last
+          />
         </Group>
 
         <Group title={t('settings.section_about')}>
