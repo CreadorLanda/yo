@@ -293,17 +293,6 @@ func findMessage(t *testing.T, messages []Message, id int64) Message {
 	return Message{}
 }
 
-func findMessage(t *testing.T, messages []Message, id int64) Message {
-	t.Helper()
-	for _, message := range messages {
-		if message.ID == id {
-			return message
-		}
-	}
-	t.Fatalf("message %d missing from history", id)
-	return Message{}
-}
-
 func TestMessageStarsArePerParticipant(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
