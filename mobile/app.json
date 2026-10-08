@@ -1,21 +1,21 @@
 {
   "expo": {
-    "name": "Yo",
+    "name": "ZwoSocial",
     "slug": "yo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "yo",
+    "scheme": "zwosocial",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.yo.messenger",
+      "bundleIdentifier": "app.zwosocial.messenger",
       "bitcode": false,
       "infoPlist": {
-        "NSCameraUsageDescription": "Yo uses the camera so you can take photos and record video for your stories and chats.",
-        "NSMicrophoneUsageDescription": "Yo uses the microphone so your videos and voice notes have sound.",
-        "NSPhotoLibraryUsageDescription": "Yo accesses your photos so you can share them in chats and stories.",
+        "NSCameraUsageDescription": "ZwoSocial uses the camera so you can take photos and record video for your stories and chats.",
+        "NSMicrophoneUsageDescription": "ZwoSocial uses the microphone so your videos and voice notes have sound.",
+        "NSPhotoLibraryUsageDescription": "ZwoSocial accesses your photos so you can share them in chats and stories.",
         "UIBackgroundModes": [
           "audio",
           "voip",
@@ -32,7 +32,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "app.yo.messenger",
+      "package": "app.zwosocial.messenger",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
@@ -67,8 +67,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Yo accesses your photos so you can share them in chats.",
-          "cameraPermission": "Yo accesses your camera so you can take and record photos and videos to share."
+          "photosPermission": "ZwoSocial accesses your photos so you can share them in chats.",
+          "cameraPermission": "ZwoSocial accesses your camera so you can take and record photos and videos to share."
         }
       ],
       "expo-audio",
@@ -77,7 +77,7 @@
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
-          "color": "#25D366",
+          "color": "#5B3DF5",
           "defaultChannel": "default"
         }
       ],

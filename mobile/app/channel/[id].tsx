@@ -26,7 +26,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatCount } from '@/components/ui/follow-button';
 import { ReactionTray } from '@/components/ui/reaction-tray';
 import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { CachedImage } from '@/components/ui/cached-image';
 import { appAlert, appPrompt } from '@/data/dialog-store';
 import { deleteChannelPost, editChannelPost } from '@/data/api/channels';
@@ -736,7 +736,7 @@ export default function ChannelScreen() {
                       {channel.name}
                     </Text>
                     {channel.verified ? (
-                      <Ionicons name="checkmark-circle" size={16} color="#818CF8" />
+                      <Ionicons name="checkmark-circle" size={16} color={Palette.brand[400]} />
                     ) : null}
                   </View>
                   <Text style={styles.heroSub} numberOfLines={1}>

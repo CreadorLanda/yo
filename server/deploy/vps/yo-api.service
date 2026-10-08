@@ -10,7 +10,7 @@
 #   sudo systemctl daemon-reload && sudo systemctl enable --now yo-api
 
 [Unit]
-Description=Yo API
+Description=ZwoSocial API
 After=network-online.target docker.service
 Wants=network-online.target
 # Postgres, Redis and LiveKit run as containers, so Docker has to be up first.

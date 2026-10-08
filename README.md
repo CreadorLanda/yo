@@ -1,8 +1,8 @@
-# Yo 💬
+# ZwoSocial 💬
 
 > The freedom of a modded messenger, without having to trust a stranger's APK.
 
-![Yo](./assets/banner.png)
+<img src="./assets/logo.png" alt="ZwoSocial" width="160" />
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](./LICENSE)
 [![Commercial licence](https://img.shields.io/badge/Commercial-available-green.svg)](./LICENSING.md)
@@ -35,7 +35,7 @@ unauthorised.
 The features were never the problem. **The deal was.** You had to choose
 between an app that respected you and an app that let you do things.
 
-Yo is that choice removed. Ghost mode, freeze last seen, anti-delete, chat lock,
+ZwoSocial is that choice removed. Ghost mode, freeze last seen, anti-delete, chat lock,
 themes, nudges — the features people install sketchy APKs to get — built into a
 messenger whose source you can read, whose messages are encrypted on your
 device, and which will never ship analytics, telemetry or tracking of any kind.
@@ -161,7 +161,7 @@ Of the mod features named at the top, **chat lock**, **app lock** and
 **themes that survive a restart** now work. App lock takes a code and,
 where the device has one, a fingerprint or Face ID — the code is the same
 one chat lock uses, and the biometric check is the operating system's, so
-no face or fingerprint data is ever stored by Yo.
+no face or fingerprint data is ever stored by ZwoSocial.
 
 Still open: ghost mode and freeze last seen
 ([#122](https://github.com/CreadorLanda/yo/issues/122)), anti-delete
@@ -203,11 +203,11 @@ They are picked so the answer already exists somewhere in the codebase.
 Dual-licensed. **[AGPL-3.0](./LICENSE)** for everyone, and a **commercial
 licence** for anyone who wants to keep their source closed.
 
-The AGPL does not stop you selling Yo or building a business on it. What it
+The AGPL does not stop you selling ZwoSocial or building a business on it. What it
 asks is that the source stays open — including when you run a modified version
 as a network service, which is why this is AGPL and not GPL.
 
-If you want to ship something closed, or take parts of Yo into a proprietary
+If you want to ship something closed, or take parts of ZwoSocial into a proprietary
 codebase, you need the commercial licence. See
 [LICENSING.md](./LICENSING.md) for how to ask.
 
@@ -218,7 +218,7 @@ codebase, you need the commercial licence. See
 The mods were right about what people wanted and wrong about what it should
 cost them.
 
-Yo is not a clone of WhatsApp and not a clone of the mods. It is the argument
+ZwoSocial is not a clone of WhatsApp and not a clone of the mods. It is the argument
 those mods were making — that a messenger should bend to the person using it —
 carried out by someone willing to show the source.
 
@@ -228,6 +228,6 @@ protected, and without asking you to install a binary you cannot read.
 ---
 
 <p align="center">
-  <strong>Yo</strong><br>
+  <strong>ZwoSocial</strong><br>
   <em>More than messaging.</em>
 </p>

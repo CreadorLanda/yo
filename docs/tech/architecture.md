@@ -1,6 +1,6 @@
 # 🏗️ Architecture
 
-> How Yo is shaped: a security-first messaging platform with an on-device store and a thin server.
+> How ZwoSocial is shaped: a security-first messaging platform with an on-device store and a thin server.
 
 ---
 
@@ -23,7 +23,7 @@
             │  HTTPS / WSS (TLS 1.3, certificate pinning)
             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Yo API (Go)                       │
+│                    ZwoSocial API (Go)                       │
 │  ┌────────────┐  ┌────────────┐  ┌────────────────────────┐ │
 │  │ Controllers│→ │ Services   │→ │ Repositories           │ │
 │  │ (HTTP/WS)  │  │ (logic)    │  │ (pgx → Postgres)       │ │

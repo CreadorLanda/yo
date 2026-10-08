@@ -1,6 +1,6 @@
 # 🌟 Recursos Sociais
 
-> Documentação completa dos recursos sociais do Yo.
+> Documentação completa dos recursos sociais do ZwoSocial.
 
 ---
 

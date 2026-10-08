@@ -1,4 +1,4 @@
-// Command api is the entry point for the Socialize backend.
+// Command api is the entry point for the ZwoSocial backend.
 package main
 
 import (
@@ -11,8 +11,8 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog/log"
 
-	"github.com/CreadorLanda/yo/server/internal/config"
-	"github.com/CreadorLanda/yo/server/internal/server"
+	"github.com/CreadorLanda/zwosocial/server/internal/config"
+	"github.com/CreadorLanda/zwosocial/server/internal/server"
 )
 
 func main() {

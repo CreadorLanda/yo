@@ -122,7 +122,7 @@ export function AnimatedSplash({
 
       <Animated.View style={[styles.footer, wordStyle]}>
         <Dots />
-        <Text style={styles.tagline}>Yo</Text>
+        <Text style={styles.tagline}>ZwoSocial</Text>
       </Animated.View>
     </Animated.View>
   );

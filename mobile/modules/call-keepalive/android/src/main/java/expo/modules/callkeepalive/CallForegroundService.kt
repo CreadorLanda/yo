@@ -28,8 +28,8 @@ import androidx.core.app.NotificationCompat
 class CallForegroundService : Service() {
 
   companion object {
-    const val ACTION_START = "app.yo.call.START"
-    const val ACTION_STOP = "app.yo.call.STOP"
+    const val ACTION_START = "app.zwosocial.call.START"
+    const val ACTION_STOP = "app.zwosocial.call.STOP"
     const val EXTRA_VIDEO = "video"
     const val EXTRA_TITLE = "title"
     const val EXTRA_BODY = "body"

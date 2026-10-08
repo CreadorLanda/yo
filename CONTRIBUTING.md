@@ -1,11 +1,11 @@
-# Contributing to Yo
+# Contributing to ZwoSocial
 
-Yo exists because modded messengers gave people features the official apps
+ZwoSocial exists because modded messengers gave people features the official apps
 refused to, and charged for it in privacy — closed-source APKs from strangers,
 some with spyware in them, all of them unreadable.
 
 That is the whole point of this project, and it is why the rules below are
-strict about a narrow set of things. Yo has to be the app people can install
+strict about a narrow set of things. ZwoSocial has to be the app people can install
 *instead of* the sketchy APK. It only earns that by being readable, and by
 never shipping the thing the mods shipped.
 
@@ -54,7 +54,7 @@ to split, because there is no way to accept part of it.
 
 ## The CLA
 
-Yo is [dual-licensed](./LICENSING.md): AGPL-3.0 for everyone, with a commercial
+ZwoSocial is [dual-licensed](./LICENSING.md): AGPL-3.0 for everyone, with a commercial
 licence for people who want to keep their source closed.
 
 That model only holds if one party can license the whole codebase. So by
@@ -84,7 +84,7 @@ account blocked from the repository, without discussion.
 - Code that exfiltrates data — sending user content, keys, tokens, contacts,
   location or telemetry anywhere the user did not ask for.
 - Spyware, analytics or tracking of any kind, including "anonymous" metrics.
-  Not "none that identifies people" — none. This is the exact thing Yo exists
+  Not "none that identifies people" — none. This is the exact thing ZwoSocial exists
   to be an alternative to, and a pull request adding it misunderstands the
   project badly enough that it will not be discussed.
 - Backdoors, hidden accounts, debug flags that bypass authentication, or

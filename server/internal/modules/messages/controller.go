@@ -9,10 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/CreadorLanda/yo/server/internal/middleware"
-	"github.com/CreadorLanda/yo/server/internal/modules/users"
-	"github.com/CreadorLanda/yo/server/internal/platform/realtime"
-	"github.com/CreadorLanda/yo/server/internal/platform/tokens"
+	"github.com/CreadorLanda/zwosocial/server/internal/middleware"
+	"github.com/CreadorLanda/zwosocial/server/internal/modules/users"
+	"github.com/CreadorLanda/zwosocial/server/internal/platform/realtime"
+	"github.com/CreadorLanda/zwosocial/server/internal/platform/tokens"
 )
 
 type Controller struct {

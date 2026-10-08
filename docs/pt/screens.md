@@ -1,6 +1,6 @@
-# 🖥️ Telas do Yo
+# 🖥️ Telas do ZwoSocial
 
-> Visão geral completa de todas as telas do app Yo.
+> Visão geral completa de todas as telas do app ZwoSocial.
 
 ---
 

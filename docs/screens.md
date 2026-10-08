@@ -1,6 +1,6 @@
-# 🖥️ Yo Screens
+# 🖥️ ZwoSocial Screens
 
-> Complete overview of all screens in Yo messaging app.
+> Complete overview of all screens in ZwoSocial messaging app.
 
 ---
 

@@ -1,8 +1,8 @@
-# Yo — Design System
+# ZwoSocial — Design System
 
 > Single source of truth for visual language across mobile, web and desktop.
 
-The design language is **clean, playful and trustworthy**: airy backgrounds, a confident indigo primary action, and vivid accents reserved for avatars / status / reactions.
+The design language is **clean, playful and trustworthy**: airy backgrounds, a confident violet primary action, and vivid accents reserved for avatars / status / reactions.
 
 Tokens live in [`mobile/constants/theme.ts`](../../mobile/constants/theme.ts). This document is the human-readable companion — keep them in sync.
 
@@ -10,30 +10,31 @@ Tokens live in [`mobile/constants/theme.ts`](../../mobile/constants/theme.ts). T
 
 ## 1. Color Palette
 
-### 1.1 Brand (Royal Blue)
+### 1.1 Brand (Violet)
 
 The primary action color. Used for CTAs, links, focused inputs, the active tab indicator, and selection.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `brand.50`  | `#EEF2FF` | Subtle tinted backgrounds, hovered surfaces |
-| `brand.100` | `#E0E7FF` | Soft chips, pressed-state highlights |
-| `brand.200` | `#C7D2FE` | Disabled primary, dividers in branded sections |
-| `brand.300` | `#A5B4FC` | Decorative accents |
-| `brand.400` | `#818CF8` | **Dark-mode primary** |
-| `brand.500` | `#6366F1` | Decorative only — fails contrast as a primary |
-| `brand.600` | `#4F46E5` | **Light-mode primary — CTA, links, focus ring** |
-| `brand.700` | `#4338CA` | Hover / pressed primary |
-| `brand.800` | `#3730A3` | Headings on tinted backgrounds |
-| `brand.900` | `#312E81` | High-emphasis text on brand surfaces |
+| `brand.50`  | `#F2EFFF` | Subtle tinted backgrounds, hovered surfaces |
+| `brand.100` | `#E6E0FF` | Soft chips, pressed-state highlights |
+| `brand.200` | `#CEC2FF` | Disabled primary, dividers in branded sections |
+| `brand.300` | `#B3A2FF` | Decorative accents |
+| `brand.400` | `#9680FF` | **Dark-mode primary** |
+| `brand.500` | `#7A5CFF` | Decorative only — fails contrast as a primary |
+| `brand.600` | `#5B3DF5` | **Light-mode primary — CTA, links, focus ring** |
+| `brand.700` | `#4A2FD1` | Hover / pressed primary |
+| `brand.800` | `#3B26A6` | Headings on tinted backgrounds |
+| `brand.900` | `#2E1F7D` | High-emphasis text on brand surfaces |
 
-The hue comes from the logo, whose bubble is `#566EF7`.
+The hue comes from the logo: a Z in a speech bubble whose gradient runs
+`#8C6EFF` → `#5235F0`.
 
-Two shades carry the brand, not one, and neither is the bubble's own colour.
-Measured against WCAG, `#566EF7` scores 4.23:1 with white text and 4.53:1 on
-the dark background — it fails as an action colour in light mode and only
-scrapes through in dark. `600` gives 6.29:1 with white text and 5.96:1 on the
-light background; `400` gives 6.42:1 on dark. Same hue as the logo, moved for
+Two shades carry the brand, not one, and neither is lifted from the gradient.
+Measured against WCAG, the bubble's midpoint `#6F52F8` scores 4.95:1 with white
+text and 3.87:1 on the dark background — it scrapes through in light mode and
+fails in dark. `600` gives 6.12:1 with white text and 5.80:1 on the light
+background; `400` gives 6.23:1 on dark. Same hue as the logo, moved for
 legibility.
 
 ### 1.2 Neutral (Greys)
@@ -94,11 +95,11 @@ Theme tokens map raw palette → semantic role. Components must consume **semant
 | Text | `neutral.900` | `#111827` |
 | Text secondary | `neutral.500` | `#6B7280` |
 | Text muted | `neutral.400` | `#9AA3B2` |
-| Primary | `brand.600` | `#4F46E5` |
+| Primary | `brand.600` | `#5B3DF5` |
 | On-primary | `neutral.0` | `#FFFFFF` |
 | Icon | `neutral.500` | `#6B7280` |
 | Tab icon (inactive) | `neutral.400` | `#9AA3B2` |
-| Tab icon (active) | `brand.600` | `#4F46E5` |
+| Tab icon (active) | `brand.600` | `#5B3DF5` |
 
 ### Dark
 
@@ -113,7 +114,7 @@ Theme tokens map raw palette → semantic role. Components must consume **semant
 | Text | `#ECEDF2` |
 | Text secondary | `#9A9CA8` |
 | Text muted | `#6C6E7A` |
-| Primary | `#818CF8` |
+| Primary | `#9680FF` |
 | On-primary | `#FFFFFF` |
 
 Brand is lightened in dark mode (`brand.400`) so contrast against the dark surface stays comfortable.
@@ -256,7 +257,7 @@ These are *examples* showing how tokens compose. Implement once in `mobile/compo
 ### Primary CTA (from reference design)
 
 ```tsx
-backgroundColor: Colors.light.primary,    // #4F46E5
+backgroundColor: Colors.light.primary,    // #5B3DF5
 color:           Colors.light.onPrimary,  // #FFFFFF
 borderRadius:    Radii.xl,                // 20
 paddingVertical: Spacing.lg,              // 16

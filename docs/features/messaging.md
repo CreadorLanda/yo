@@ -1,6 +1,6 @@
 # 💬 Messaging
 
-> Complete documentation for Yo messaging features.
+> Complete documentation for ZwoSocial messaging features.
 
 ---
 

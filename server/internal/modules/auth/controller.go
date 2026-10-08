@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/CreadorLanda/yo/server/internal/config"
+	"github.com/CreadorLanda/zwosocial/server/internal/config"
 )
 
 // Controller adapts HTTP to the auth Service.

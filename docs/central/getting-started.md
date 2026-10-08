@@ -1,6 +1,6 @@
 # 🚀 Getting Started
 
-> Complete guide to get started with Yo.
+> Complete guide to get started with ZwoSocial.
 
 ## Prerequisites
 

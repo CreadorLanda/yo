@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
+import { Palette } from '@/constants/theme';
 import { markRead } from '@/data/api/messages';
 import {
   presentMessageNotification,
@@ -47,7 +48,7 @@ async function ensureAndroidChannel(): Promise<void> {
     name: 'Default',
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#25D366',
+    lightColor: Palette.brand[600],
   });
 }
 

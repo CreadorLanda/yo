@@ -2,26 +2,26 @@ import { Platform } from 'react-native';
 
 export const Palette = {
   /**
-   * Indigo, taken from the logo — the bubble is #566EF7.
+   * Violet, taken from the logo — the bubble runs #8C6EFF to #5235F0.
    *
    * Two shades are in use, not one: 600 on light surfaces and 400 on dark.
-   * A single hex cannot serve both. Measured against WCAG, 600 gives 6.29:1
-   * with white text but only 3.05:1 on the dark background, and 400 is the
-   * mirror image at 2.98:1 and 6.42:1. The logo's own #566EF7 fails as an
-   * action colour in both modes (4.23 and 4.53), which is why neither shade
-   * is the literal bubble colour — same hue, moved for legibility.
+   * A single hex cannot serve both. Measured against WCAG, 600 gives 6.12:1
+   * with white text but only 3.13:1 on the dark background, and 400 is the
+   * mirror image at 3.08:1 and 6.23:1. The bubble's midpoint (#6F52F8) only
+   * scrapes 4.95:1 with white and fails on dark at 3.87:1, which is why
+   * neither shade is lifted from the gradient — same hue, moved for legibility.
    */
   brand: {
-    50: '#EEF2FF',
-    100: '#E0E7FF',
-    200: '#C7D2FE',
-    300: '#A5B4FC',
-    400: '#818CF8',
-    500: '#6366F1',
-    600: '#4F46E5',
-    700: '#4338CA',
-    800: '#3730A3',
-    900: '#312E81',
+    50: '#F2EFFF',
+    100: '#E6E0FF',
+    200: '#CEC2FF',
+    300: '#B3A2FF',
+    400: '#9680FF',
+    500: '#7A5CFF',
+    600: '#5B3DF5',
+    700: '#4A2FD1',
+    800: '#3B26A6',
+    900: '#2E1F7D',
   },
   neutral: {
     0: '#FFFFFF',
@@ -81,7 +81,7 @@ export const Colors = {
   },
   dark: {
     // Cool-neutral charcoal ramp — only a whisper of the brand hue (low
-    // chroma) so the indigo primary reads as the one confident colour rather
+    // chroma) so the violet primary reads as the one confident colour rather
     // than competing with the surface. Ordered by elevation:
     // background < muted < surface < elevated.
     text: '#ECEDF2',
