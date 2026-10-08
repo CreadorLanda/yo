@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Yo passa a chamar-se ZwoSocial: nome da app, textos em inglês e português, documentação e notificações
 - Novo logo — um Z num balão de conversa — no ícone, no splash, no ícone temático do Android e nos ícones alternativos (Sunset, Phosphor, Sakura, Void)
 - A cor da marca passa de índigo a violeta (`brand.600` `#5B3DF5`, `brand.400` `#9680FF`); o tema por omissão chama-se agora ZwoSocial Violet
-- O identificador da app passa a `app.zwosocial.messenger` e o esquema de links a `zwosocial://` — é uma app nova na loja, não uma actualização da antiga
+- O esquema de links passa a `zwosocial://`. O identificador da app continua `app.yo.messenger`: está ligado ao Firebase, ao App ID da Apple e às instalações existentes, por isso o ZwoSocial chega como actualização da app actual
 
 #### Chamadas
 - Chamadas sem E2EE agora mostram um aviso de que o servidor pode aceder ao áudio e vídeo; chamadas de grupo também estão listadas como não protegidas na documentação de segurança

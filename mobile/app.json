@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.zwosocial.messenger",
+      "bundleIdentifier": "app.yo.messenger",
       "bitcode": false,
       "infoPlist": {
         "NSCameraUsageDescription": "ZwoSocial uses the camera so you can take photos and record video for your stories and chats.",
@@ -32,7 +32,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "app.zwosocial.messenger",
+      "package": "app.yo.messenger",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
