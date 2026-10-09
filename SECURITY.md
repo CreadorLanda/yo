@@ -40,7 +40,7 @@ no working proof.
 Do not test against the production server with accounts that are not yours.
 Run your own instance — `server/deploy/docker` brings one up.
 
-## What Yo promises, so you know what counts as broken
+## What ZwoSocial promises, so you know what counts as broken
 
 - Messages are encrypted on the device. The server stores ciphertext it cannot
   read.

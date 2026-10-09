@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/CreadorLanda/yo/server/internal/middleware"
+	"github.com/CreadorLanda/zwosocial/server/internal/middleware"
 )
 
 type Controller struct {

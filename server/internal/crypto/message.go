@@ -1,4 +1,4 @@
-// Package crypto provides message-level encryption for the Socialize backend.
+// Package crypto provides message-level encryption for the ZwoSocial backend.
 //
 // Message content is encrypted with AES-256-GCM before it reaches the
 // database (encryption at rest). The key comes from MESSAGE_KEY and is

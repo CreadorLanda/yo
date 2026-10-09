@@ -1,6 +1,6 @@
 # 🦦 Backend (Go, MVC)
 
-> A API do Yo: um único binário Go, um Postgres, um Redis. Organizado como módulos MVC para que cada funcionalidade seja autocontida.
+> A API do ZwoSocial: um único binário Go, um Postgres, um Redis. Organizado como módulos MVC para que cada funcionalidade seja autocontida.
 
 ---
 

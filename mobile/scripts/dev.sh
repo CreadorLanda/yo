@@ -70,7 +70,7 @@ detect_ip() {
 IP="${FORCE_IP:-$(detect_ip)}"
 API="http://$IP:$PORT"
 
-c "━━━ Yo dev ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+c "━━━ ZwoSocial dev ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 printf '  API    %s\n' "$API"
 printf '  Logs   %s\n' "$LOG_FILE"
 c "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

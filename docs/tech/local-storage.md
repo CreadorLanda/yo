@@ -2,7 +2,7 @@
 
 > Messages live on the user's device. The server is a relay for ciphertext, not a store of conversations.
 
-This is the WhatsApp approach, applied to Yo: the source of truth for a user's chats is **their device's SQLite database**, encrypted at rest with SQLCipher and unlocked by a key held in the OS keychain.
+This is the WhatsApp approach, applied to ZwoSocial: the source of truth for a user's chats is **their device's SQLite database**, encrypted at rest with SQLCipher and unlocked by a key held in the OS keychain.
 
 ---
 
@@ -200,7 +200,7 @@ On reconnect, the client calls `GET /messages/since?cursor=<last_known>` to drai
 ## Backups (opt-in)
 
 - Periodic full-database snapshot, encrypted with a key derived from a user passphrase (Argon2id) plus a per-backup salt.
-- Uploaded to the user's cloud (iCloud / Drive) — never to Yo servers.
+- Uploaded to the user's cloud (iCloud / Drive) — never to ZwoSocial servers.
 - Restore is an explicit flow that asks for the passphrase, never automatic.
 - The OS-keychain DB key is **not** included; backups carry their own envelope.
 

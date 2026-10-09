@@ -1,6 +1,6 @@
-# Yo Documentation
+# ZwoSocial Documentation
 
-> Complete documentation for the Yo messaging platform.
+> Complete documentation for the ZwoSocial messaging platform.
 
 > Documents describe intent as well as state. Where a feature is planned rather than
 > built, the [issues](https://github.com/CreadorLanda/yo/issues) are the source of truth.

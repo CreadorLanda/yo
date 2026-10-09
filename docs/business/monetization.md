@@ -1,11 +1,11 @@
-# How Yo makes money
+# How ZwoSocial makes money
 
 Written down because a messenger that has not decided how it pays for itself
 decides later, under pressure, and the answer is usually ads.
 
 ## The constraint that comes first
 
-Yo exists because modded messengers sold people's privacy for features. Every
+ZwoSocial exists because modded messengers sold people's privacy for features. Every
 revenue idea below is tested against one question:
 
 > Does this require reading, profiling, or selling what people do in the app?
@@ -21,10 +21,10 @@ What is left is honest, and smaller: **people pay for things, not with things.**
 
 ## 1. Commercial licences
 
-The one already in place. Yo is [AGPL-3.0](../../LICENSING.md); anyone wanting
+The one already in place. ZwoSocial is [AGPL-3.0](../../LICENSING.md); anyone wanting
 to ship it in a closed-source product buys a commercial licence instead.
 
-Who pays: companies embedding Yo, white-label deployments, anyone taking parts
+Who pays: companies embedding ZwoSocial, white-label deployments, anyone taking parts
 of the codebase into proprietary software.
 
 This is the cleanest revenue the project has. It touches no user, reads no
@@ -75,7 +75,7 @@ different kind of problem from inventing them in a demo.
 
 ## 4. Hosting
 
-Yo is self-hostable, and that stays true. But most people who want their own
+ZwoSocial is self-hostable, and that stays true. But most people who want their own
 instance do not want to run a VPS, apply migrations, or keep LiveKit alive.
 
 Selling managed hosting to organisations that want a private instance is

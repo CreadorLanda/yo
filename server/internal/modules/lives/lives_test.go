@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/CreadorLanda/yo/server/internal/platform/livekit"
-	"github.com/CreadorLanda/yo/server/internal/platform/postgres"
+	"github.com/CreadorLanda/zwosocial/server/internal/platform/livekit"
+	"github.com/CreadorLanda/zwosocial/server/internal/platform/postgres"
 )
 
 const (

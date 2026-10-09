@@ -31,7 +31,7 @@ export type AppIconSpec = {
 };
 
 export const APP_ICONS: AppIconSpec[] = [
-  { id: 'default', pluginName: null, label: 'Yo' },
+  { id: 'default', pluginName: null, label: 'ZwoSocial' },
   { id: 'sunset', pluginName: 'Sunset', label: 'Luanda Sunset' },
   { id: 'phosphor', pluginName: 'Phosphor', label: 'Phosphor' },
   { id: 'sakura', pluginName: 'Sakura', label: 'Sakura Milk' },

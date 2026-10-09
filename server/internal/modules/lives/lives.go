@@ -20,8 +20,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/CreadorLanda/yo/server/internal/middleware"
-	"github.com/CreadorLanda/yo/server/internal/platform/livekit"
+	"github.com/CreadorLanda/zwosocial/server/internal/middleware"
+	"github.com/CreadorLanda/zwosocial/server/internal/platform/livekit"
 )
 
 var (

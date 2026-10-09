@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/CreadorLanda/yo/server/internal/platform/tokens"
+	"github.com/CreadorLanda/zwosocial/server/internal/platform/tokens"
 )
 
 // Keys we use to stash the authenticated principal on the gin context.

@@ -2,7 +2,7 @@
 
 > As mensagens vivem no dispositivo do utilizador. O servidor é um relay de ciphertext, não um arquivo de conversas.
 
-Esta é a abordagem WhatsApp aplicada ao Yo: a fonte da verdade para as conversas do utilizador é a **SQLite do dispositivo**, cifrada em repouso por SQLCipher e desbloqueada por uma chave guardada na keychain do sistema.
+Esta é a abordagem WhatsApp aplicada ao ZwoSocial: a fonte da verdade para as conversas do utilizador é a **SQLite do dispositivo**, cifrada em repouso por SQLCipher e desbloqueada por uma chave guardada na keychain do sistema.
 
 ---
 
@@ -177,7 +177,7 @@ Na reconexão, o cliente chama `GET /messages/since?cursor=<last_known>` para dr
 ## Backups (opt-in)
 
 - Snapshot periódico completo da BD, cifrado com chave derivada de uma passphrase do utilizador (Argon2id) + salt por backup.
-- Carregado para a cloud do utilizador (iCloud / Drive) — nunca para o servidor Yo.
+- Carregado para a cloud do utilizador (iCloud / Drive) — nunca para o servidor ZwoSocial.
 - Restauro é um fluxo explícito que pede a passphrase, nunca automático.
 - A chave DB da keychain **não** está incluída; backups carregam o seu próprio envelope.
 

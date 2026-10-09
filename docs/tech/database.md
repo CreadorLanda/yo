@@ -2,7 +2,7 @@
 
 > Where each piece of data lives, and why.
 
-Yo splits data across three stores with different guarantees:
+ZwoSocial splits data across three stores with different guarantees:
 
 | Store        | Where        | Holds                                              | Encryption       |
 |--------------|--------------|----------------------------------------------------|------------------|

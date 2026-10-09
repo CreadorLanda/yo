@@ -1,6 +1,6 @@
 # 🤖 Dandara AI
 
-> Complete documentation for Dandara AI - Yo's AI companion.
+> Complete documentation for Dandara AI - ZwoSocial's AI companion.
 
 ---
 

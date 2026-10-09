@@ -3,7 +3,7 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
-group = 'app.yo'
+group = 'app.zwosocial'
 version = '1.0.0'
 
 android {

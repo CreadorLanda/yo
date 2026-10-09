@@ -14,7 +14,7 @@ import {
  * The lock on the app itself.
  *
  * [chat-lock] guards individual conversations; anyone holding an unlocked
- * phone could still open Yo and read everything that was not individually
+ * phone could still open ZwoSocial and read everything that was not individually
  * locked. The README has promised "App lock" since the beginning, and a
  * security promise that is not true is worse than one never made.
  *
@@ -174,7 +174,7 @@ export async function unlockWithAppCode(code: string): Promise<boolean> {
  *
  * `disableDeviceFallback` on purpose: the system's own passcode sheet is not
  * this app's code, and letting it stand in would mean the phone's PIN opens
- * Yo. The way past a failed fingerprint is the code on our own screen.
+ * ZwoSocial. The way past a failed fingerprint is the code on our own screen.
  */
 export async function unlockWithBiometrics(prompt: string): Promise<boolean> {
   if (!prefs.biometrics) return false;

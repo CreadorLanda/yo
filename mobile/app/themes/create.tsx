@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text, TextInput } from '@/components/ui/text';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { appAlert } from '@/data/dialog-store';
 import { persistThemeImage } from '@/data/theme-assets';
 import { loadFontFamily } from '@/data/theme-font-assets';
@@ -95,7 +95,7 @@ export default function ThemeCreatorScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [designMode, setDesignMode] = useState<DesignMode>('both');
-  const [primary, setPrimary] = useState('#4F46E5');
+  const [primary, setPrimary] = useState<string>(Palette.brand[600]);
   const [background, setBackground] = useState(isDark ? '#0E0F13' : '#F7F9FC');
   const [surface, setSurface] = useState(isDark ? '#191A21' : '#FFFFFF');
   const [text, setText] = useState(isDark ? '#ECEDF2' : '#111827');
@@ -1075,7 +1075,7 @@ function ColorRow({
               styles.colorDot,
               {
                 backgroundColor: c,
-                borderColor: active ? '#4F46E5' : ring,
+                borderColor: active ? Palette.brand[600] : ring,
                 borderWidth: active ? 3 : 1,
                 transform: [{ scale: active ? 1.08 : 1 }],
               },

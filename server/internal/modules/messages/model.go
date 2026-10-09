@@ -1,4 +1,4 @@
-// Package messages implements native E2E-encrypted messaging for Socialize.
+// Package messages implements native E2E-encrypted messaging for ZwoSocial.
 //
 // Message content is an opaque client-generated E2EE envelope. The repository
 // may apply an independent at-rest encryption layer; it is not an E2EE key.

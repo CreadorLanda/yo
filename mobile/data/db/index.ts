@@ -12,7 +12,7 @@ import { splitStatements } from './split';
  */
 
 /**
- * Deliberately still `socialize.db`, after the project was renamed to Yo.
+ * Deliberately still `socialize.db`, after the project was renamed to Yo and then ZwoSocial.
  *
  * This filename is the address of every message already on someone's phone.
  * Changing it does not rename the file — it opens a new, empty database and

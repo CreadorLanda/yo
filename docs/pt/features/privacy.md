@@ -1,6 +1,6 @@
 # 🔒 Privacidade
 
-> Documentação completa dos recursos de privacidade do Yo.
+> Documentação completa dos recursos de privacidade do ZwoSocial.
 
 ---
 
@@ -47,7 +47,7 @@ Construir a presença, e depois congelá-la, é o
 
 ## 2. Bloqueio de App
 
-Um código para abrir o Yo de todo, por cima do bloqueio por conversa da §3.
+Um código para abrir o ZwoSocial de todo, por cima do bloqueio por conversa da §3.
 
 **Há um código, não dois.** O bloqueio da app verifica o mesmo segredo que o
 bloqueio de conversa guarda — `data/chat-lock.ts` — porque dois códigos para
@@ -114,7 +114,7 @@ Quando ativado, mensagens são preservadas mesmo quando o remetente tenta exclui
 
 | Opção | Quem Pode Ver |
 |--------|------------|
-| **Todos** | Todos os usuários Yo |
+| **Todos** | Todos os usuários ZwoSocial |
 | **Meus contatos** | Apenas contatos salvos |
 | **Ninguém** | Completamente oculto |
 | **Personalizado** | Selecione contatos específicos |
@@ -131,7 +131,7 @@ Através do `expo-local-authentication`, por cima do código — nunca em vez de
 | **Android** | O que o `BiometricPrompt` expuser: digital, desbloqueio facial, íris |
 
 A app só recebe um sim ou não. Nenhum dado facial ou de impressão digital chega
-a este processo, e o Yo não guarda nenhum — o template vive no Secure Enclave
+a este processo, e o ZwoSocial não guarda nenhum — o template vive no Secure Enclave
 ou no TEE do Android e nunca sai de lá. **É exactamente por isso que este
 trabalho é do sistema operativo e não nosso:** uma verificação facial feita por
 nós com a câmara frontal veria uma imagem RGB plana, seria enganada por uma
@@ -140,7 +140,7 @@ nada que ter.
 
 O código do aparelho é deliberadamente **não** aceite como alternativa
 (`disableDeviceFallback`). O PIN do telemóvel não é o código desta app, e
-aceitá-lo significaria que desbloquear o telemóvel desbloqueia o Yo. A saída
+aceitá-lo significaria que desbloquear o telemóvel desbloqueia o ZwoSocial. A saída
 para uma digital falhada é o código da própria app.
 
 O interruptor só aparece onde o aparelho tem mesmo uma biometria registada;

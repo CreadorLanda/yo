@@ -1,6 +1,6 @@
 # 🌟 Social Features
 
-> Complete documentation for Yo social features.
+> Complete documentation for ZwoSocial social features.
 
 ---
 

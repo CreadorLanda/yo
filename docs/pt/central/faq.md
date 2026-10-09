@@ -1,6 +1,6 @@
 # ❓ FAQ
 
-**O que é Yo?**
+**O que é ZwoSocial?**
 Mensageiro open-source, customizável e focado em privacidade.
 
 **É gratuito?**

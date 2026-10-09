@@ -1,6 +1,6 @@
 # Licensing
 
-Yo is dual-licensed. You choose which of the two applies to you.
+ZwoSocial is dual-licensed. You choose which of the two applies to you.
 
 | | AGPL-3.0 | Commercial |
 |---|---|---|
@@ -17,12 +17,12 @@ The full text is in [LICENSE](./LICENSE). The short version:
 
 You can do almost anything, including **charging money for it**. This surprises
 people, so it is worth being plain: the AGPL does not restrict commercial use.
-You may build a business on Yo, sell it, run it for paying customers, and never
+You may build a business on ZwoSocial, sell it, run it for paying customers, and never
 pay us anything.
 
 What it asks in return is that the source stays open. Specifically:
 
-- If you distribute Yo, or anything derived from it, you distribute the source
+- If you distribute ZwoSocial, or anything derived from it, you distribute the source
   under the AGPL too.
 - **If you run a modified version as a network service, that counts as
   distribution.** Anyone using your service can ask for your source, and you
@@ -36,15 +36,15 @@ permission, or tell us what you are building.
 
 ## The commercial option
 
-The commercial license exists for exactly one situation: **you want to use Yo
+The commercial license exists for exactly one situation: **you want to use ZwoSocial
 in something whose source you keep closed.**
 
 That includes:
 
-- Shipping a product built on Yo without publishing your changes.
-- Running a modified Yo server as a service without offering the source to
+- Shipping a product built on ZwoSocial without publishing your changes.
+- Running a modified ZwoSocial server as a service without offering the source to
   your users.
-- Taking parts of Yo — the encryption layer, the call stack, the design
+- Taking parts of ZwoSocial — the encryption layer, the call stack, the design
   system — into a proprietary codebase.
 - Selling a fork, or pieces of one, under terms other than the AGPL.
 
@@ -84,8 +84,8 @@ this project. Someone reading the repository had no way to know which of the
 two applied.
 
 Those three files are gone. What replaces them is the same dual model the
-Weavox files described — that part was the right idea — but written for Yo,
-and with **AGPL instead of GPL**, because Yo has a server and plain GPL leaves
+Weavox files described — that part was the right idea — but written for ZwoSocial,
+and with **AGPL instead of GPL**, because ZwoSocial has a server and plain GPL leaves
 that hole open.
 
 The relicense happened while Alexandre Landa was the sole rights holder. The

@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/CreadorLanda/yo/server/internal/modules/users"
+	"github.com/CreadorLanda/zwosocial/server/internal/modules/users"
 )
 
 // Sentinel errors. The controller maps these to HTTP statuses.

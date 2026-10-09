@@ -1,6 +1,6 @@
 # 💬 Mensagens
 
-> Documentação completa dos recursos de mensagens do Yo.
+> Documentação completa dos recursos de mensagens do ZwoSocial.
 
 ---
 

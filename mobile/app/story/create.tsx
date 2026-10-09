@@ -34,7 +34,7 @@ import Animated, {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text, TextInput } from '@/components/ui/text';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { bakeFilter } from '@/data/bake-filter';
 import { appAlert } from '@/data/dialog-store';
 import type { FilterId } from '@/data/photo-filters';
@@ -1178,7 +1178,7 @@ function ToggleRow({
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: 'rgba(255,255,255,0.18)', true: '#4F46E5' }}
+        trackColor={{ false: 'rgba(255,255,255,0.18)', true: Palette.brand[600] }}
         thumbColor="#FFF"
       />
     </View>
@@ -1393,7 +1393,7 @@ const styles = StyleSheet.create({
   },
   shutterBoomerang: { borderColor: '#F59E0B' },
   shutterHandsfree: { borderColor: '#EF4444' },
-  shutterAudio: { borderColor: '#4F46E5', backgroundColor: '#FFF' },
+  shutterAudio: { borderColor: Palette.brand[600], backgroundColor: '#FFF' },
   shutterRecording: { borderColor: '#EF4444' },
   shutterInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFF' },
   shutterInnerVideo: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#EF4444' },
