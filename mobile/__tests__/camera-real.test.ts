@@ -216,3 +216,37 @@ test('o audio so e pedido a camara quando ha permissao', () => {
   // takes the app with it.
   expect(camera).toContain('enableAudio: micGranted');
 });
+
+/**
+ * The preview never started, and nothing on screen said why.
+ *
+ * VisionCamera's views are Nitro views: their props reach C++ as `jsi::Value`.
+ * React Native only parses props that way when the descriptor asks for it or,
+ * from 0.85, by default. VisionCamera 5.2.2 ships view code generated for 0.85
+ * — a bare `react::RawPropsParser()` — so on 0.81 every prop arrived as
+ * `folly::dynamic` and `PreviewView.previewOutput` threw "Cannot cast dynamic to
+ * a jsi::Value type". The camera service was never even asked to open.
+ *
+ * Nitro 0.37's `ViewComponentDescriptor` passes `RawPropsParser(true)` below
+ * 0.85. This holds the installed view code to that until React Native catches
+ * up.
+ */
+test('a vista da camara le as props como jsi nesta versao do react native', async () => {
+  const rn = JSON.parse(await Bun.file('node_modules/react-native/package.json').text());
+  const [major, minor] = rn.version.split('.').map(Number);
+  if (major > 0 || minor >= 85) return;
+
+  const views = 'node_modules/react-native-vision-camera/nitrogen/generated/shared/c++/views';
+  const header = await Bun.file(`${views}/HybridPreviewViewComponent.hpp`).text();
+  const source = await Bun.file(`${views}/HybridPreviewViewComponent.cpp`).text();
+  expect(source).not.toContain('react::RawPropsParser()');
+  expect(header).toContain('nitro::ViewComponentDescriptor');
+});
+
+test('a falha da camara fica registada ate mudar a lente ou o filtro', () => {
+  // The guard's "no camera" lasted one render: the device effect reported the
+  // camera available again as soon as the device list refreshed, and the
+  // shutter went back to asking a dead session for photos.
+  expect(camera).toContain('onFail={() => setFailedKey(treeKey)}');
+  expect(camera).toContain('availabilityRef.current?.(!!device && !failed)');
+});
