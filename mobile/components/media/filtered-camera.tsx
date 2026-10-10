@@ -106,15 +106,32 @@ export const FilteredCamera = forwardRef<
   ref,
 ) {
   const device = useCameraDevice(front ? 'front' : 'back');
+  const matrix = filterById(filter).matrix;
+
+  // A flipped lens or a different filter is a different camera tree; give
+  // it its own chance rather than keeping the blank from the last one.
+  const treeKey = `${front}:${matrix ? 'filtered' : 'plain'}`;
+
+  /**
+   * The camera tree that threw, if any.
+   *
+   * State, not a one-off call to the callback. The guard used to report
+   * "unavailable" once, and the effect below reported "available" again the
+   * next time `useCameraDevice` handed back a fresh object — which it does
+   * whenever the device list refreshes, milliseconds after opening. The
+   * gallery fallback lasted one render; the shutter then asked a session that
+   * never started for a photo, and every tap was "the camera returned nothing".
+   */
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const failed = failedKey === treeKey;
 
   // Kept in a ref so a caller that passes an inline arrow does not re-run
   // this on every render of the composer.
   const availabilityRef = useRef(onDeviceAvailability);
   availabilityRef.current = onDeviceAvailability;
   useEffect(() => {
-    availabilityRef.current?.(!!device);
-  }, [device]);
-  const matrix = filterById(filter).matrix;
+    availabilityRef.current?.(!!device && !failed);
+  }, [device, failed]);
 
   const photoOutput = usePhotoOutput({ qualityPrioritization: 'quality' });
   // Audio only once the microphone is actually granted. Configuring a video
@@ -192,12 +209,7 @@ export const FilteredCamera = forwardRef<
   };
 
   return (
-    <CameraGuard
-      // A flipped lens or a different filter is a different camera tree; give
-      // it its own chance rather than keeping the blank from the last one.
-      resetKey={`${front}:${matrix ? 'filtered' : 'plain'}`}
-      onFail={() => availabilityRef.current?.(false)}
-    >
+    <CameraGuard resetKey={treeKey} onFail={() => setFailedKey(treeKey)}>
       {matrix ? (
         <FilteredPreview {...common} matrix={matrix} />
       ) : (

@@ -50,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Abrir a câmara dos stories já não passa pelo pipeline de fotogramas (worklets + Skia), a causa provável do crash ao abrir: só é criado quando há um filtro escolhido. Uma falha na árvore da câmara passa a mostrar "sem câmara" (o obturador abre a galeria) em vez de derrubar o ecrã
 - O pinch-to-zoom funciona: o zoom é convertido de 0–1 para o intervalo da lente (`minZoom`–`maxZoom`); antes a câmara abria em zoom 0 e cada gesto era rejeitado
 - O limite de duração do boomerang e do mãos-livres volta a parar a gravação, e um temporizador antigo já não dispara na gravação seguinte
+- A pré-visualização da câmara volta a aparecer no Android. A VisionCamera 5.2.2 trazia código gerado para o React Native 0.85 e, no 0.81, a vista rebentava ao ler as props (`Cannot cast dynamic to a jsi::Value`) antes de pedir a câmara ao sistema. Actualizada para a 5.2.3, com o Nitro 0.37
+- Quando a câmara falha, o "sem câmara" mantém-se até mudares de lente ou de filtro; antes voltava atrás no instante seguinte e cada toque no obturador dava "a câmara não devolveu nada"
 
 ## [0.0.2-alpha] - 2026-05-21
 
