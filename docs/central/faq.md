@@ -1,6 +1,6 @@
 # ❓ FAQ
 
-**What is Yo?**
+**What is ZwoSocial?**
 Open-source, customizable, privacy-focused messenger.
 
 **Is it free?**

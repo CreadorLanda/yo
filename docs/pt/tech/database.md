@@ -2,7 +2,7 @@
 
 > Onde cada peça de dados vive, e porquê.
 
-O Yo divide os dados por três stores com garantias diferentes:
+O ZwoSocial divide os dados por três stores com garantias diferentes:
 
 | Store        | Onde         | O que guarda                                          | Encriptação        |
 |--------------|--------------|--------------------------------------------------------|--------------------|

@@ -109,7 +109,7 @@ sudo apt install -y caddy
 sudo systemctl enable --now caddy
 ```
 
-### 2.4 Utilizador Yo + diretorias
+### 2.4 Utilizador ZwoSocial + diretorias
 
 ```bash
 sudo useradd -r -s /usr/sbin/nologin -d /opt/yo yo

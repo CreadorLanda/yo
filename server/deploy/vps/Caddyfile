@@ -1,4 +1,4 @@
-# Reverse proxy + automatic TLS (Let's Encrypt) for the Yo API.
+# Reverse proxy + automatic TLS (Let's Encrypt) for the ZwoSocial API.
 #
 # This replaces the Cloudflare Tunnel, and doing so removes a real limitation
 # rather than merely swapping one host for another: a tunnel carries HTTP and

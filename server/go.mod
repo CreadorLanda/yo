@@ -1,4 +1,4 @@
-module github.com/CreadorLanda/yo/server
+module github.com/CreadorLanda/zwosocial/server
 
 go 1.26
 

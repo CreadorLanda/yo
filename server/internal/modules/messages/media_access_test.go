@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/CreadorLanda/yo/server/internal/modules/media"
+	"github.com/CreadorLanda/zwosocial/server/internal/modules/media"
 	"github.com/google/uuid"
 )
 

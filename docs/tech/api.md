@@ -1,6 +1,6 @@
 # 📡 API Specifications
 
-> Complete REST API documentation for Yo.
+> Complete REST API documentation for ZwoSocial.
 
 ---
 

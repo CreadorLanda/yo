@@ -3,7 +3,7 @@ Pod::Spec.new do |s|
   s.version        = '1.0.0'
   s.summary        = 'Keeps a call alive while the app is in the background.'
   s.description    = 'Configures and holds the AVAudioSession so audio survives backgrounding.'
-  s.author         = 'Yo'
+  s.author         = 'ZwoSocial'
   s.homepage       = 'https://github.com/CreadorLanda/yo'
   s.platforms      = { :ios => '15.1', :tvos => '15.1' }
   s.source         = { git: 'https://github.com/CreadorLanda/yo' }

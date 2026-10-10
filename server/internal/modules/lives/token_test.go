@@ -5,7 +5,7 @@ import (
 
 	"github.com/livekit/protocol/auth"
 
-	"github.com/CreadorLanda/yo/server/internal/platform/livekit"
+	"github.com/CreadorLanda/zwosocial/server/internal/platform/livekit"
 )
 
 // assertPublish opens the token and checks the one claim that separates a

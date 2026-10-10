@@ -5,7 +5,7 @@ import {
 } from 'expo-alternate-app-icons';
 import { useSyncExternalStore } from 'react';
 
-import { Colors } from '@/constants/theme';
+import { Colors, Palette } from '@/constants/theme';
 
 import {
   deleteStoredPack,
@@ -98,9 +98,9 @@ function pack(
 const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'official-default',
-    name: 'Socialize Blue',
-    author: 'Yo',
-    description: 'The default royal blue — calm, clear, on-brand.',
+    name: 'ZwoSocial Violet',
+    author: 'ZwoSocial',
+    description: 'The default violet — calm, clear, on-brand.',
     category: 'official',
     // Bundled, so there is nothing to count. The 128,400 installs this used
     // to claim were invented, and a made-up number is worse than none.
@@ -437,7 +437,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'infinite-blue',
     name: 'Infinite Blue',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description: 'Electric blue over a white void. Sharp icons, deep dark.',
     category: 'midnight',
     downloads: 0,
@@ -507,7 +507,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'luanda-sunset',
     name: 'Luanda Sunset',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description: 'Amber and terracotta over sand. Tailed bubbles, filled icons.',
     category: 'nature',
     downloads: 0,
@@ -571,7 +571,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'phosphor',
     name: 'Phosphor',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description: 'Green on black, square corners, no shadows. A terminal.',
     category: 'neon',
     downloads: 0,
@@ -644,7 +644,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'sakura-milk',
     name: 'Sakura Milk',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description: 'Soft pink on cream. Pill bubbles, roomy spacing, big type.',
     category: 'pastel',
     downloads: 0,
@@ -710,7 +710,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'amoled-void',
     name: 'AMOLED Void',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description: 'True black for OLED panels. Icons at the bottom, labels off.',
     category: 'midnight',
     downloads: 0,
@@ -785,7 +785,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'blindfold',
     name: 'Blindfold',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description: 'Black, with an unreasonable amount of blue in it. Glass chrome, drifting aurora.',
     category: 'midnight',
     downloads: 0,
@@ -863,7 +863,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'paper-ink',
     name: 'Paper & Ink',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description: 'A serif, a warm page and no shadows. Reads like something printed.',
     category: 'minimal',
     downloads: 0,
@@ -932,7 +932,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'bubblegum',
     name: 'Bubblegum',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description: 'Round everything. Nunito, pastel glass, and a wallpaper that breathes.',
     category: 'pastel',
     downloads: 0,
@@ -1011,7 +1011,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'cupertino',
     name: 'Cupertino',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description:
       'iOS 26. Liquid glass chrome, iMessage blue, tall corners, and the system font it was drawn for.',
     category: 'minimal',
@@ -1123,7 +1123,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'aero',
     name: 'Aero',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description:
       'Windows 7. Translucent blue chrome, a glow on every edge, and corners barely rounded at all.',
     category: 'retro',
@@ -1231,7 +1231,7 @@ const MARKETPLACE: ThemePack[] = [
   pack({
     id: 'butterfly',
     name: 'Butterfly',
-    author: 'Yo',
+    author: 'ZwoSocial',
     description:
       'MSN Messenger, 2005. Green for online, a blue title bar, square corners, and a banner for every nudge.',
     category: 'retro',
@@ -2069,14 +2069,14 @@ export function deleteOwnedTheme(id: string) {
   emit();
 }
 
-export const CSS_THEME_TEMPLATE = `/* Socialize theme CSS — custom properties */
+export const CSS_THEME_TEMPLATE = `/* ZwoSocial theme CSS — custom properties */
 :root {
-  --primary: #4F46E5;
+  --primary: ${Palette.brand[600]};
   --background: #0E0F13;
   --surface: #191A21;
   --text: #ECEDF2;
   --wallpaper: #131419;
-  --bubble-mine: #4F46E5;
+  --bubble-mine: ${Palette.brand[600]};
   --bubble-theirs: #191A21;
   --text-mine: #FFFFFF;
   --text-theirs: #ECEDF2;
@@ -2272,7 +2272,7 @@ export function generateThemeFromAiPrompt(prompt: string): AiThemeDraft {
     !/\b(light|claro|day|dia)\b/.test(p);
   const light = /\b(light|claro|pastel|cream|soft|dia)\b/.test(p);
 
-  let primary = '#4F46E5';
+  let primary: string = Palette.brand[600];
   let background = dark ? '#0E0F13' : '#F7F9FC';
   let surface = dark ? '#191A21' : '#FFFFFF';
   let text = dark ? '#ECEDF2' : '#111827';

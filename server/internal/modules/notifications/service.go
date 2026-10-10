@@ -143,7 +143,7 @@ func (s *Service) NotifyUser(ctx context.Context, userID uuid.UUID, category, ti
 
 // TestPush enqueues a dummy notification for the current user (dev/smoke).
 func (s *Service) TestPush(ctx context.Context, userID uuid.UUID) error {
-	return s.NotifyUser(ctx, userID, "messages", "Socialize", "Test notification", map[string]string{
+	return s.NotifyUser(ctx, userID, "messages", "ZwoSocial", "Test notification", map[string]string{
 		"type": "test",
 	})
 }

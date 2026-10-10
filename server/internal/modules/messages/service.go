@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/CreadorLanda/yo/server/internal/modules/users"
+	"github.com/CreadorLanda/zwosocial/server/internal/modules/users"
 )
 
 var (
@@ -704,7 +704,7 @@ func (s *Service) notifyOffline(ctx context.Context, chatID, senderID uuid.UUID,
 	}
 	title := msg.SenderName
 	if title == "" {
-		title = "Socialize"
+		title = "ZwoSocial"
 	}
 	category := "messages"
 	// Groups use same chats table; treat multi-party as groups category.

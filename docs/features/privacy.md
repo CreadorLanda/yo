@@ -1,6 +1,6 @@
 # 🔒 Privacy
 
-> Complete documentation for Yo privacy features.
+> Complete documentation for ZwoSocial privacy features.
 
 ---
 
@@ -46,7 +46,7 @@ Building presence, and then freezing it, is
 
 ## 2. App Lock
 
-A code required to open Yo at all, on top of the per-conversation lock in §3.
+A code required to open ZwoSocial at all, on top of the per-conversation lock in §3.
 
 **There is one code, not two.** The app lock verifies the same secret the chat
 lock stores — `data/chat-lock.ts` — because two codes to remember is how people
@@ -156,7 +156,7 @@ interface AntiDeleteConfig {
 
 | Option | Who Can See |
 |--------|------------|
-| **Everyone** | All Yo users |
+| **Everyone** | All ZwoSocial users |
 | **My contacts** | Only saved contacts |
 | **Nobody** | Completely hidden |
 | **Custom** | Select specific contacts |
@@ -183,7 +183,7 @@ Via `expo-local-authentication`, on top of the code — never instead of it.
 | **Android** | Whatever `BiometricPrompt` exposes: fingerprint, face unlock, iris |
 
 The app is only ever told yes or no. No face or fingerprint data reaches this
-process, and none is stored by Yo — the template lives in the Secure Enclave or
+process, and none is stored by ZwoSocial — the template lives in the Secure Enclave or
 the Android TEE and never leaves it. **That is precisely why this is the
 operating system's job and not ours:** a face check we built on the selfie
 camera would see a flat RGB image, be defeated by a printed photograph, and
@@ -191,7 +191,7 @@ require us to store biometric data we have no business holding.
 
 The device passcode is deliberately *not* accepted as a fallback
 (`disableDeviceFallback`). The phone's PIN is not this app's code, and letting
-it stand in would mean unlocking the phone unlocks Yo. The way past a failed
+it stand in would mean unlocking the phone unlocks ZwoSocial. The way past a failed
 fingerprint is the app's own code.
 
 The switch is only offered where the device actually has a biometric enrolled;

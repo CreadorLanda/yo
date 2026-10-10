@@ -1,6 +1,6 @@
 # 🏗️ Arquitetura
 
-> Como o Yo é desenhado: uma plataforma de mensagens focada em segurança, com armazenamento no dispositivo e um servidor fino.
+> Como o ZwoSocial é desenhado: uma plataforma de mensagens focada em segurança, com armazenamento no dispositivo e um servidor fino.
 
 ---
 
@@ -23,7 +23,7 @@
             │  HTTPS / WSS (TLS 1.3, pinning de certificado)
             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    API Yo (Go)                       │
+│                    API ZwoSocial (Go)                       │
 │  ┌────────────┐  ┌────────────┐  ┌────────────────────────┐ │
 │  │ Controllers│→ │ Services   │→ │ Repositories           │ │
 │  │ (HTTP/WS)  │  │ (lógica)   │  │ (pgx → Postgres)       │ │

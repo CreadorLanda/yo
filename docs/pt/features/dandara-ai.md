@@ -1,6 +1,6 @@
 # 🤖 Dandara AI
 
-> Documentação completa da Dandara AI - assistente de IA do Yo.
+> Documentação completa da Dandara AI - assistente de IA do ZwoSocial.
 
 ---
 

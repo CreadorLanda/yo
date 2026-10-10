@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/CreadorLanda/yo/server/internal/middleware"
+	"github.com/CreadorLanda/zwosocial/server/internal/middleware"
 )
 
 type Controller struct {

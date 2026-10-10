@@ -21,7 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/livekit/protocol/auth"
 
-	"github.com/CreadorLanda/yo/server/internal/middleware"
+	"github.com/CreadorLanda/zwosocial/server/internal/middleware"
 )
 
 var (
