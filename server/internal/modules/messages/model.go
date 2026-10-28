@@ -30,6 +30,7 @@ const (
 type Chat struct {
 	ID          uuid.UUID       `json:"id"`
 	Type        ChatType        `json:"type"`
+	IsSelf      bool            `json:"is_self"`
 	Title       *string         `json:"title,omitempty"`
 	AvatarURL   *string         `json:"avatar_url,omitempty"`
 	CreatedBy   uuid.UUID       `json:"created_by"`

@@ -81,17 +81,87 @@ func (r *Repository) CreateChat(ctx context.Context, chatType ChatType, createdB
 	return chatID, tx.Commit(ctx)
 }
 
-func (r *Repository) FindDirectChat(ctx context.Context, userID, peerID uuid.UUID) (*Chat, error) {
-	const q = `
-		SELECT c.id, c.type, c.title, c.avatar_url, c.created_by, c.status, c.created_at
+// CreateSelfChat creates or reopens the caller's saved-messages chat.
+// Uniqueness is enforced by the partial database index, so concurrent
+// requests cannot create two self-chats for the same account.
+func (r *Repository) CreateSelfChat(ctx context.Context, userID uuid.UUID) (uuid.UUID, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var chatID uuid.UUID
+	var isSelf bool
+	err = tx.QueryRow(ctx, `
+		SELECT c.id, c.is_self
 		FROM chats c
 		WHERE c.type = 'direct'
+		  AND c.created_by = $1
+		  AND EXISTS (
+			  SELECT 1 FROM chat_participants cp
+			  WHERE cp.chat_id = c.id AND cp.user_id = $1
+		  )
+		  AND (
+			  c.is_self
+			  OR NOT EXISTS (
+				  SELECT 1 FROM chat_participants cp
+				  WHERE cp.chat_id = c.id AND cp.user_id <> $1
+			  )
+		  )
+		ORDER BY c.is_self DESC, c.created_at ASC
+		LIMIT 1
+		FOR UPDATE
+	`, userID).Scan(&chatID, &isSelf)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = tx.QueryRow(ctx, `
+			INSERT INTO chats (type, created_by, status, is_self)
+			VALUES ('direct', $1, 'active', TRUE)
+			ON CONFLICT (created_by) WHERE is_self DO NOTHING
+			RETURNING id
+		`, userID).Scan(&chatID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = tx.QueryRow(ctx, `
+				SELECT id FROM chats WHERE created_by = $1 AND is_self
+			`, userID).Scan(&chatID)
+			isSelf = true
+		}
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if !isSelf {
+		if _, err := tx.Exec(ctx, `UPDATE chats SET is_self = TRUE WHERE id = $1`, chatID); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE chats SET status = 'active' WHERE id = $1`, chatID); err != nil {
+		return uuid.Nil, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO chat_participants (chat_id, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (chat_id, user_id) DO UPDATE SET hidden_at = NULL, archived_at = NULL
+	`, chatID, userID); err != nil {
+		return uuid.Nil, err
+	}
+
+	return chatID, tx.Commit(ctx)
+}
+
+func (r *Repository) FindDirectChat(ctx context.Context, userID, peerID uuid.UUID) (*Chat, error) {
+	const q = `
+		SELECT c.id, c.type, c.is_self, c.title, c.avatar_url, c.created_by, c.status, c.created_at
+		FROM chats c
+		WHERE c.type = 'direct'
+		  AND c.is_self = ($1::uuid = $2::uuid)
 		  AND EXISTS (SELECT 1 FROM chat_participants WHERE chat_id = c.id AND user_id = $1)
 		  AND EXISTS (SELECT 1 FROM chat_participants WHERE chat_id = c.id AND user_id = $2)
 		LIMIT 1
 	`
 	var c Chat
-	err := r.db.QueryRow(ctx, q, userID, peerID).Scan(&c.ID, &c.Type, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt)
+	err := r.db.QueryRow(ctx, q, userID, peerID).Scan(&c.ID, &c.Type, &c.IsSelf, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +174,7 @@ func (r *Repository) FindDirectChat(ctx context.Context, userID, peerID uuid.UUI
 // Both ListChats and ChatForUser build on it so the two can never drift.
 const chatSelectBase = `
 		SELECT
-		    c.id, c.type, c.title, c.avatar_url, c.created_by, c.status, c.created_at,
+		    c.id, c.type, c.is_self, c.title, c.avatar_url, c.created_by, c.status, c.created_at,
 		    c.disappear_seconds,
 		    cp.pinned_at, cp.muted_until, cp.archived_at,
 		    lm.content, lm.message_type, lm.sender_id, lm.created_at,
@@ -137,7 +207,7 @@ const chatSelectBase = `
 		    SELECT u.id, u.username, u.display_name, COALESCE(u.avatar_uri, '') AS avatar_uri
 		    FROM chat_participants cp2
 		    JOIN users u ON u.id = cp2.user_id
-		    WHERE cp2.chat_id = c.id AND cp2.user_id <> $1
+		    WHERE cp2.chat_id = c.id AND (cp2.user_id <> $1 OR c.is_self)
 		    LIMIT 1
 		) pu ON c.type = 'direct'
 `
@@ -205,7 +275,7 @@ func (r *Repository) scanChatRows(rows pgx.Rows) ([]Chat, error) {
 			peerAva   *string
 		)
 		if err := rows.Scan(
-			&c.ID, &c.Type, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
+			&c.ID, &c.Type, &c.IsSelf, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
 			&c.DisappearSeconds,
 			&c.PinnedAt, &c.MutedUntil, &c.ArchivedAt,
 			&lmContent, &lmType, &lmSender, &lmAt,
@@ -360,12 +430,12 @@ func (r *Repository) PeerUser(ctx context.Context, chatID, userID uuid.UUID) (*P
 
 func (r *Repository) GetChat(ctx context.Context, chatID uuid.UUID) (*Chat, error) {
 	const q = `
-		SELECT id, type, title, avatar_url, created_by, status, created_at
+		SELECT id, type, is_self, title, avatar_url, created_by, status, created_at
 		FROM chats WHERE id = $1
 	`
 	var c Chat
 	err := r.db.QueryRow(ctx, q, chatID).Scan(
-		&c.ID, &c.Type, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
+		&c.ID, &c.Type, &c.IsSelf, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
 	)
 	if err != nil {
 		return nil, err

@@ -7,6 +7,8 @@ export type ChatStatus = 'active' | 'pending' | 'blocked';
 export interface ChatDTO {
   id: string;
   type: 'direct' | 'group';
+  /** Saved-messages chat owned by the current user. */
+  is_self?: boolean;
   title?: string;
   avatar_url?: string;
   created_by: string;
@@ -113,6 +115,11 @@ export function createChat(peerUserId: string) {
   return api.post<{ chat_id: string; chat: ChatDTO }>('/api/chats', {
     peer_user_id: peerUserId,
   });
+}
+
+/** Open the current user's single saved-messages chat. */
+export function createSelfChat() {
+  return api.post<{ chat_id: string; chat: ChatDTO }>('/api/chats/self', {});
 }
 
 /** List one page of chats for the current user, newest-active first. */

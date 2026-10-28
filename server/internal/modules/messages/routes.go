@@ -9,6 +9,7 @@ import "github.com/gin-gonic/gin"
 // the upgrade handshake often carries the JWT in a query param.
 func Register(rg *gin.RouterGroup, c *Controller) {
 	// Chats
+	rg.POST("/chats/self", c.PostSelfChat)
 	rg.POST("/chats", c.PostChat)
 	rg.GET("/chats", c.GetChats)
 

@@ -3,7 +3,9 @@ package messages
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -108,6 +110,109 @@ func TestDirectChatFriendRequestFlow(t *testing.T) {
 	}
 	if _, err := svc.SendMessage(ctx, chat.ID, bob, SendMessageRequest{Content: testDirectEnvelope("reply")}); err != nil {
 		t.Fatalf("bob's reply after accept: %v", err)
+	}
+}
+
+func TestSelfChatIsActiveIdempotentAndUnlimited(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+	alice := createTestUser(t, pool, "self_"+uuid.NewString()[:8])
+
+	const callers = 8
+	ids := make(chan uuid.UUID, callers)
+	errs := make(chan error, callers)
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			chat, err := svc.CreateSelfChat(ctx, alice)
+			if err != nil {
+				errs <- err
+				return
+			}
+			ids <- chat.ID
+			if !chat.IsSelf || chat.Status != ChatStatusActive {
+				errs <- fmt.Errorf("self chat = %+v, want self active", chat)
+				return
+			}
+			if chat.PeerUserID == nil || *chat.PeerUserID != alice {
+				errs <- fmt.Errorf("peer id = %v, want %s", chat.PeerUserID, alice)
+			}
+		}()
+	}
+	wg.Wait()
+	close(ids)
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+
+	var first uuid.UUID
+	for id := range ids {
+		if first == uuid.Nil {
+			first = id
+		} else if id != first {
+			t.Fatalf("concurrent self-chat creation returned %s and %s", first, id)
+		}
+	}
+	legacyPath, err := svc.CreateDirectChat(ctx, alice, alice)
+	if err != nil {
+		t.Fatalf("CreateDirectChat(self): %v", err)
+	}
+	if legacyPath.ID != first || !legacyPath.IsSelf {
+		t.Fatalf("CreateDirectChat(self) = %+v, want %s", legacyPath, first)
+	}
+
+	for i := 0; i < 3; i++ {
+		if _, err := svc.SendMessage(ctx, first, alice,
+			SendMessageRequest{Content: testDirectEnvelope("saved")}); err != nil {
+			t.Fatalf("self message %d: %v", i, err)
+		}
+	}
+
+	chats, err := svc.ListChats(ctx, alice, ListChatsOptions{})
+	if err != nil {
+		t.Fatalf("list self chat: %v", err)
+	}
+	var selfCount int
+	for _, chat := range chats {
+		if chat.IsSelf {
+			selfCount++
+		}
+	}
+	if selfCount != 1 {
+		t.Fatalf("self chat count = %d, want 1", selfCount)
+	}
+	if err := svc.ReportChat(ctx, first, alice, "spam", "", false); !errors.Is(err, ErrInvalidReport) {
+		t.Fatalf("ReportChat(self): %v, want invalid_report", err)
+	}
+}
+
+func TestSelfChatReusesLegacyDirectChatAndReopensIt(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+	alice := createTestUser(t, pool, "legacy_self_"+uuid.NewString()[:8])
+
+	legacyID, err := svc.repo.CreateChat(ctx, ChatDirect, alice, []uuid.UUID{alice}, ChatStatusPending)
+	if err != nil {
+		t.Fatalf("create legacy self chat: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_participants SET archived_at = now() WHERE chat_id = $1`, legacyID); err != nil {
+		t.Fatalf("archive legacy self chat: %v", err)
+	}
+
+	chat, err := svc.CreateSelfChat(ctx, alice)
+	if err != nil {
+		t.Fatalf("reopen legacy self chat: %v", err)
+	}
+	if chat.ID != legacyID || !chat.IsSelf || chat.Status != ChatStatusActive {
+		t.Fatalf("reopened chat = %+v, want legacy active self chat", chat)
+	}
+	if chat.ArchivedAt != nil {
+		t.Fatalf("reopened self chat remains archived at %v", chat.ArchivedAt)
 	}
 }
 

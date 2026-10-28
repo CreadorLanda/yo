@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Mensagens
 - A pesquisa dentro da conversa permite filtrar por não lidas, favoritas, multimédia, documentos, links e áudio, além de combinar cada filtro com texto de pesquisa
 - Mensagens podem ser adicionadas/removidas das favoritas no menu de pressão longa; esta escolha é privada por utilizador e sincronizada entre dispositivos
+- Self-chat de mensagens guardadas: cada conta pode abrir uma conversa activa e idempotente consigo própria, sem pedidos de amizade ou limite de mensagens pendentes
 
 #### iOS
 - Push notifications usam tokens Expo encaminhados pelo APNs, em vez de enviarem tokens APNs diretamente ao FCM

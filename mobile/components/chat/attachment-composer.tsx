@@ -17,6 +17,7 @@ import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { searchUsers, type PublicUser } from '@/data/api/users';
 import { getCurrentUser } from '@/data/auth-store';
+import { displayChatName } from '@/data/chat-identity';
 import { useChats } from '@/data/chat-store';
 import { type MessageAttachment } from '@/data/mock';
 import { useTheme } from '@/hooks/use-theme';
@@ -256,7 +257,7 @@ function ContactSheet({
     .filter((c) => c.type === 'direct' && c.peer_user_id)
     .map((c) => ({
       id: c.peer_user_id!,
-      name: c.title ?? c.peer_username ?? '',
+      name: displayChatName(c, t('chats.saved_messages'), ''),
       username: c.peer_username ?? '',
       avatarUri: c.avatar_url ?? '',
     }));
