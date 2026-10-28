@@ -17,7 +17,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { TabScene } from '@/components/ui/tab-scene';
 import { Avatar } from '@/components/ui/avatar';
 import { Text, TextInput } from '@/components/ui/text';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Radii, Shadows, Sizes, Spacing, Typography } from '@/constants/theme';
+import { withAlpha } from '@/data/theme-model';
 import { appAlert } from '@/data/dialog-store';
 import { connectRealtime, type ChatDTO } from '@/data/api/messages';
 import { getCurrentUser } from '@/data/auth-store';
@@ -426,9 +427,7 @@ export default function ChatsScreen() {
           renderItem={({ item }) => (
             <ChatRow chat={item} onManage={() => setManageTarget(item)} />
           )}
-          ItemSeparatorComponent={() => (
-            <View style={[styles.separator, { backgroundColor: colors.divider }]} />
-          )}
+          ItemSeparatorComponent={ChatSeparator}
           ListEmptyComponent={
             <EmptyState
               icon="filter-outline"
@@ -446,7 +445,7 @@ export default function ChatsScreen() {
           onPress={() => router.push('/group/create')}
           style={({ pressed }) => [
             styles.fabSmall,
-            { backgroundColor: colors.surface, borderColor: colors.border },
+            { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
             pressed && styles.fabPressed,
           ]}
           accessibilityRole="button"
@@ -459,13 +458,13 @@ export default function ChatsScreen() {
           onPress={() => router.push('/search')}
           style={({ pressed }) => [
             styles.fab,
-            { backgroundColor: colors.primary, shadowColor: colors.primary },
+            { backgroundColor: colors.primary },
             pressed && styles.fabPressed,
           ]}
           accessibilityRole="button"
           accessibilityLabel={t('chats.new_chat')}
         >
-          <Ionicons name="chatbubble-ellipses" size={24} color={colors.onPrimary} />
+          <Ionicons name="create-outline" size={24} color={colors.onPrimary} />
         </Pressable>
       </View>
 
@@ -602,7 +601,7 @@ function FilterBar({
   ];
 
   return (
-    <View style={[styles.filterWrap, { backgroundColor: colors.background, borderBottomColor: colors.divider }]}>
+    <View style={[styles.filterWrap, { backgroundColor: colors.background }]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -629,7 +628,7 @@ function FilterBar({
           onPress={onCreate}
           style={({ pressed }) => [
             styles.addChip,
-            { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
+            { backgroundColor: colors.surfaceMuted },
             pressed && { opacity: 0.7 },
           ]}
           accessibilityRole="button"
@@ -661,16 +660,14 @@ function FilterChip({
       delayLongPress={320}
       style={({ pressed }) => [
         styles.chip,
-        active
-          ? { backgroundColor: colors.primary, borderColor: colors.primary }
-          : { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
+        { backgroundColor: active ? withAlpha(colors.primary, 0.14) : colors.surfaceMuted },
         pressed && { opacity: 0.8 },
       ]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
     >
       <Text
-        style={[styles.chipText, { color: active ? colors.onPrimary : colors.textSecondary }]}
+        style={[styles.chipText, { color: active ? colors.primary : colors.textSecondary }]}
         numberOfLines={1}
       >
         {label}
@@ -848,8 +845,23 @@ function DeleteFilterModal({
   );
 }
 
+function ChatSeparator() {
+  const { colors, layout } = useTheme();
+  const avatar = layout.listAvatarSize || Sizes.listAvatar;
+  return (
+    <View
+      style={[
+        styles.separator,
+        { backgroundColor: colors.divider, marginLeft: Spacing.lg + avatar + Spacing.md },
+      ]}
+    />
+  );
+}
+
 function ChatRow({ chat, onManage }: { chat: ChatPreview; onManage: () => void }) {
-  const { colors } = useTheme();
+  const { colors, layout } = useTheme();
+  // The theme creator has always offered this knob; the list never read it.
+  const avatar = layout.listAvatarSize || Sizes.listAvatar;
   const unread = chat.unreadCount > 0;
   return (
     <Pressable
@@ -870,7 +882,7 @@ function ChatRow({ chat, onManage }: { chat: ChatPreview; onManage: () => void }
           uri={chat.avatarUri}
           id={chat.peerUserId}
           username={chat.name}
-          size={AVATAR}
+          size={avatar}
         />
         {chat.isAI ? (
           <View style={[styles.groupBadge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
@@ -945,34 +957,28 @@ function ChatRow({ chat, onManage }: { chat: ChatPreview; onManage: () => void }
   );
 }
 
-const AVATAR = 54;
-const STORY = 60;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  list: { paddingBottom: 96, flexGrow: 1 },
+  list: { paddingBottom: 140, flexGrow: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: 10,
+    minHeight: 76,
+    paddingVertical: Spacing.md,
   },
   rowPressed: {},
-  avatar: {
-    width: AVATAR,
-    height: AVATAR,
-    borderRadius: Radii.pill,
-  },
   onlineDot: {
     position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: 14,
-    height: 14,
+    right: 1,
+    bottom: 1,
+    width: 13,
+    height: 13,
     borderRadius: Radii.pill,
-    borderWidth: 2.5,
+    borderWidth: 2,
   },
   groupBadge: {
     position: 'absolute',
@@ -985,7 +991,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowText: { flex: 1, gap: 2 },
+  rowText: { flex: 1, gap: Spacing.xxs },
   rowTop: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -993,33 +999,33 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   name: {
-    ...Typography.body,
-    fontWeight: '600',
+    ...Typography.bodyStrong,
     flex: 1,
   },
-  nameUnread: { fontWeight: '700' },
-  time: { ...Typography.micro },
-  timeUnread: { fontWeight: '700' },
+  nameUnread: {},
+  time: { ...Typography.micro, fontVariant: ['tabular-nums'] },
+  timeUnread: { fontWeight: '600' },
   rowBottom: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.sm,
   },
-  preview: { ...Typography.caption, flex: 1 },
-  previewUnread: { fontWeight: '500' },
+  preview: { ...Typography.callout, flex: 1 },
+  previewUnread: {},
   badges: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   unreadBadge: {
-    minWidth: 20,
-    height: 20,
+    minWidth: 22,
+    height: 22,
     borderRadius: Radii.pill,
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     alignItems: 'center',
     justifyContent: 'center',
   },
   unreadBadgeText: {
     ...Typography.micro,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   manageBackdrop: {
     flex: 1,
@@ -1027,22 +1033,21 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   manageSheet: {
-    borderTopLeftRadius: Radii.lg,
-    borderTopRightRadius: Radii.lg,
-    paddingTop: Spacing.md,
+    borderTopLeftRadius: Radii.xxl,
+    borderTopRightRadius: Radii.xxl,
+    paddingTop: Spacing.lg,
   },
   manageTitle: {
-    ...Typography.caption,
-    paddingHorizontal: Spacing.lg,
+    ...Typography.h3,
+    paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.sm,
-    opacity: 0.6,
   },
   manageRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    gap: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    minHeight: Sizes.control,
   },
   manageLabel: {
     ...Typography.body,
@@ -1052,10 +1057,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    minHeight: Sizes.control,
   },
-  archivedLabel: { ...Typography.body, flex: 1 },
-  archivedCount: { ...Typography.bodyStrong },
+  archivedLabel: { ...Typography.bodyStrong, flex: 1 },
+  archivedCount: { ...Typography.micro, fontWeight: '600' },
   anonBadge: {
     minWidth: 22,
     height: 22,
@@ -1064,39 +1069,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  anonBadgeText: { ...Typography.caption, fontWeight: '700' },
+  anonBadgeText: { ...Typography.micro, fontWeight: '700' },
   separator: {
-    height: 1,
-    marginLeft: Spacing.lg + AVATAR + Spacing.md,
+    height: StyleSheet.hairlineWidth,
   },
 
   // ── Filter chips ─────────────────────────────────────────────────────────────
-  filterWrap: {
-    borderBottomWidth: 1,
-  },
+  filterWrap: {},
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm + 2,
+    paddingTop: Spacing.xs,
+    paddingBottom: Spacing.sm,
   },
   chip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 7,
+    height: 32,
+    paddingHorizontal: Spacing.md + 2,
     borderRadius: Radii.pill,
-    borderWidth: 1,
+    justifyContent: 'center',
   },
   chipText: {
-    ...Typography.caption,
-    fontWeight: '700',
+    ...Typography.label,
     maxWidth: 130,
   },
   addChip: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: Radii.pill,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1108,9 +1109,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   sheet: {
-    borderTopLeftRadius: Radii.xl,
-    borderTopRightRadius: Radii.xl,
-    paddingHorizontal: Spacing.lg,
+    borderTopLeftRadius: Radii.xxl,
+    borderTopRightRadius: Radii.xxl,
+    paddingHorizontal: Spacing.xl,
   },
   sheetHandle: {
     alignItems: 'center',
@@ -1131,11 +1132,10 @@ const styles = StyleSheet.create({
   sheetTitle: { ...Typography.h3 },
   nameInput: {
     ...Typography.body,
-    fontSize: 15,
     borderWidth: 1,
     borderRadius: Radii.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.lg,
+    height: Sizes.control,
     marginTop: Spacing.xs,
   },
   selectLabel: {
@@ -1164,7 +1164,6 @@ const styles = StyleSheet.create({
   },
   selectName: {
     ...Typography.body,
-    fontSize: 15,
     flex: 1,
   },
   checkCircle: {
@@ -1178,13 +1177,12 @@ const styles = StyleSheet.create({
   saveBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    borderRadius: Radii.pill,
-    marginTop: Spacing.md,
+    height: Sizes.control,
+    borderRadius: Radii.lg,
+    marginTop: Spacing.lg,
   },
   saveBtnText: {
-    ...Typography.body,
-    fontWeight: '700',
+    ...Typography.bodyStrong,
   },
 
   // ── Delete confirm ───────────────────────────────────────────────────────────
@@ -1197,8 +1195,8 @@ const styles = StyleSheet.create({
   },
   promptCard: {
     borderRadius: Radii.xl,
-    borderWidth: 1,
-    padding: Spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.xl,
     alignItems: 'center',
     gap: Spacing.sm,
     width: '100%',
@@ -1217,11 +1215,12 @@ const styles = StyleSheet.create({
   promptBtn: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: Spacing.sm + 2,
-    borderRadius: Radii.pill,
-    borderWidth: 1.5,
+    justifyContent: 'center',
+    height: 46,
+    borderRadius: Radii.md,
+    borderWidth: 1,
   },
-  promptBtnText: { ...Typography.caption, fontWeight: '700' },
+  promptBtnText: { ...Typography.label, fontSize: 15 },
 
   fab: {
     position: 'absolute',
@@ -1229,28 +1228,27 @@ const styles = StyleSheet.create({
     bottom: Spacing.lg,
     width: 56,
     height: 56,
-    borderRadius: Radii.pill,
+    // A rounded square rather than a circle: the shape both platforms'
+    // current guidelines give a floating action.
+    borderRadius: Radii.lg + 2,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    ...Shadows.md,
   },
   fabSmall: {
     position: 'absolute',
-    right: Spacing.lg + 8,
+    right: Spacing.lg + 6,
     // Clear of the main button, which is 56 tall at Spacing.lg from the edge.
-    bottom: Spacing.lg + 68,
+    bottom: Spacing.lg + 56 + Spacing.md,
     width: 44,
     height: 44,
-    borderRadius: Radii.pill,
+    borderRadius: Radii.md + 2,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    ...Shadows.sm,
   },
   fabPressed: {
-    transform: [{ scale: 0.95 }],
+    transform: [{ scale: 0.96 }],
   },
 });

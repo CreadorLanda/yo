@@ -18,7 +18,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { FollowButton, formatCount } from '@/components/ui/follow-button';
 import { TabScene } from '@/components/ui/tab-scene';
 import { Text, TextInput } from '@/components/ui/text';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { bootstrapChannels, useChannels } from '@/data/channel-store';
 import { CHANNEL_CATEGORIES, type Channel, type ChannelCategory } from '@/data/mock';
 import { useTheme } from '@/hooks/use-theme';
@@ -235,7 +235,6 @@ export default function DiscoverScreen() {
             styles.fab,
             {
               backgroundColor: colors.primary,
-              shadowColor: colors.primary,
             },
             pressed && { transform: [{ scale: 0.96 }], opacity: 0.92 },
           ]}
@@ -442,7 +441,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     borderWidth: 1,
   },
-  chipText: { ...Typography.caption, fontWeight: '700' },
+  chipText: { ...Typography.label },
   section: { gap: Spacing.sm },
   sectionLabel: {
     ...Typography.micro,
@@ -588,14 +587,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: Spacing.lg,
     bottom: Spacing.lg,
-    width: 58,
-    height: 58,
-    borderRadius: Radii.pill,
+    width: 56,
+    height: 56,
+    borderRadius: Radii.lg + 2,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    ...Shadows.md,
   },
 });

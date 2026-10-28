@@ -242,15 +242,18 @@ export type CreateThemeInput = {
 export const DEFAULT_LAYOUT: ThemeLayout = {
   myBubbleSide: 'right',
   bubbleShape: 'tail',
-  bubbleRadius: 16,
+  bubbleRadius: 18,
   showTails: true,
   fontScale: 1,
   density: 'cozy',
   avatarPosition: 'left',
   selectionCheckSide: 'left',
-  headerStyle: 'brand',
-  tabBarPosition: 'top',
-  tabBarLabels: 'labels',
+  // A neutral header with navigation at the bottom, where the thumb is.
+  // The violet bar with tabs underneath was the 2015 Android messenger;
+  // packs that want it back still set these.
+  headerStyle: 'minimal',
+  tabBarPosition: 'bottom',
+  tabBarLabels: 'both',
   iconSet: 'outline',
   iconScale: 1,
   // 'system' is not one font among six — it is the only value that leaves
@@ -262,13 +265,13 @@ export const DEFAULT_LAYOUT: ThemeLayout = {
   composerStyle: 'rounded',
   wallpaperPattern: false,
   bubbleMaxWidth: 82,
-  bubblePaddingH: 11,
-  bubblePaddingV: 7,
+  bubblePaddingH: 12,
+  bubblePaddingV: 8,
   emojiScale: 1,
   letterSpacing: 0,
   lineHeightExtra: 0,
   bubbleShadow: true,
-  bubbleShadowStrength: 0.35,
+  bubbleShadowStrength: 0.2,
   timestampInside: true,
   datePillStyle: 'pill',
   replyStyle: 'quote',
@@ -278,7 +281,7 @@ export const DEFAULT_LAYOUT: ThemeLayout = {
   // default described a layout the app never rendered.
   attachSide: 'right',
   inputRadius: 22,
-  listAvatarSize: 48,
+  listAvatarSize: 52,
   showOnlineDot: true,
   showHeaderBorder: true,
   wallpaperDim: 35,
@@ -335,29 +338,29 @@ export function defaultChatChrome(scheme: ThemeMode, primary: string): ChatChrom
     };
   }
   return {
-    wallpaper: '#EEF1F6',
+    wallpaper: '#F1F0F6',
     wallpaperImage: '',
     bubbleMine: primary,
     bubbleTheirs: '#FFFFFF',
     textMine: '#FFFFFF',
-    textTheirs: '#111827',
+    textTheirs: '#15151D',
     metaMine: 'rgba(255,255,255,0.78)',
-    metaTheirs: '#9AA3B2',
+    metaTheirs: '#8E8EA0',
     datePillBg: '#FFFFFF',
-    datePillText: '#6B7280',
-    composerBg: '#EEF1F6',
+    datePillText: '#686879',
+    composerBg: '#F1F0F6',
     inputBg: '#FFFFFF',
     linkMine: '#DBEAFE',
     linkTheirs: primary,
-    headerBg: primary,
-    headerFg: '#FFFFFF',
+    headerBg: '#FFFFFF',
+    headerFg: '#15151D',
     sendBtnBg: primary,
-    replyBarBg: '#F0F4FF',
+    replyBarBg: '#F2EFFF',
     replyBarAccent: primary,
     selectionBg: `${primary}18`,
-    typingDot: '#9AA3B2',
+    typingDot: '#8E8EA0',
     systemBg: '#FFFFFF',
-    systemText: '#6B7280',
+    systemText: '#686879',
     unreadBadge: primary,
   };
 }
@@ -471,12 +474,14 @@ function densityGap(d: MessageDensity): number {
 }
 
 export function layoutMetrics(layout: ThemeLayout) {
-  const baseFont = Math.round(15 * layout.fontScale);
+  // 16/21 at scale 1: the body size of the rest of the app, set a touch
+  // tighter because bubbles are short lines read in a column.
+  const baseFont = Math.round(16 * layout.fontScale);
   return {
     rowGap: densityGap(layout.density) + Math.max(0, layout.gapAfterGroup - 8) * 0.25,
     groupedGap: layout.density === 'compact' ? 1 : 2,
     fontSize: baseFont,
-    lineHeight: Math.round(20 * layout.fontScale) + layout.lineHeightExtra,
+    lineHeight: Math.round(21 * layout.fontScale) + layout.lineHeightExtra,
     maxWidthPct: layout.fullWidthBubbles ? 94 : layout.bubbleMaxWidth,
     bubblePaddingH: layout.bubblePaddingH,
     bubblePaddingV: layout.bubblePaddingV,

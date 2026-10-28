@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
   },
-  chipText: { ...Typography.caption, fontWeight: '700' },
+  chipText: { ...Typography.label },
 
   memberRow: {
     flexDirection: 'row',

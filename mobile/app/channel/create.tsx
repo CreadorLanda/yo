@@ -601,7 +601,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createBtnText: { ...Typography.caption, fontWeight: '700' },
+  createBtnText: { ...Typography.label },
   body: { padding: Spacing.lg, gap: Spacing.md, paddingBottom: Spacing.xxxl },
   lead: { ...Typography.body, lineHeight: 21, marginBottom: Spacing.xs },
   field: { gap: 6 },
@@ -681,7 +681,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     borderWidth: 1,
   },
-  chipText: { ...Typography.caption, fontWeight: '700' },
+  chipText: { ...Typography.label },
   option: {
     flexDirection: 'row',
     alignItems: 'center',

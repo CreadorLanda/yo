@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
+import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = Omit<PressableProps, 'style' | 'children'> & {
@@ -24,12 +24,9 @@ export function PrimaryButton({ label, loading, disabled, variant = 'primary', .
       style={({ pressed }) => [
         styles.base,
         isPrimary
-          ? [styles.primary, { backgroundColor: colors.primary, shadowColor: colors.primary }]
+          ? { backgroundColor: colors.primary }
           : [styles.secondary, { borderColor: colors.border }],
-        pressed &&
-          (isPrimary
-            ? [styles.primaryPressed, { backgroundColor: colors.primary }]
-            : { backgroundColor: colors.surfaceMuted }),
+        pressed && (isPrimary ? styles.primaryPressed : { backgroundColor: colors.surfaceMuted }),
         disabled && styles.disabled,
       ]}
       {...rest}
@@ -51,23 +48,18 @@ export function PrimaryButton({ label, loading, disabled, variant = 'primary', .
 }
 
 const styles = StyleSheet.create({
+  // Flat. A coloured glow under the button was the loudest thing on every
+  // screen it sat on, and the colour alone already says "this is the action".
   base: {
-    borderRadius: Radii.xl,
-    paddingVertical: Spacing.lg,
+    borderRadius: Radii.lg,
     paddingHorizontal: Spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 56,
-  },
-  primary: {
-    shadowColor: Palette.brand[500],
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    minHeight: Sizes.control,
   },
   primaryPressed: {
-    transform: [{ scale: 0.98 }],
+    opacity: 0.88,
+    transform: [{ scale: 0.985 }],
   },
   secondary: {
     backgroundColor: 'transparent',

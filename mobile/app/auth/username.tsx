@@ -245,9 +245,9 @@ const styles = StyleSheet.create({
   atSign: { ...Typography.body },
 
   privacyCard: {
-    borderRadius: Radii.xl,
+    borderRadius: Radii.lg,
     padding: Spacing.lg,
-    borderWidth: 1.5,
+    borderWidth: 1,
     gap: Spacing.md,
   },
   privacyCardOff: {

@@ -26,7 +26,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatCount } from '@/components/ui/follow-button';
 import { ReactionTray } from '@/components/ui/reaction-tray';
 import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
-import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
+import { Palette, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { CachedImage } from '@/components/ui/cached-image';
 import { appAlert, appPrompt } from '@/data/dialog-store';
 import { deleteChannelPost, editChannelPost } from '@/data/api/channels';
@@ -810,7 +810,6 @@ export default function ChannelScreen() {
             styles.postFab,
             {
               backgroundColor: colors.primary,
-              shadowColor: colors.primary,
               bottom: insets.bottom + Spacing.lg,
             },
             pressed && { transform: [{ scale: 0.96 }] },
@@ -2156,15 +2155,12 @@ const styles = StyleSheet.create({
   postFab: {
     position: 'absolute',
     right: Spacing.lg,
-    width: 54,
-    height: 54,
-    borderRadius: Radii.pill,
+    width: 56,
+    height: 56,
+    borderRadius: Radii.lg + 2,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
+    ...Shadows.md,
   },
   postComposerOverlay: {
     flex: 1,
@@ -2330,7 +2326,7 @@ const styles = StyleSheet.create({
   },
   commentAvatarSmall: { width: 30, height: 30 },
   commentAvatarText: { ...Typography.body, fontWeight: '700' },
-  commentAvatarTextSmall: { ...Typography.caption, fontWeight: '700' },
+  commentAvatarTextSmall: { ...Typography.label },
   commentBody: { flex: 1, gap: 6 },
   commentBubble: {
     borderRadius: 16,
@@ -2475,7 +2471,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 1,
   },
-  composerPost: { ...Typography.caption, fontWeight: '700' },
+  composerPost: { ...Typography.label },
 
   // ── Notification prompt ──────────────────────────────────────────────────────
   dimOverlay: {
@@ -2511,7 +2507,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     borderWidth: 1.5,
   },
-  promptBtnText: { ...Typography.caption, fontWeight: '700' },
+  promptBtnText: { ...Typography.label },
 
   // ── More menu ────────────────────────────────────────────────────────────────
   bottomOverlay: {

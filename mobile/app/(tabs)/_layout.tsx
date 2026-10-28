@@ -1,13 +1,17 @@
-import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import {
+  createMaterialTopTabNavigator,
+  type MaterialTopTabBarProps,
+} from '@react-navigation/material-top-tabs';
 import { Image } from 'expo-image';
 import { router, withLayoutContext } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Text } from '@/components/ui/text';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
+import { withAlpha } from '@/data/theme-model';
 import { useProfile } from '@/data/profile-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -50,22 +54,21 @@ export default function TabLayout() {
   const showLabels = layout.tabBarLabels !== 'icons';
   const showIcons = layout.tabBarLabels !== 'labels';
 
+  // The status bar follows the header, not the scheme: a minimal header in
+  // light mode is pale, and white status icons on it disappear.
+  const statusStyle = headerFg === colors.text ? (isDark ? 'light' : 'dark') : 'light';
+
   return (
     <SafeAreaView
       style={[styles.safe, { backgroundColor: headerBg }]}
-      // A bar at the bottom has to clear the home indicator; one at the top
-      // never touched it.
-      edges={tabsAtBottom ? ['top', 'bottom'] : ['top']}
+      // The bottom bar pads itself for the home indicator, so its own
+      // surface runs to the edge instead of stopping above a strip of header
+      // colour.
+      edges={['top']}
     >
-      <StatusBar style="light" />
+      <StatusBar style={statusStyle} />
 
-      <View
-        style={[
-          styles.header,
-          { backgroundColor: headerBg },
-          isDark && { borderBottomWidth: 1, borderBottomColor: colors.divider },
-        ]}
-      >
+      <View style={[styles.header, { backgroundColor: headerBg }]}>
         <View style={styles.brandRow}>
           <Pressable
             onPress={() => router.push('/profile')}
@@ -76,7 +79,10 @@ export default function TabLayout() {
               source={{ uri: profile.avatarUri }}
               style={[
                 styles.headerAvatar,
-                { borderColor: isDark ? colors.border : 'rgba(255,255,255,0.35)' },
+                {
+                  borderColor:
+                    headerFg === colors.text ? colors.border : 'rgba(255,255,255,0.35)',
+                },
               ]}
               contentFit="cover"
             />
@@ -108,25 +114,32 @@ export default function TabLayout() {
 
       <MaterialTopTabs
         tabBarPosition={tabsAtBottom ? 'bottom' : 'top'}
+        // At the bottom the strip becomes a navigation bar: the swipeable
+        // pager stays, but an underline in the gesture area is not how
+        // anybody expects bottom navigation to look.
+        tabBar={
+          tabsAtBottom
+            ? (props: MaterialTopTabBarProps) => (
+                <BottomNavBar {...props} showLabels={showLabels} showIcons={showIcons} />
+              )
+            : undefined
+        }
         screenOptions={{
           sceneStyle: { backgroundColor: colors.background },
           tabBarStyle: [
             styles.tabBar,
-            { backgroundColor: headerBg },
-            isDark && { borderBottomWidth: 1, borderBottomColor: colors.divider },
+            {
+              backgroundColor: headerBg,
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: colors.divider,
+            },
           ],
-          tabBarIndicatorStyle: [
-            styles.indicator,
-            { backgroundColor: indicatorColor },
-            // The indicator marks the edge the bar meets the content on, so
-            // it swaps ends with the bar. Left at the bottom, it reads as an
-            // underline floating in the gesture area.
-            tabsAtBottom && { top: 0, bottom: undefined },
-          ],
+          tabBarIndicatorStyle: [styles.indicator, { backgroundColor: indicatorColor }],
           tabBarLabelStyle: styles.tabLabel,
           tabBarActiveTintColor: headerFg,
           tabBarInactiveTintColor: headerMuted,
-          tabBarPressColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)',
+          tabBarPressColor:
+            headerFg === colors.text ? withAlpha(colors.text, 0.06) : 'rgba(255,255,255,0.12)',
           tabBarShowLabel: showLabels,
           tabBarShowIcon: showIcons,
           swipeEnabled: true,
@@ -161,6 +174,81 @@ export default function TabLayout() {
   );
 }
 
+function BottomNavBar({
+  state,
+  descriptors,
+  navigation,
+  showLabels,
+  showIcons,
+}: MaterialTopTabBarProps & { showLabels: boolean; showIcons: boolean }) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View
+      style={[
+        styles.bottomBar,
+        {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.divider,
+          paddingBottom: insets.bottom,
+        },
+      ]}
+      accessibilityRole="tablist"
+    >
+      {state.routes.map((route, index) => {
+        const focused = state.index === index;
+        const { options } = descriptors[route.key];
+        const label = typeof options.title === 'string' ? options.title : route.name;
+        const color = focused ? colors.primary : colors.textSecondary;
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+          if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+        };
+
+        return (
+          <Pressable
+            key={route.key}
+            onPress={onPress}
+            style={styles.bottomItem}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: focused }}
+            accessibilityLabel={label}
+          >
+            {showIcons ? (
+              <View
+                style={[
+                  styles.bottomPill,
+                  focused && { backgroundColor: withAlpha(colors.primary, 0.14) },
+                ]}
+              >
+                {options.tabBarIcon?.({ focused, color })}
+              </View>
+            ) : null}
+            {showLabels ? (
+              <Text
+                style={[
+                  styles.bottomLabel,
+                  { color: focused ? colors.text : colors.textSecondary },
+                  focused && styles.bottomLabelActive,
+                ]}
+                numberOfLines={1}
+              >
+                {label}
+              </Text>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
@@ -169,32 +257,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
+    paddingLeft: Spacing.lg,
+    paddingRight: Spacing.sm,
+    height: 56,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   headerAvatar: {
-    width: 34,
-    height: 34,
+    width: Sizes.headerAvatar,
+    height: Sizes.headerAvatar,
     borderRadius: Radii.pill,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   brand: {
     ...Typography.h2,
-    letterSpacing: -0.3,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
   },
   iconBtn: {
-    width: 38,
-    height: 38,
+    width: Sizes.hitTarget,
+    height: Sizes.hitTarget,
     borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -210,8 +297,33 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 2,
   },
   tabLabel: {
-    ...Typography.bodyStrong,
-    textTransform: 'none',
+    ...Typography.label,
     fontSize: 14,
+    textTransform: 'none',
+  },
+
+  bottomBar: {
+    flexDirection: 'row',
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  bottomItem: {
+    flex: 1,
+    height: Sizes.tabBar,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  bottomPill: {
+    width: 56,
+    height: 30,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomLabel: {
+    ...Typography.micro,
+  },
+  bottomLabelActive: {
+    fontWeight: '600',
   },
 });

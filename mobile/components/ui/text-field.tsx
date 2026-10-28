@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 
 import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = TextInputProps & {
@@ -41,7 +41,7 @@ export function TextField({
         style={[
           styles.field,
           { backgroundColor: colors.surface, borderColor: colors.border },
-          focused && { borderColor: colors.primary },
+          focused && [styles.fieldFocused, { borderColor: colors.primary }],
           !!error && { borderColor: colors.danger },
         ]}
       >
@@ -74,19 +74,24 @@ export function TextField({
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: Spacing.xs,
+    gap: Spacing.sm,
   },
   label: {
-    ...Typography.caption,
-    marginLeft: Spacing.xs,
+    ...Typography.label,
   },
+  // One pixel at rest, two when focused, with the padding giving back the
+  // difference so the text does not shift as the ring thickens.
   field: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.md + 1,
+    minHeight: Sizes.control,
+  },
+  fieldFocused: {
+    borderWidth: 2,
     paddingHorizontal: Spacing.md,
-    minHeight: 56,
   },
   input: {
     flex: 1,
@@ -98,10 +103,8 @@ const styles = StyleSheet.create({
   },
   hint: {
     ...Typography.caption,
-    marginLeft: Spacing.xs,
   },
   error: {
     ...Typography.caption,
-    marginLeft: Spacing.xs,
   },
 });
