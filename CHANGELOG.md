@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A cor da marca passa de índigo a violeta (`brand.600` `#5B3DF5`, `brand.400` `#9680FF`); o tema por omissão chama-se agora ZwoSocial Violet
 - O esquema de links passa a `zwosocial://`. O identificador da app continua `app.yo.messenger`: está ligado ao Firebase, ao App ID da Apple e às instalações existentes, por isso o ZwoSocial chega como actualização da app actual
 
+#### Visual
+- Navegação passa para uma barra inferior com rótulos, e o cabeçalho do ecrã inicial deixa de ser violeta: fundo neutro, logótipo em texto e ícones de 44 px. Temas que querem o estilo antigo continuam a poder pedir a barra violeta e as abas no topo
+- Nova escala tipográfica (corpo a 16 px, níveis `callout` e `label` novos) e neutros com um toque de violeta, para a cor da marca deixar de parecer colada por cima
+- Lista de conversas mais arrumada: linhas de 76 px, nome a 16 px, pré-visualização a 15 px, separadores finos alinhados ao texto, chips de filtro sem borda e o tamanho de avatar do tema finalmente respeitado
+- Botões, campos de texto e botões flutuantes sem sombras coloridas, com alturas e cantos iguais em todo o lado; definições com divisores alinhados aos rótulos
+- Texto das mensagens a 16 px e bolhas com cantos de 18 px
+
 #### Chamadas
 - Chamadas sem E2EE agora mostram um aviso de que o servidor pode aceder ao áudio e vídeo; chamadas de grupo também estão listadas como não protegidas na documentação de segurança
 
@@ -50,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Abrir a câmara dos stories já não passa pelo pipeline de fotogramas (worklets + Skia), a causa provável do crash ao abrir: só é criado quando há um filtro escolhido. Uma falha na árvore da câmara passa a mostrar "sem câmara" (o obturador abre a galeria) em vez de derrubar o ecrã
 - O pinch-to-zoom funciona: o zoom é convertido de 0–1 para o intervalo da lente (`minZoom`–`maxZoom`); antes a câmara abria em zoom 0 e cada gesto era rejeitado
 - O limite de duração do boomerang e do mãos-livres volta a parar a gravação, e um temporizador antigo já não dispara na gravação seguinte
+- A pré-visualização da câmara volta a aparecer no Android. A VisionCamera 5.2.2 trazia código gerado para o React Native 0.85 e, no 0.81, a vista rebentava ao ler as props (`Cannot cast dynamic to a jsi::Value`) antes de pedir a câmara ao sistema. Actualizada para a 5.2.3, com o Nitro 0.37
+- Quando a câmara falha, o "sem câmara" mantém-se até mudares de lente ou de filtro; antes voltava atrás no instante seguinte e cada toque no obturador dava "a câmara não devolveu nada"
 
 ## [0.0.2-alpha] - 2026-05-21
 

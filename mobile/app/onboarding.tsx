@@ -4,8 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PrimaryButton } from '@/components/ui/primary-button';
 import { Text } from '@/components/ui/text';
-import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
+import { Palette, Sizes, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -100,20 +101,7 @@ export default function OnboardingScreen() {
       </View>
 
       <View style={styles.footer}>
-        <Pressable
-          onPress={handleCreateAccount}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            { backgroundColor: colors.primary, shadowColor: colors.primary },
-            pressed && styles.primaryButtonPressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={t('onboarding.cta_create')}
-        >
-          <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-            {t('onboarding.cta_create')}
-          </Text>
-        </Pressable>
+        <PrimaryButton label={t('onboarding.cta_create')} onPress={handleCreateAccount} />
 
         <Pressable
           onPress={handleRestore}
@@ -139,7 +127,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.xxl,
   },
   headline: {
     ...Typography.display,
@@ -179,28 +167,11 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xl,
-    gap: Spacing.md,
-  },
-  primaryButton: {
-    borderRadius: Radii.xl,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  primaryButtonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
-  primaryButtonText: {
-    ...Typography.bodyStrong,
+    paddingBottom: Spacing.lg,
+    gap: Spacing.xs,
   },
   secondaryButton: {
-    paddingVertical: Spacing.md,
+    minHeight: Sizes.control,
     alignItems: 'center',
     justifyContent: 'center',
   },

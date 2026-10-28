@@ -234,10 +234,11 @@ const styles = StyleSheet.create({
   otpCell: {
     width: 48,
     height: 56,
-    borderRadius: Radii.lg,
+    borderRadius: Radii.md,
     borderWidth: 1,
     textAlign: 'center',
     ...Typography.h2,
+    fontVariant: ['tabular-nums'],
   },
   timer: { ...Typography.caption },
   resend: { ...Typography.bodyStrong },

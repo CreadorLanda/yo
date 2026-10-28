@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     borderRadius: Radii.pill,
   },
-  tabText: { ...Typography.caption, fontWeight: '700' },
+  tabText: { ...Typography.label },
 
   list: { paddingBottom: Spacing.xl },
   emptyList: { flexGrow: 1 },

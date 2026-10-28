@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     borderWidth: 1,
   },
-  timeChipText: { ...Typography.caption, fontWeight: '700' },
+  timeChipText: { ...Typography.label },
   locInput: {
     flexDirection: 'row',
     alignItems: 'center',

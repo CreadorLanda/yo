@@ -8,7 +8,7 @@ import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
 import { appAlert, appPrompt } from '@/data/dialog-store';
 import { deleteMe, me, patchMe, type UserPatch } from '@/data/api/users';
 import {
@@ -681,7 +681,6 @@ function Row({
       disabled={!onPress}
       style={({ pressed }) => [
         styles.rowWrap,
-        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider },
         pressed && onPress ? { backgroundColor: colors.surfaceMuted } : null,
       ]}
       accessibilityRole={onPress ? 'button' : undefined}
@@ -701,6 +700,10 @@ function Row({
         ) : null)}
       </View>
       {below ? <View style={styles.below}>{below}</View> : null}
+      {/* Inset to the label, so the icons read as one column. */}
+      {!last ? (
+        <View style={[styles.rowDivider, { backgroundColor: colors.divider }]} />
+      ) : null}
     </Pressable>
   );
 }
@@ -734,10 +737,10 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
-    padding: Spacing.md,
-    borderRadius: Radii.xl,
-    borderWidth: 1,
+    gap: Spacing.lg,
+    padding: Spacing.lg,
+    borderRadius: Radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   profileAvatar: {
     width: 56,
@@ -745,37 +748,44 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   profileText: { flex: 1, gap: 2 },
-  profileName: { ...Typography.h3, fontSize: 17 },
-  profileUsername: { ...Typography.caption },
+  profileName: { ...Typography.h3 },
+  profileUsername: { ...Typography.callout },
 
   group: { gap: Spacing.sm },
   groupTitle: {
     ...Typography.micro,
-    fontWeight: '700',
+    fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginLeft: Spacing.md,
+    marginLeft: Spacing.lg,
   },
   card: {
     borderRadius: Radii.lg,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
 
   rowWrap: {
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
-    minHeight: 52,
-    paddingVertical: 10,
+    gap: Spacing.md + 2,
+    minHeight: Sizes.control,
+    paddingVertical: Spacing.sm + 2,
+  },
+  rowDivider: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    left: Spacing.lg + 21 + Spacing.md + 2,
+    height: StyleSheet.hairlineWidth,
   },
   rowLabel: { ...Typography.body, flex: 1 },
-  rowValue: { ...Typography.body, maxWidth: 170, textAlign: 'right' },
+  rowValue: { ...Typography.callout, maxWidth: 170, textAlign: 'right' },
   below: {
-    paddingLeft: 21 + Spacing.md,
+    paddingLeft: 21 + Spacing.md + 2,
     paddingBottom: Spacing.md,
     paddingTop: 2,
   },
@@ -794,7 +804,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     alignItems: 'center',
   },
-  segmentText: { ...Typography.caption, fontWeight: '600' },
+  segmentText: { ...Typography.label },
 
 
 });

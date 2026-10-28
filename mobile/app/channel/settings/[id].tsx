@@ -235,8 +235,7 @@ export default function ChannelSettingsScreen() {
                 >
                   <Text
                     style={{
-                      ...Typography.caption,
-                      fontWeight: '700',
+                      ...Typography.label,
                       color: active ? colors.onPrimary : colors.textSecondary,
                     }}
                   >
@@ -314,8 +313,7 @@ export default function ChannelSettingsScreen() {
                 >
                   <Text
                     style={{
-                      ...Typography.caption,
-                      fontWeight: '700',
+                      ...Typography.label,
                       color: active ? colors.onPrimary : colors.textSecondary,
                     }}
                   >
@@ -503,7 +501,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  saveText: { ...Typography.caption, fontWeight: '700' },
+  saveText: { ...Typography.label },
   body: { padding: Spacing.lg, gap: Spacing.lg, paddingBottom: Spacing.xxxl },
   section: { gap: Spacing.sm },
   sectionTitle: {

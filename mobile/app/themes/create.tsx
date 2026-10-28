@@ -431,8 +431,7 @@ export default function ThemeCreatorScreen() {
               <Ionicons name={item.icon} size={15} color={active ? colors.primary : colors.textSecondary} />
               <Text
                 style={{
-                  ...Typography.caption,
-                  fontWeight: '700',
+                  ...Typography.label,
                   fontSize: 13,
                   color: active ? colors.primary : colors.textSecondary,
                 }}
@@ -1113,8 +1112,7 @@ function Segment<T extends string>({
           >
             <Text
               style={{
-                ...Typography.caption,
-                fontWeight: '700',
+                ...Typography.label,
                 fontSize: 13,
                 color: active ? colors.onPrimary : colors.textSecondary,
               }}
@@ -1154,8 +1152,7 @@ function ChipRow<T extends string>({
           >
             <Text
               style={{
-                ...Typography.caption,
-                fontWeight: '700',
+                ...Typography.label,
                 fontSize: 13,
                 color: active ? colors.onPrimary : colors.textSecondary,
               }}

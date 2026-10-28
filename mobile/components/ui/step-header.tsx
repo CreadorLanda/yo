@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
+import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
 import { t } from '@/i18n';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -16,7 +16,7 @@ type Props = {
 };
 
 export function StepHeader({ step, total, title, subtitle, onBack }: Props) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const handleBack = () => {
     if (onBack) {
       onBack();
@@ -28,7 +28,7 @@ export function StepHeader({ step, total, title, subtitle, onBack }: Props) {
   };
 
   const progress = step / total;
-  const titleColor = scheme === 'dark' ? colors.text : Palette.brand[900];
+  const titleColor = colors.text;
   const trackColor = colors.divider;
 
   return (
@@ -39,13 +39,12 @@ export function StepHeader({ step, total, title, subtitle, onBack }: Props) {
           hitSlop={12}
           style={({ pressed }) => [
             styles.backButton,
-            { backgroundColor: colors.surface, borderColor: colors.border },
             pressed && { backgroundColor: colors.surfaceMuted },
           ]}
           accessibilityRole="button"
           accessibilityLabel={t('auth.back')}
         >
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.counter, { color: colors.textSecondary }]}>
           {t('auth.step_counter', { step, total })}
@@ -72,25 +71,26 @@ export function StepHeader({ step, total, title, subtitle, onBack }: Props) {
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xl,
     gap: Spacing.md,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    justifyContent: 'space-between',
+    marginLeft: -Spacing.sm,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: Sizes.iconButton,
+    height: Sizes.iconButton,
     borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
   },
   counter: {
-    ...Typography.caption,
+    ...Typography.label,
+    fontVariant: ['tabular-nums'],
   },
   track: {
     height: 4,
@@ -103,9 +103,10 @@ const styles = StyleSheet.create({
   },
   title: {
     ...Typography.h1,
-    marginTop: Spacing.sm,
+    marginTop: Spacing.md,
   },
   subtitle: {
     ...Typography.body,
+    marginTop: -Spacing.xs,
   },
 });
