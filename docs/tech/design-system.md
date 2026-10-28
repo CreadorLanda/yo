@@ -2,7 +2,7 @@
 
 > Single source of truth for visual language across mobile, web and desktop.
 
-The design language is **clean, playful and trustworthy**: airy backgrounds, a confident violet primary action, and vivid accents reserved for avatars / status / reactions.
+The design language is **clean, calm and trustworthy**: neutral chrome, a confident violet primary action, and vivid accents reserved for avatars / status / reactions. The interface should feel familiar to anyone fluent in WhatsApp, Telegram or Signal, then a notch more precise: one type scale, one control height, one shape per kind of control.
 
 Tokens live in [`mobile/constants/theme.ts`](../../mobile/constants/theme.ts). This document is the human-readable companion — keep them in sync.
 
@@ -39,22 +39,24 @@ legibility.
 
 ### 1.2 Neutral (Greys)
 
-Backgrounds, surfaces, text and borders.
+Backgrounds, surfaces, text and borders. The ramp carries a trace of the
+brand hue (chroma well under 0.01), so the violet primary sits *in* the
+interface rather than on top of a blue-grey one borrowed from somewhere else.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `neutral.0`    | `#FFFFFF` | Surface (cards, list rows, modals) |
-| `neutral.50`   | `#F7F9FC` | App background (light) |
-| `neutral.100`  | `#EEF1F6` | Page background tint, dividers |
-| `neutral.200`  | `#E5E9F0` | Borders, separators |
-| `neutral.300`  | `#D1D7E0` | Disabled borders, skeleton |
-| `neutral.400`  | `#9AA3B2` | Muted text, inactive tab icon |
-| `neutral.500`  | `#6B7280` | Secondary text, icon default |
-| `neutral.600`  | `#4B5563` | Body emphasis |
-| `neutral.700`  | `#374151` | Strong body text |
-| `neutral.800`  | `#1F2937` | Headings |
-| `neutral.900`  | `#111827` | Primary text |
-| `neutral.1000` | `#0B1020` | App background (dark) |
+| `neutral.0`    | `#FFFFFF` | Surface (cards, sheets, bottom bar) |
+| `neutral.50`   | `#F8F8FB` | App background (light) |
+| `neutral.100`  | `#F1F1F6` | Muted surface: chips, search fields, pressed rows |
+| `neutral.200`  | `#E6E6EE` | Borders, dividers |
+| `neutral.300`  | `#D2D2DD` | Disabled borders, skeleton |
+| `neutral.400`  | `#8E8EA0` | Muted text, timestamps |
+| `neutral.500`  | `#686879` | Secondary text, icon default |
+| `neutral.600`  | `#4B4B5A` | Body emphasis |
+| `neutral.700`  | `#363643` | Strong body text |
+| `neutral.800`  | `#23232E` | Headings |
+| `neutral.900`  | `#15151D` | Primary text |
+| `neutral.1000` | `#0B0B10` | Deepest ground |
 
 ### 1.3 Accents
 
@@ -88,17 +90,18 @@ Theme tokens map raw palette → semantic role. Components must consume **semant
 
 | Role | Token | Hex |
 |---|---|---|
-| Background | `neutral.50` | `#F7F9FC` |
+| Background | `neutral.50` | `#F8F8FB` |
 | Surface | `neutral.0` | `#FFFFFF` |
-| Border | `neutral.200` | `#E5E9F0` |
-| Divider | `neutral.100` | `#EEF1F6` |
-| Text | `neutral.900` | `#111827` |
-| Text secondary | `neutral.500` | `#6B7280` |
-| Text muted | `neutral.400` | `#9AA3B2` |
+| Surface muted | `neutral.100` | `#F1F1F6` |
+| Border | `neutral.200` | `#E6E6EE` |
+| Divider | `neutral.200` | `#E6E6EE` (drawn as a hairline) |
+| Text | `neutral.900` | `#15151D` |
+| Text secondary | `neutral.500` | `#686879` |
+| Text muted | `neutral.400` | `#8E8EA0` |
 | Primary | `brand.600` | `#5B3DF5` |
 | On-primary | `neutral.0` | `#FFFFFF` |
-| Icon | `neutral.500` | `#6B7280` |
-| Tab icon (inactive) | `neutral.400` | `#9AA3B2` |
+| Icon | `neutral.500` | `#686879` |
+| Tab icon (inactive) | `neutral.400` | `#8E8EA0` |
 | Tab icon (active) | `brand.600` | `#5B3DF5` |
 
 ### Dark
@@ -146,7 +149,25 @@ Icon slots are a closed list in
 [`mobile/data/theme-icons.ts`](../../mobile/data/theme-icons.ts); a call site
 opts in by rendering `<AppIcon slot="…" />` instead of a literal glyph.
 
-### 2.2 Typeface, true black, glass and motion
+### 2.2 Default chrome
+
+An unconfigured app uses a **neutral header** (`headerStyle: 'minimal'`) and a
+**bottom navigation bar** (`tabBarPosition: 'bottom'`, `tabBarLabels: 'both'`).
+That is where every current messenger keeps navigation, and where the thumb
+is. The selected tab gets a primary-tinted pill behind its icon and a
+semibold label; inactive tabs stay `textSecondary`, never a saturated colour.
+The swipeable pager is kept — only the strip changes. The status bar follows
+the header's foreground, so a pale header gets dark status icons.
+
+Packs can still ask for the violet bar (`brand`, `colored`) and tabs on top;
+the defaults moved, the knobs did not.
+
+Chat bubbles default to a radius of 18, 12×8 padding, a 16/21 text size and a
+faint shadow on the incoming side only (`bubbleShadowStrength: 0.2`). The
+conversation list reads `listAvatarSize` (default 52), which it used to
+ignore.
+
+### 2.3 Typeface, true black, glass and motion
 
 Four knobs reach past colour and shape. All four default to off, so an app
 nobody has configured looks exactly as it did.
@@ -184,7 +205,7 @@ thread, no gradient library. `primary` and `info` are the two hues, so `info`
 is the handle a pack author has on what the aurora does. Suppressed when the
 OS asks for reduced motion.
 
-### 2.3 The launcher icon
+### 2.4 The launcher icon
 
 Deliberately *not* part of a pack. Applying a theme changes bubble colours;
 it must not quietly rearrange somebody's home screen. It is a preference of
@@ -208,6 +229,7 @@ tiles that silently does nothing is worse than no row.
 
 | Token | px |
 |---|---|
+| `xxs` | 2 |
 | `xs` | 4 |
 | `sm` | 8 |
 | `md` | 12 |
@@ -226,27 +248,60 @@ tiles that silently does nothing is worse than no row.
 | `sm` | 6 | Tags, micro-chips |
 | `md` | 10 | Inputs, small buttons |
 | `lg` | 14 | Cards, list rows |
-| `xl` | 20 | Modals, sheets, primary CTA |
-| `pill` | 999 | Avatars, FABs, status pills |
+| `xl` | 20 | Dialogs |
+| `xxl` | 28 | Bottom sheets (top corners) |
+| `pill` | 999 | Avatars, chips, badges, icon buttons |
 
-The reference design uses `xl` (20px) on the CTA button and `pill` on avatars.
+Buttons and text fields are **not** pills: primary buttons use `lg`, fields
+`md`. Floating action buttons are rounded squares (`lg + 2`), the shape both
+platforms' current guidelines give them.
 
 ---
 
 ## 5. Typography
 
-System fonts for now (`Fonts.sans`). Custom font can be loaded later via `expo-font` without changing component code.
+System fonts by default (`Fonts.sans`); a theme can pick a bundled family.
+The scale is tight (about 1.2 between steps) and body is 16, the size both
+platforms read at. Headings track slightly negative, which system faces need
+at display sizes.
 
-| Style | Size / Line | Weight | Usage |
-|---|---|---|---|
-| `display` | 32 / 40 | 700 | Onboarding hero ("Start a Fun Communication with Anonymity") |
-| `h1` | 26 / 34 | 700 | Screen titles |
-| `h2` | 22 / 30 | 600 | Section titles |
-| `h3` | 18 / 26 | 600 | Card titles, chat names |
-| `body` | 15 / 22 | 400 | Default body |
-| `bodyStrong` | 15 / 22 | 600 | Unread row title, emphasis |
-| `caption` | 13 / 18 | 400 | Last message preview, helper text |
-| `micro` | 11 / 14 | 500 | Timestamps, badges |
+| Style | Size / Line | Weight | Tracking | Usage |
+|---|---|---|---|---|
+| `display` | 30 / 36 | 700 | -0.6 | Onboarding hero |
+| `h1` | 26 / 32 | 700 | -0.5 | Step titles, large screen titles |
+| `h2` | 21 / 26 | 700 | -0.3 | Wordmark, profile name |
+| `h3` | 17 / 22 | 600 | -0.2 | Screen header titles, sheet titles |
+| `body` | 16 / 22 | 400 | 0 | Default body, row labels |
+| `bodyStrong` | 16 / 22 | 600 | 0 | Conversation name, buttons |
+| `callout` | 15 / 20 | 400 | 0 | Message preview, row values |
+| `caption` | 13 / 18 | 400 | 0 | Helper text, hints |
+| `label` | 13 / 16 | 600 | 0 | Chips, segmented controls, sender names |
+| `micro` | 12 / 16 | 500 | 0 | Timestamps, badges, uppercase section headers |
+
+Numbers that change in place (timestamps, counters, OTP cells) use
+`fontVariant: ['tabular-nums']` so they do not jitter.
+
+Unread state is carried by the time and badge turning primary, not by
+bolding the name and preview further.
+
+---
+
+## 5.1 Sizes and elevation
+
+`Sizes` fixes the dimensions that must match from screen to screen.
+
+| Token | px | Usage |
+|---|---|---|
+| `hitTarget` | 44 | Minimum touch target, header icon buttons on the home screen |
+| `iconButton` | 40 | Back buttons and header actions elsewhere |
+| `control` | 52 | Primary buttons, single-line fields, settings rows |
+| `listAvatar` | 52 | Conversation and contact rows (fallback for `listAvatarSize`) |
+| `headerAvatar` | 36 | Avatar in a header |
+| `tabBar` | 64 | Bottom bar, excluding the home-indicator inset |
+
+`Shadows` has two steps, both neutral black: `sm` for small floating
+controls, `md` for the FAB. No coloured glows under buttons: the colour
+already says "this is the action".
 
 ---
 
@@ -254,16 +309,30 @@ System fonts for now (`Fonts.sans`). Custom font can be loaded later via `expo-f
 
 These are *examples* showing how tokens compose. Implement once in `mobile/components/ui/`.
 
-### Primary CTA (from reference design)
+### Primary CTA
+
+Use `<PrimaryButton>`; do not rebuild it per screen.
 
 ```tsx
-backgroundColor: Colors.light.primary,    // #5B3DF5
-color:           Colors.light.onPrimary,  // #FFFFFF
-borderRadius:    Radii.xl,                // 20
-paddingVertical: Spacing.lg,              // 16
-paddingHorizontal: Spacing.xl,            // 24
+backgroundColor:   colors.primary,     // flat, no shadow
+color:             colors.onPrimary,
+borderRadius:      Radii.lg,           // 14
+minHeight:         Sizes.control,      // 52
+paddingHorizontal: Spacing.xl,         // 24
 ...Typography.bodyStrong
+// pressed: opacity 0.88, scale 0.985
 ```
+
+### Text field
+
+`<TextField>`: `Radii.md`, `Sizes.control` tall, a 1px border that becomes a
+2px primary ring on focus (padding gives back the extra pixel so the text does
+not move). Label above in `label`, hint or error below in `caption`.
+
+### Filter chip
+
+32 tall, pill, no border. Inactive: `surfaceMuted` with `textSecondary`.
+Active: primary at 14% opacity with `primary` text, never a solid fill.
 
 ### Secondary / text button ("Restore" in the reference)
 
@@ -276,20 +345,21 @@ color:           Colors.light.text,
 ### Chat list row
 
 ```tsx
-backgroundColor: Colors.light.surface,
-borderBottomColor: Colors.light.divider,
-// avatar
-borderRadius:    Radii.pill,
-// name
-color: Colors.light.text,  ...Typography.bodyStrong
-// preview
-color: Colors.light.textSecondary,  ...Typography.caption
-// timestamp
-color: Colors.light.textMuted,  ...Typography.micro
-// unread badge
-backgroundColor: Colors.light.primary,
-color: Colors.light.onPrimary
+minHeight: 76, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+// avatar: layout.listAvatarSize (52), pill
+// name:      colors.text,          ...Typography.bodyStrong
+// preview:   colors.textSecondary, ...Typography.callout (text when unread)
+// timestamp: colors.textMuted,     ...Typography.micro (primary when unread)
+// unread badge: 22 tall, colors.primary / colors.onPrimary
+// separator: hairline, inset to the text column
 ```
+
+### Settings row
+
+`Sizes.control` minimum height, 21px icon in `textSecondary`, label in
+`body`, value in `callout`, chevron in `textMuted`. Dividers are hairlines
+inset to the label so the icons read as one column; groups are hairline-
+bordered `Radii.lg` cards under an uppercase `micro` header.
 
 ### Online status dot
 
@@ -304,7 +374,7 @@ width: 10, height: 10
 ## 7. Accessibility
 
 - **Contrast** — body text on background ≥ 4.5:1 (WCAG AA). `neutral.900` on `neutral.50` ≈ 16:1 ✓. `brand.500` on white ≈ 5.9:1 ✓.
-- **Touch targets** — minimum 44×44 px on iOS, 48×48 dp on Android. Achievable with `Spacing.lg` vertical padding on a `body` row.
+- **Touch targets** — minimum 44×44 px on iOS, 48×48 dp on Android. `Sizes.hitTarget` and `Sizes.control` exist so nobody has to remember the number.
 - **Color is never the only signal** — pair online-green with a label, unread red with a count, etc.
 
 ---
@@ -312,7 +382,7 @@ width: 10, height: 10
 ## 8. Do / Don't
 
 **Do**
-- Use **brand.500** for *one* primary action per screen.
+- Use **primary** for *one* primary action per screen.
 - Use **accents** only for content/identity (avatars, reactions, story rings).
 - Compose new components from semantic tokens, not raw palette values.
 
@@ -325,7 +395,7 @@ width: 10, height: 10
 
 ## 9. Source of truth
 
-- Code: [`mobile/constants/theme.ts`](../../mobile/constants/theme.ts) — `Palette`, `Colors`, `Spacing`, `Radii`, `Typography`, `Fonts`.
+- Code: [`mobile/constants/theme.ts`](../../mobile/constants/theme.ts) — `Palette`, `Colors`, `Spacing`, `Radii`, `Typography`, `Sizes`, `Shadows`, `Fonts`.
 - This document: human-readable rules and rationale.
 
 When adding a token, update **both** in the same PR.

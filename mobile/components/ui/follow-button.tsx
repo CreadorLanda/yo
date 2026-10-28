@@ -54,5 +54,5 @@ const styles = StyleSheet.create({
     height: 46,
     paddingHorizontal: Spacing.xl,
   },
-  followText: { ...Typography.caption, fontWeight: '700' },
+  followText: { ...Typography.label },
 });

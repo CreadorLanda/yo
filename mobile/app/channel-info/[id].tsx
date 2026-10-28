@@ -590,5 +590,5 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     borderWidth: 1.5,
   },
-  editPermsText: { ...Typography.caption, fontWeight: '700' },
+  editPermsText: { ...Typography.label },
 });

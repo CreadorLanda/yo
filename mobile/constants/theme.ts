@@ -23,19 +23,24 @@ export const Palette = {
     800: '#3B26A6',
     900: '#2E1F7D',
   },
+  /**
+   * Greys with a trace of the brand hue in them (chroma well under 0.01), so
+   * the violet sits in the interface instead of on top of it. A pure blue-grey
+   * ramp next to a violet primary reads as two systems glued together.
+   */
   neutral: {
     0: '#FFFFFF',
-    50: '#F7F9FC',
-    100: '#EEF1F6',
-    200: '#E5E9F0',
-    300: '#D1D7E0',
-    400: '#9AA3B2',
-    500: '#6B7280',
-    600: '#4B5563',
-    700: '#374151',
-    800: '#1F2937',
-    900: '#111827',
-    1000: '#0B1020',
+    50: '#F8F8FB',
+    100: '#F1F1F6',
+    200: '#E6E6EE',
+    300: '#D2D2DD',
+    400: '#8E8EA0',
+    500: '#686879',
+    600: '#4B4B5A',
+    700: '#363643',
+    800: '#23232E',
+    900: '#15151D',
+    1000: '#0B0B10',
   },
   accent: {
     yellow: '#FFD93D',
@@ -67,7 +72,7 @@ export const Colors = {
     surfaceElevated: Palette.neutral[0],
     surfaceMuted: Palette.neutral[100],
     border: Palette.neutral[200],
-    divider: Palette.neutral[100],
+    divider: Palette.neutral[200],
     tint: tintColorLight,
     primary: Palette.brand[600],
     onPrimary: Palette.neutral[0],
@@ -107,6 +112,7 @@ export const Colors = {
 } as const;
 
 export const Spacing = {
+  xxs: 2,
   xs: 4,
   sm: 8,
   md: 12,
@@ -122,18 +128,64 @@ export const Radii = {
   md: 10,
   lg: 14,
   xl: 20,
+  /** Bottom sheets and full-width dialogs. */
+  xxl: 28,
   pill: 999,
 } as const;
 
+/**
+ * A tight, native-feeling scale (roughly 1.2 between steps). Body is 16, the
+ * size both platforms read at by default; the old 15/13/11 ladder was a step
+ * small everywhere and flattened the hierarchy. Headings track slightly
+ * negative, which system faces need at display sizes to stop looking loose.
+ */
 export const Typography = {
-  display: { fontSize: 32, lineHeight: 40, fontWeight: '700' as const },
-  h1: { fontSize: 26, lineHeight: 34, fontWeight: '700' as const },
-  h2: { fontSize: 22, lineHeight: 30, fontWeight: '600' as const },
-  h3: { fontSize: 18, lineHeight: 26, fontWeight: '600' as const },
-  body: { fontSize: 15, lineHeight: 22, fontWeight: '400' as const },
-  bodyStrong: { fontSize: 15, lineHeight: 22, fontWeight: '600' as const },
+  display: { fontSize: 30, lineHeight: 36, fontWeight: '700' as const, letterSpacing: -0.6 },
+  h1: { fontSize: 26, lineHeight: 32, fontWeight: '700' as const, letterSpacing: -0.5 },
+  h2: { fontSize: 21, lineHeight: 26, fontWeight: '700' as const, letterSpacing: -0.3 },
+  h3: { fontSize: 17, lineHeight: 22, fontWeight: '600' as const, letterSpacing: -0.2 },
+  body: { fontSize: 16, lineHeight: 22, fontWeight: '400' as const },
+  bodyStrong: { fontSize: 16, lineHeight: 22, fontWeight: '600' as const },
+  /** Secondary lines in rows: message previews, settings values. */
+  callout: { fontSize: 15, lineHeight: 20, fontWeight: '400' as const },
   caption: { fontSize: 13, lineHeight: 18, fontWeight: '400' as const },
-  micro: { fontSize: 11, lineHeight: 14, fontWeight: '500' as const },
+  /** Chips, segmented controls, section headers. */
+  label: { fontSize: 13, lineHeight: 16, fontWeight: '600' as const },
+  micro: { fontSize: 12, lineHeight: 16, fontWeight: '500' as const },
+} as const;
+
+/** Fixed sizes shared across screens, so a row here matches a row there. */
+export const Sizes = {
+  /** Smallest comfortable touch target on both platforms. */
+  hitTarget: 44,
+  /** Header icon buttons. */
+  iconButton: 40,
+  /** Primary buttons and single-line text fields. */
+  control: 52,
+  /** Avatar in a conversation or contact list row. */
+  listAvatar: 52,
+  /** Avatar in a screen header. */
+  headerAvatar: 36,
+  /** Bottom navigation bar, excluding the home-indicator inset. */
+  tabBar: 64,
+} as const;
+
+/** Elevation, kept soft: product UI should separate layers, not float them. */
+export const Shadows = {
+  sm: {
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  md: {
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
 } as const;
 
 export const Fonts = Platform.select({

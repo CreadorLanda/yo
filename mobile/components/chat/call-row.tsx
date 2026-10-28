@@ -144,5 +144,5 @@ const styles = StyleSheet.create({
   label: { ...Typography.bodyStrong },
   meta: { ...Typography.micro },
   action: { paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: Radii.pill },
-  actionText: { ...Typography.caption, fontWeight: '700' },
+  actionText: { ...Typography.label },
 });

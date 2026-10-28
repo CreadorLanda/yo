@@ -23,7 +23,7 @@ import Animated, {
 
 import { TabScene } from '@/components/ui/tab-scene';
 import { Text } from '@/components/ui/text';
-import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
+import { Palette, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import type { Story } from '@/data/mock';
 import { useProfile } from '@/data/profile-store';
 import {
@@ -179,7 +179,6 @@ export default function StoriesScreen() {
             styles.fab,
             {
               backgroundColor: colors.primary,
-              shadowColor: colors.primary,
             },
             pressed && styles.fabPressed,
           ]}
@@ -892,13 +891,10 @@ const styles = StyleSheet.create({
     bottom: Spacing.lg,
     width: 56,
     height: 56,
-    borderRadius: Radii.pill,
+    borderRadius: Radii.lg + 2,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    ...Shadows.md,
   },
   fabPressed: {
     transform: [{ scale: 0.95 }],

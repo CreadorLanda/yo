@@ -11,7 +11,7 @@ import { PrimaryButton } from '@/components/ui/primary-button';
 import { StateTransition } from '@/components/ui/state-transition';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
 import { updateProfile, useProfile } from '@/data/profile-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -233,8 +233,8 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   identityText: { flex: 1, gap: 3 },
-  name: { ...Typography.h2, fontSize: 21 },
-  username: { ...Typography.body, fontWeight: '600' },
+  name: { ...Typography.h2 },
+  username: { ...Typography.callout },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -259,11 +259,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   stat: { flex: 1, alignItems: 'center', gap: 2 },
-  statValue: { ...Typography.h3, fontSize: 19 },
+  statValue: { ...Typography.h3, fontVariant: ['tabular-nums'] },
   statLabel: {
-    ...Typography.micro,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    ...Typography.caption,
   },
   statDivider: { width: StyleSheet.hairlineWidth, marginVertical: 2 },
 
@@ -275,10 +273,10 @@ const styles = StyleSheet.create({
   },
   editButton: { flex: 1 },
   shareButton: {
-    width: 56,
-    height: 56,
+    width: Sizes.control,
+    height: Sizes.control,
     borderRadius: Radii.lg,
-    borderWidth: 1.5,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -294,7 +292,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     gap: Spacing.sm,
   },
-  tabText: { ...Typography.bodyStrong, fontSize: 14 },
+  tabText: { ...Typography.label, fontSize: 15 },
   tabIndicator: {
     height: 2.5,
     width: '100%',

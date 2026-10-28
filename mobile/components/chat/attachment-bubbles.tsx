@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   docText: { flex: 1, gap: 2 },
-  docName: { ...Typography.caption, fontWeight: '700' },
+  docName: { ...Typography.label },
   docMeta: { ...Typography.micro },
 
   // Location
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   locText: { gap: 2, paddingHorizontal: 2 },
-  locPlace: { ...Typography.caption, fontWeight: '700' },
+  locPlace: { ...Typography.label },
   locAddress: { ...Typography.micro, lineHeight: 15 },
   liveBadge: {
     position: 'absolute',
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   contactInitial: { alignItems: 'center', justifyContent: 'center' },
   contactInitialText: { ...Typography.body, fontWeight: '700' },
   contactText: { flex: 1, gap: 2 },
-  contactName: { ...Typography.caption, fontWeight: '700' },
+  contactName: { ...Typography.label },
   contactDetail: { ...Typography.micro },
   contactDivider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
   contactAction: {
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingVertical: 4,
   },
-  contactActionText: { ...Typography.caption, fontWeight: '700' },
+  contactActionText: { ...Typography.label },
 
   // Poll
   pollLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  gameName: { ...Typography.caption, fontWeight: '700' },
+  gameName: { ...Typography.label },
   gameTagline: { ...Typography.micro },
   gamePlay: {
     flexDirection: 'row',
@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     marginTop: 2,
   },
-  gamePlayText: { ...Typography.caption, fontWeight: '700' },
+  gamePlayText: { ...Typography.label },
 });
 
 /**

@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A cor da marca passa de índigo a violeta (`brand.600` `#5B3DF5`, `brand.400` `#9680FF`); o tema por omissão chama-se agora ZwoSocial Violet
 - O esquema de links passa a `zwosocial://`. O identificador da app continua `app.yo.messenger`: está ligado ao Firebase, ao App ID da Apple e às instalações existentes, por isso o ZwoSocial chega como actualização da app actual
 
+#### Visual
+- Navegação passa para uma barra inferior com rótulos, e o cabeçalho do ecrã inicial deixa de ser violeta: fundo neutro, logótipo em texto e ícones de 44 px. Temas que querem o estilo antigo continuam a poder pedir a barra violeta e as abas no topo
+- Nova escala tipográfica (corpo a 16 px, níveis `callout` e `label` novos) e neutros com um toque de violeta, para a cor da marca deixar de parecer colada por cima
+- Lista de conversas mais arrumada: linhas de 76 px, nome a 16 px, pré-visualização a 15 px, separadores finos alinhados ao texto, chips de filtro sem borda e o tamanho de avatar do tema finalmente respeitado
+- Botões, campos de texto e botões flutuantes sem sombras coloridas, com alturas e cantos iguais em todo o lado; definições com divisores alinhados aos rótulos
+- Texto das mensagens a 16 px e bolhas com cantos de 18 px
+
 #### Chamadas
 - Chamadas sem E2EE agora mostram um aviso de que o servidor pode aceder ao áudio e vídeo; chamadas de grupo também estão listadas como não protegidas na documentação de segurança
 

@@ -2871,7 +2871,7 @@ export default function ChatScreen() {
                     onPress={finishRecording}
                     style={({ pressed }) => [
                       styles.sendBtn,
-                      { backgroundColor: colors.primary, shadowColor: colors.primary },
+                      { backgroundColor: colors.primary },
                       pressed && styles.sendBtnPressed,
                     ]}
                     accessibilityLabel={t('chat.send')}
@@ -2883,7 +2883,7 @@ export default function ChatScreen() {
                     onPress={handleSend}
                     style={({ pressed }) => [
                       styles.sendBtn,
-                      { backgroundColor: colors.primary, shadowColor: colors.primary },
+                      { backgroundColor: colors.primary },
                       pressed && styles.sendBtnPressed,
                     ]}
                     accessibilityLabel={t('chat.send')}
@@ -2899,7 +2899,7 @@ export default function ChatScreen() {
                         accessibilityLabel={t('chat.record_voice')}
                         style={[
                           styles.sendBtn,
-                          { backgroundColor: colors.primary, shadowColor: colors.primary },
+                          { backgroundColor: colors.primary },
                           micStyle,
                         ]}
                       >
@@ -4783,7 +4783,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     height: MENU_ITEM_HEIGHT,
   },
-  menuItemText: { ...Typography.body, fontSize: 15 },
+  menuItemText: { ...Typography.body },
   menuSep: { height: StyleSheet.hairlineWidth },
 
   senderAvatar: {
@@ -4817,8 +4817,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   senderName: {
-    ...Typography.caption,
-    fontWeight: '700',
+    ...Typography.label,
   },
   senderRow: {
     flexDirection: 'row',
@@ -4828,8 +4827,7 @@ const styles = StyleSheet.create({
   },
   bubbleText: {
     ...Typography.body,
-    fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 21,
   },
   captionWrap: {
     paddingHorizontal: 7,
@@ -4874,7 +4872,7 @@ const styles = StyleSheet.create({
   viewOnceText: { flex: 1, gap: 1 },
   // Spent: still legible, visibly no longer a thing you can open.
   viewOnceSpent: { opacity: 0.45 },
-  viewOnceTitle: { ...Typography.caption, fontWeight: '700' },
+  viewOnceTitle: { ...Typography.label },
   viewOnceHint: { ...Typography.micro },
   metaOverlay: {
     position: 'absolute',
@@ -4888,7 +4886,9 @@ const styles = StyleSheet.create({
   },
   metaTime: {
     ...Typography.micro,
-    fontSize: 10.5,
+    fontSize: 11,
+    lineHeight: 14,
+    fontVariant: ['tabular-nums'],
   },
   metaTimeMine: { color: 'rgba(255,255,255,0.85)' },
   metaTimeOnMedia: { color: '#FFFFFF' },
@@ -4929,7 +4929,7 @@ const styles = StyleSheet.create({
   videoBadgeText: {
     ...Typography.micro,
     color: '#FFFFFF',
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '600',
   },
 
@@ -4959,7 +4959,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   replyBarContent: { flex: 1, gap: 2 },
-  replyBarName: { ...Typography.caption, fontWeight: '700' },
+  replyBarName: { ...Typography.label },
   replyBarText: { ...Typography.caption, flex: 1 },
   composer: {
     flex: 1,
@@ -4997,7 +4997,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
     ...Typography.body,
-    fontSize: 15,
   },
   sendBtn: {
     width: 48,
@@ -5005,10 +5004,6 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
   },
   sendBtnPressed: {
     transform: [{ scale: 0.94 }],
@@ -5235,7 +5230,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
   },
-  deleteBtnText: { ...Typography.caption, fontWeight: '700' },
+  deleteBtnText: { ...Typography.label },
 
 
   // ── Selection mode ──────────────────────────────────────────────────────────
@@ -5282,7 +5277,6 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   acceptBtnText: {
-    ...Typography.caption,
-    fontWeight: '700',
+    ...Typography.label,
   },
 });

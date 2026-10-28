@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: Radii.pill,
   },
-  createBtnText: { ...Typography.caption, fontWeight: '700' },
+  createBtnText: { ...Typography.label },
   list: { padding: Spacing.lg, gap: Spacing.md, paddingBottom: Spacing.xxxl },
   listHeader: { gap: Spacing.md, marginBottom: Spacing.sm },
   search: {
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  chipText: { ...Typography.caption, fontWeight: '700' },
+  chipText: { ...Typography.label },
   appIconHint: {
     ...Typography.caption,
     marginBottom: Spacing.sm,
@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
   },
-  actionBtnText: { ...Typography.caption, fontWeight: '700' },
+  actionBtnText: { ...Typography.label },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
