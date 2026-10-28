@@ -10,7 +10,7 @@ import (
 )
 
 type Controller struct {
-	svc         *Service
+	svc           *Service
 	onboardingSvc *OnboardingService
 }
 
@@ -147,7 +147,7 @@ func (c *Controller) LoadOnboardingPreferences(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{
-		"notifications":     prefs.Notifications,
+		"notifications":    prefs.Notifications,
 		"contacts_visible": prefs.ContactsVisible,
 	})
 }
