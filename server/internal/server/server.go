@@ -103,7 +103,9 @@ func New(cfg config.Config) (*Server, error) {
 	auth.RegisterAuthed(authed, authCtl)
 
 	usersRepo := users.NewRepository(pg)
-	usersCtl := users.NewController(users.NewService(usersRepo))
+	onboardingRepo := users.NewOnboardingPreferenceRepository(pg)
+	onboardingSvc := users.NewOnboardingService(onboardingRepo)
+	usersCtl := users.NewController(users.NewService(usersRepo), onboardingSvc)
 	users.Register(authed, usersCtl)
 
 	keysRepo := keys.NewRepository(pg)

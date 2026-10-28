@@ -3,12 +3,13 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useState } from 'react';
 
 import { PrimaryButton } from '@/components/ui/primary-button';
 import { Text } from '@/components/ui/text';
 import { Palette, Sizes, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { t } from '@/i18n';
+import { apiSaveOnboardingChoices } from '@/data/api/notifications';
 
 const alex = require('@/assets/images/alex.png');
 
@@ -46,8 +47,19 @@ const BUBBLES: Bubble[] = [
 
 export default function OnboardingScreen() {
   const { colors } = useTheme();
-  const handleCreateAccount = () => {
-    router.push('/auth/phone');
+  const [notifications, setNotifications] = useState(true);
+  const [contactsVisible, setContactsVisible] = useState(true);
+
+  const handleCreateAccount = async () => {
+    try {
+      // Save onboarding choices before navigating
+      await apiSaveOnboardingChoices({ notifications, contactsVisible });
+      router.push('/auth/phone');
+    } catch (error) {
+      console.error('Failed to save onboarding preferences:', error);
+      // Navigate anyway to not block user flow
+      router.push('/auth/phone');
+    }
   };
 
   const handleRestore = () => {
@@ -181,4 +193,28 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     ...Typography.bodyStrong,
   },
+  formGroup: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.lg,
+  },
+  formRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  formLabel: {
+    flex: 1,
+    fontSize: Typography.body,
+    color: colors.text,
+  },
+  formDescription: {
+    flex: 1,
+    fontSize: Typography.cap,
+     color: colors.text,
+  },
+  formCheckbox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
 });
