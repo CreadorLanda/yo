@@ -10,11 +10,47 @@ import (
 )
 
 type Controller struct {
-	svc *Service
+	svc         *Service
+	onboardingSvc *OnboardingService
 }
 
-func NewController(svc *Service) *Controller {
-	return &Controller{svc: svc}
+func NewController(svc *Service, onboardingSvc *OnboardingService) *Controller {
+	return &Controller{svc: svc, onboardingSvc: onboardingSvc}
+}
+
+func (c *Controller) SaveOnboardingPreferences(ctx *gin.Context) {
+	var req struct {
+		Notifications   bool `json:"notifications"`
+		ContactsVisible bool `json:"contacts_visible"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+	if err := c.onboardingSvc.SavePreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx), req.Notifications, req.ContactsVisible); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (c *Controller) LoadOnboardingPreferences(ctx *gin.Context) {
+	prefs, err := c.onboardingSvc.GetPreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"notifications":     prefs.Notifications,
+		"contacts_visible": prefs.ContactsVisible,
+	})
+}
+	u, err := c.svc.Me(ctx.Request.Context(), middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, u)
 }
 
 func (c *Controller) GetMe(ctx *gin.Context) {
@@ -25,8 +61,6 @@ func (c *Controller) GetMe(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, u)
 }
-
-func (c *Controller) PatchMe(ctx *gin.Context) {
 	var req PatchRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
@@ -122,6 +156,31 @@ func writeErr(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 	}
 }
+	var req struct {
+		Notifications   bool `json:"notifications"`
+		ContactsVisible bool `json:"contacts_visible"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+	if err := c.onboardingSvc.SavePreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx), req.Notifications, req.ContactsVisible); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (c *Controller) LoadOnboardingPreferences(ctx *gin.Context) {
+	prefs, err := c.onboardingSvc.GetPreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"notifications":     prefs.Notifications,
+		"contacts_visible": prefs.ContactsVisible,
+	})
 
 // DeleteMe erases the caller's account.
 //
