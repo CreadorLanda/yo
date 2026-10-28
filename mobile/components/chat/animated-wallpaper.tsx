@@ -9,6 +9,7 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 
+import { LiquidBackdrop } from '@/components/ui/liquid-backdrop';
 import { withAlpha, type WallpaperAnimation } from '@/data/theme-model';
 
 /**
@@ -28,12 +29,17 @@ export function AnimatedWallpaper({
   animation,
   tint,
   accent,
+  base,
+  dark = false,
 }: {
   animation: WallpaperAnimation;
   /** Usually the theme's primary. */
   tint: string;
   /** A second colour so the motion is visible without being loud. */
   accent: string;
+  /** The ground under the motion; only liquid paints its own. */
+  base?: string;
+  dark?: boolean;
 }) {
   const progress = useSharedValue(0);
   // Motion behind text is exactly what someone who asked the OS to stop
@@ -58,7 +64,7 @@ export function AnimatedWallpaper({
   }, []);
 
   useEffect(() => {
-    if (animation === 'none' || reduceMotion) {
+    if (animation === 'none' || animation === 'liquid' || reduceMotion) {
       progress.value = 0;
       return;
     }
@@ -104,6 +110,11 @@ export function AnimatedWallpaper({
   }));
 
   if (animation === 'none') return null;
+
+  // Its own renderer, its own reduced-motion handling.
+  if (animation === 'liquid') {
+    return <LiquidBackdrop tint={tint} accent={accent} base={base ?? 'transparent'} dark={dark} />;
+  }
 
   if (animation === 'drift') {
     return (

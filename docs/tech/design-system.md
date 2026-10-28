@@ -199,13 +199,44 @@ colour, so the content has to pass underneath for the effect to mean anything.
 `GlassSurface` is opaque when the knob is off, which is what keeps that one
 code path instead of two.
 
-**`wallpaperAnimation`** — `none`, `aurora`, `drift`, `pulse`. Soft blobs of
-the theme's own colours drifting behind the thread, on the Reanimated UI
-thread, no gradient library. `primary` and `info` are the two hues, so `info`
-is the handle a pack author has on what the aurora does. Suppressed when the
-OS asks for reduced motion.
+**`wallpaperAnimation`** — `none`, `aurora`, `drift`, `pulse`, `liquid`. The
+first three are soft blobs of the theme's own colours drifting behind the
+thread, on the Reanimated UI thread, no gradient library. `primary` and `info`
+are the two hues, so `info` is the handle a pack author has on what the
+animation does. Suppressed when the OS asks for reduced motion.
 
-### 2.4 The launcher icon
+`liquid` is drawn differently: one SkSL fragment shader in
+[`LiquidBackdrop`](../../mobile/components/ui/liquid-backdrop.tsx) warps the
+plane by itself a few times, so the two hues fold into each other like ink in
+water, with a thin caustic glint along the folds. Uniforms come from Skia's
+clock on the UI thread. It pauses (and resumes where it stopped) when its
+screen is covered and freezes on a still frame under reduced motion. If the
+shader fails to compile, the plain background remains.
+
+### 2.4 Liquid
+
+With `wallpaperAnimation: 'liquid'` **and** `glassChrome: true`
+(`isLiquidLayout`), liquid reaches past the chat:
+
+- The tab shell draws the liquid behind everything; the header turns
+  transparent and groups its actions in a glass capsule.
+- Screens inside the shell paint their ground with `useTheme().canvas`, which
+  is `transparent` under liquid and `background` otherwise. Pushed screens
+  keep `background`, or the screen under them would show through.
+- The bottom bar floats as a glass capsule with a lit top rim. Its selection
+  is one shape driven by the pager's `position`, so it tracks a swipe under
+  the finger and stretches (`scaleX` 1.32) halfway between tabs.
+
+The official **ZwoSocial Liquid** pack (`official-liquid`) turns it on. Its
+opaque surfaces stay opaque (sheets and dialogs use them); translucency lives
+in `surfaceMuted`, `border`, `divider` and the bubbles, which only sit on the
+liquid. The flow is kept deep in dark mode and pale in light, so text
+contrast comes from the ground, not from where the colour happens to be.
+
+On Android, `expo-blur` without an experimental blur method renders glass as
+a translucent tint rather than a real blur.
+
+### 2.5 The launcher icon
 
 Deliberately *not* part of a pack. Applying a theme changes bubble colours;
 it must not quietly rearrange somebody's home screen. It is a preference of

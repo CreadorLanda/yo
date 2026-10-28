@@ -43,7 +43,7 @@ const RAIL_CARD_W = 118;
 const RAIL_CARD_H = 168;
 
 export default function StoriesScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, canvas } = useTheme();
   const profile = useProfile();
   const stories = useStories();
   const loading = useStoriesLoading();
@@ -59,7 +59,7 @@ export default function StoriesScreen() {
 
   return (
     <TabScene>
-      <View style={[styles.safe, { backgroundColor: colors.background }]}>
+      <View style={[styles.safe, { backgroundColor: canvas }]}>
         <FlatList
           data={fresh}
           keyExtractor={(item) => item.id}

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useColorScheme as useSystemScheme } from 'react-native';
 
 import type { ThemeIcons } from '@/data/theme-icons';
+import { isLiquidLayout } from '@/data/theme-model';
 import {
   getResolvedChat,
   getResolvedColors,
@@ -55,6 +56,12 @@ export function useTheme() {
 
   const metrics = useMemo(() => layoutMetrics(layout), [layout]);
 
+  // What a top-level screen paints its ground with. Normally the background;
+  // under liquid, nothing, so the flow drawn behind the tab shell shows.
+  // Only screens that live inside that shell should use it: a pushed screen
+  // that went transparent would show the one under it.
+  const canvas = isLiquidLayout(layout) ? 'transparent' : colors.background;
+
   return {
     scheme,
     colors,
@@ -62,6 +69,7 @@ export function useTheme() {
     layout,
     icons,
     metrics,
+    canvas,
     isDark: scheme === 'dark',
     activeThemeId: activeId,
     schemePreference: pref,
