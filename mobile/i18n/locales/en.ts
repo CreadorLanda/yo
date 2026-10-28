@@ -1315,6 +1315,7 @@ export default {
     wallpaper_anim_aurora: 'Aurora',
     wallpaper_anim_drift: 'Drift',
     wallpaper_anim_pulse: 'Pulse',
+    wallpaper_anim_liquid: 'Liquid',
     wallpaper_animation_hint:
       'Slow movement behind the thread, in the theme colours. Ignored when your phone is set to reduce motion.',
     amoled: 'True black (AMOLED)',

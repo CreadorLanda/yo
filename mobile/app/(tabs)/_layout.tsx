@@ -5,13 +5,16 @@ import {
 import { Image } from 'expo-image';
 import { router, withLayoutContext } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/ui/app-icon';
+import { GlassSurface } from '@/components/ui/glass-surface';
+import { LiquidBackdrop } from '@/components/ui/liquid-backdrop';
 import { Text } from '@/components/ui/text';
 import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
-import { withAlpha } from '@/data/theme-model';
+import { isLiquidLayout, withAlpha } from '@/data/theme-model';
 import { useProfile } from '@/data/profile-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -23,9 +26,14 @@ export default function TabLayout() {
   const { colors, isDark, layout } = useTheme();
   const profile = useProfile();
 
+  // Liquid overrides the header style: the flow has to run behind the header
+  // as well as the list, or the screen reads as a lid on a lava lamp.
+  const liquid = isLiquidLayout(layout);
+
   // headerStyle from theme packs (GB-style): brand | minimal | colored
-  const headerBg =
-    layout.headerStyle === 'minimal'
+  const headerBg = liquid
+    ? 'transparent'
+    : layout.headerStyle === 'minimal'
       ? colors.background
       : layout.headerStyle === 'colored'
         ? colors.primary
@@ -33,19 +41,19 @@ export default function TabLayout() {
           ? colors.surface
           : colors.primary;
   const headerFg =
-    layout.headerStyle === 'minimal'
+    liquid || layout.headerStyle === 'minimal'
       ? colors.text
       : layout.headerStyle === 'colored' || !isDark
         ? colors.onPrimary
         : colors.text;
   const headerMuted =
-    layout.headerStyle === 'minimal'
+    liquid || layout.headerStyle === 'minimal'
       ? colors.textMuted
       : layout.headerStyle === 'colored' || !isDark
         ? 'rgba(255,255,255,0.65)'
         : colors.textMuted;
   const indicatorColor =
-    layout.headerStyle === 'minimal' || isDark ? colors.primary : colors.onPrimary;
+    liquid || layout.headerStyle === 'minimal' || isDark ? colors.primary : colors.onPrimary;
 
   // Where the switcher sits, and what it shows. Both were theme knobs the
   // creator has always offered and nothing ever read — a person could set the
@@ -60,13 +68,21 @@ export default function TabLayout() {
 
   return (
     <SafeAreaView
-      style={[styles.safe, { backgroundColor: headerBg }]}
+      style={[styles.safe, { backgroundColor: liquid ? colors.background : headerBg }]}
       // The bottom bar pads itself for the home indicator, so its own
       // surface runs to the edge instead of stopping above a strip of header
       // colour.
       edges={['top']}
     >
       <StatusBar style={statusStyle} />
+      {liquid ? (
+        <LiquidBackdrop
+          tint={colors.primary}
+          accent={colors.info}
+          base={colors.background}
+          dark={isDark}
+        />
+      ) : null}
 
       <View style={[styles.header, { backgroundColor: headerBg }]}>
         <View style={styles.brandRow}>
@@ -89,7 +105,9 @@ export default function TabLayout() {
           </Pressable>
           <Text style={[styles.brand, { color: headerFg }]}>ZwoSocial</Text>
         </View>
-        <View style={styles.headerActions}>
+        {/* On liquid the actions sit in one glass capsule, the way the
+            system groups toolbar buttons over moving content. */}
+        <HeaderActions liquid={liquid}>
           <Pressable hitSlop={8} style={styles.iconBtn} onPress={() => router.push('/search')} accessibilityLabel={t('common.search')}>
             <AppIcon slot="search" size={22} color={headerFg} />
           </Pressable>
@@ -109,7 +127,7 @@ export default function TabLayout() {
           >
             <AppIcon slot="settings" size={21} color={headerFg} />
           </Pressable>
-        </View>
+        </HeaderActions>
       </View>
 
       <MaterialTopTabs
@@ -120,17 +138,21 @@ export default function TabLayout() {
         tabBar={
           tabsAtBottom
             ? (props: MaterialTopTabBarProps) => (
-                <BottomNavBar {...props} showLabels={showLabels} showIcons={showIcons} />
+                liquid ? (
+                  <LiquidNavBar {...props} showLabels={showLabels} showIcons={showIcons} />
+                ) : (
+                  <BottomNavBar {...props} showLabels={showLabels} showIcons={showIcons} />
+                )
               )
             : undefined
         }
         screenOptions={{
-          sceneStyle: { backgroundColor: colors.background },
+          sceneStyle: { backgroundColor: liquid ? 'transparent' : colors.background },
           tabBarStyle: [
             styles.tabBar,
             {
               backgroundColor: headerBg,
-              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomWidth: liquid ? 0 : StyleSheet.hairlineWidth,
               borderBottomColor: colors.divider,
             },
           ],
@@ -249,6 +271,153 @@ function BottomNavBar({
   );
 }
 
+function HeaderActions({ liquid, children }: { liquid: boolean; children: React.ReactNode }) {
+  const { colors } = useTheme();
+  // Only liquid gets glass here. Other glass themes frost the chat chrome,
+  // and a blurred rectangle behind three icons on a solid header is noise.
+  if (!liquid) return <View style={styles.headerActions}>{children}</View>;
+  return (
+    <GlassSurface
+      color={colors.surface}
+      style={[
+        styles.headerActions,
+        styles.headerCapsule,
+        { borderColor: withAlpha(colors.text, 0.12) },
+      ]}
+    >
+      {children}
+    </GlassSurface>
+  );
+}
+
+/**
+ * The bottom bar as a floating sheet of glass.
+ *
+ * The selection is one shape that travels, driven by the pager's own
+ * position, so it follows a swipe under the finger rather than jumping when
+ * the swipe ends. Halfway between two tabs it stretches, the way a drop of
+ * liquid elongates as it is pulled, and settles back to its width when it
+ * arrives.
+ */
+function LiquidNavBar({
+  state,
+  descriptors,
+  navigation,
+  position,
+  showLabels,
+  showIcons,
+}: MaterialTopTabBarProps & { showLabels: boolean; showIcons: boolean }) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [width, setWidth] = useState(0);
+
+  const count = state.routes.length;
+  const itemW = width > 0 ? (width - CAPSULE_PAD * 2) / count : 0;
+
+  const steps: number[] = [];
+  const shifts: number[] = [];
+  const stretch: number[] = [];
+  for (let i = 0; i < count; i++) {
+    steps.push(i);
+    shifts.push(i * itemW);
+    stretch.push(1);
+    if (i < count - 1) {
+      steps.push(i + 0.5);
+      shifts.push((i + 0.5) * itemW);
+      stretch.push(1.32);
+    }
+  }
+  const animated = count > 1 && itemW > 0;
+
+  return (
+    <View
+      style={[styles.liquidWrap, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}
+      accessibilityRole="tablist"
+    >
+      <GlassSurface
+        color={colors.surface}
+        style={[styles.capsule, { borderColor: withAlpha(colors.text, 0.12) }]}
+      >
+        <View
+          style={styles.capsuleRow}
+          onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
+        >
+          {animated ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.liquidIndicator,
+                {
+                  width: itemW,
+                  backgroundColor: withAlpha(colors.primary, 0.2),
+                  borderColor: withAlpha(colors.primary, 0.35),
+                  transform: [
+                    { translateX: position.interpolate({ inputRange: steps, outputRange: shifts }) },
+                    { scaleX: position.interpolate({ inputRange: steps, outputRange: stretch }) },
+                  ],
+                },
+              ]}
+            />
+          ) : null}
+
+          {state.routes.map((route, index) => {
+            const focused = state.index === index;
+            const { options } = descriptors[route.key];
+            const label = typeof options.title === 'string' ? options.title : route.name;
+
+            const onPress = () => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+            };
+
+            return (
+              <Pressable
+                key={route.key}
+                onPress={onPress}
+                style={styles.liquidItem}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: focused }}
+                accessibilityLabel={label}
+              >
+                {showIcons
+                  ? options.tabBarIcon?.({
+                      focused,
+                      color: focused ? colors.primary : colors.textSecondary,
+                    })
+                  : null}
+                {showLabels ? (
+                  <Text
+                    style={[
+                      styles.bottomLabel,
+                      { color: focused ? colors.text : colors.textSecondary },
+                      focused && styles.bottomLabelActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {label}
+                  </Text>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+        {/* The lit rim along the top edge, what makes a translucent panel
+            read as a thickness of glass instead of a tinted hole. */}
+        <View
+          pointerEvents="none"
+          style={[styles.capsuleRim, { backgroundColor: withAlpha('#FFFFFF', 0.28) }]}
+        />
+      </GlassSurface>
+    </View>
+  );
+}
+
+const CAPSULE_PAD = 6;
+
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
@@ -325,5 +494,47 @@ const styles = StyleSheet.create({
   },
   bottomLabelActive: {
     fontWeight: '600',
+  },
+
+  headerCapsule: {
+    borderRadius: Radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.xxs,
+  },
+  liquidWrap: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    backgroundColor: 'transparent',
+  },
+  capsule: {
+    height: Sizes.tabBar,
+    borderRadius: Radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  capsuleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    padding: CAPSULE_PAD,
+  },
+  capsuleRim: {
+    position: 'absolute',
+    top: 0,
+    left: Spacing.xl,
+    right: Spacing.xl,
+    height: StyleSheet.hairlineWidth,
+  },
+  liquidIndicator: {
+    position: 'absolute',
+    top: CAPSULE_PAD,
+    bottom: CAPSULE_PAD,
+    left: CAPSULE_PAD,
+    borderRadius: Radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  liquidItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xxs,
   },
 });

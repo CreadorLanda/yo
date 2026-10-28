@@ -38,7 +38,7 @@ const CAT_ICONS: Record<Exclude<ChannelCategory, 'all'>, keyof typeof Ionicons.g
 };
 
 export default function DiscoverScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, canvas } = useTheme();
   const [category, setCategory] = useState<ChannelCategory>('all');
   const [query, setQuery] = useState('');
   const allChannels = useChannels();
@@ -77,7 +77,7 @@ export default function DiscoverScreen() {
 
   return (
     <TabScene>
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, { backgroundColor: canvas }]}>
         <FlatList
           data={rest}
           keyExtractor={(item) => item.id}

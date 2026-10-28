@@ -2547,6 +2547,8 @@ export default function ChatScreen() {
             animation={layout.wallpaperAnimation}
             tint={colors.primary}
             accent={colors.info}
+            base={chrome.wallpaper || colors.surfaceMuted}
+            dark={isDark}
           />
           {chrome.wallpaperImage || layout.wallpaperDim > 0 ? (
             <View
