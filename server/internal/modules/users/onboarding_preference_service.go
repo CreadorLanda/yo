@@ -22,7 +22,7 @@ func (s *OnboardingService) SavePreferences(ctx context.Context, userID uuid.UUI
 	prefs := &OnboardingPreferences{
 		UserID:          userID,
 		Notifications:   notifications,
-		ContactsVisible:  contactsVisible,
+		ContactsVisible: contactsVisible,
 		UpdatedAt:       time.Now(),
 	}
 	return s.repo.Save(ctx, prefs)

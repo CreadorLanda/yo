@@ -10,6 +10,7 @@ import { Text } from '@/components/ui/text';
 import { Palette, Sizes, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { apiSaveOnboardingChoices } from '@/data/api/notifications';
+import { t } from '@/i18n';
 
 const alex = require('@/assets/images/alex.png');
 
@@ -53,7 +54,7 @@ export default function OnboardingScreen() {
   const handleCreateAccount = async () => {
     try {
       // Save onboarding choices before navigating
-      await apiSaveOnboardingChoices({ notifications, contactsVisible });
+      await apiSaveOnboardingChoices({ notifications, contacts_visible: contactsVisible });
       router.push('/auth/phone');
     } catch (error) {
       console.error('Failed to save onboarding preferences:', error);
@@ -204,13 +205,11 @@ const styles = StyleSheet.create({
   },
   formLabel: {
     flex: 1,
-    fontSize: Typography.body,
-    color: colors.text,
+    ...Typography.body,
   },
   formDescription: {
     flex: 1,
-    fontSize: Typography.cap,
-     color: colors.text,
+    ...Typography.caption,
   },
   formCheckbox: {
     alignItems: 'center',

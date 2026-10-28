@@ -34,25 +34,6 @@ func (c *Controller) SaveOnboardingPreferences(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-func (c *Controller) LoadOnboardingPreferences(ctx *gin.Context) {
-	prefs, err := c.onboardingSvc.GetPreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx))
-	if err != nil {
-		writeErr(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusOK, gin.H{
-		"notifications":     prefs.Notifications,
-		"contacts_visible": prefs.ContactsVisible,
-	})
-}
-	u, err := c.svc.Me(ctx.Request.Context(), middleware.UserIDFrom(ctx))
-	if err != nil {
-		writeErr(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusOK, u)
-}
-
 func (c *Controller) GetMe(ctx *gin.Context) {
 	u, err := c.svc.Me(ctx.Request.Context(), middleware.UserIDFrom(ctx))
 	if err != nil {
@@ -61,6 +42,8 @@ func (c *Controller) GetMe(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, u)
 }
+
+func (c *Controller) PatchMe(ctx *gin.Context) {
 	var req PatchRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
