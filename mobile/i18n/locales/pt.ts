@@ -1316,6 +1316,7 @@ export default {
     wallpaper_anim_aurora: 'Aurora',
     wallpaper_anim_drift: 'Deriva',
     wallpaper_anim_pulse: 'Pulsar',
+    wallpaper_anim_liquid: 'Líquido',
     wallpaper_animation_hint:
       'Movimento lento por trás da conversa, nas cores do tema. Ignorado se o telemóvel estiver a reduzir movimento.',
     amoled: 'Preto real (AMOLED)',

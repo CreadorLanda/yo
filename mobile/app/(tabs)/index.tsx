@@ -72,7 +72,7 @@ function mediaCaption(content?: string): string {
 }
 
 export default function ChatsScreen() {
-  const { colors } = useTheme();
+  const { colors, canvas } = useTheme();
   const customFilters = useCustomFilters();
 
   const [activeFilter, setActiveFilter] = useState('all');
@@ -329,7 +329,7 @@ export default function ChatsScreen() {
 
   return (
     <TabScene>
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, { backgroundColor: canvas }]}>
         <FlatList
           data={chats}
           keyExtractor={(item) => item.id}
@@ -591,7 +591,7 @@ function FilterBar({
   onCreate: () => void;
   onDeleteRequest: (filter: CustomFilter) => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, canvas } = useTheme();
   const builtins = [
     { id: 'all', label: t('chats.filter_all') },
     { id: 'unread', label: t('chats.filter_unread') },
@@ -601,7 +601,7 @@ function FilterBar({
   ];
 
   return (
-    <View style={[styles.filterWrap, { backgroundColor: colors.background }]}>
+    <View style={[styles.filterWrap, { backgroundColor: canvas }]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -859,7 +859,7 @@ function ChatSeparator() {
 }
 
 function ChatRow({ chat, onManage }: { chat: ChatPreview; onManage: () => void }) {
-  const { colors, layout } = useTheme();
+  const { colors, layout, canvas } = useTheme();
   // The theme creator has always offered this knob; the list never read it.
   const avatar = layout.listAvatarSize || Sizes.listAvatar;
   const unread = chat.unreadCount > 0;
@@ -869,7 +869,7 @@ function ChatRow({ chat, onManage }: { chat: ChatPreview; onManage: () => void }
       onLongPress={onManage}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: colors.background },
+        { backgroundColor: canvas },
         pressed && [styles.rowPressed, { backgroundColor: colors.surfaceMuted }],
       ]}
       accessibilityRole="button"

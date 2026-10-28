@@ -17,6 +17,8 @@ import {
   amoledizeChat,
   amoledizeTokens,
   defaultChatChrome,
+  WALLPAPER_ANIMATIONS,
+  isLiquidLayout,
   withAlpha,
 } from '@/data/theme-model';
 import { DEFAULT_PACK_ID, hydrateThemeState, PREF_KEYS } from '@/data/theme-persistence';
@@ -216,4 +218,20 @@ test('as categorias são únicas e os dois filtros ficam nas pontas', () => {
   expect(THEME_CATEGORIES[0]).toBe('all');
   expect(THEME_CATEGORIES[THEME_CATEGORIES.length - 1]).toBe('mine');
   expect(THEME_CATEGORIES).toContain('retro');
+});
+
+// ── Liquid ──────────────────────────────────────────────────────────────────
+
+test('o líquido aparece no criador de temas', () => {
+  expect(WALLPAPER_ANIMATIONS).toContain('liquid');
+  expect(new Set(WALLPAPER_ANIMATIONS).size).toBe(WALLPAPER_ANIMATIONS.length);
+});
+
+test('o ecrã inicial só fica transparente com líquido e vidro juntos', () => {
+  // Sem vidro, uma barra sólida por cima do líquido é uma tampa: o fundo
+  // fica opaco e o movimento vive só na conversa.
+  expect(isLiquidLayout({ wallpaperAnimation: 'liquid', glassChrome: true })).toBe(true);
+  expect(isLiquidLayout({ wallpaperAnimation: 'liquid', glassChrome: false })).toBe(false);
+  expect(isLiquidLayout({ wallpaperAnimation: 'aurora', glassChrome: true })).toBe(false);
+  expect(isLiquidLayout(DEFAULT_LAYOUT)).toBe(false);
 });

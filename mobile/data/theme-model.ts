@@ -86,7 +86,7 @@ export type SendButtonStyle = 'circle' | 'pill' | 'icon';
 export type SystemMsgStyle = 'pill' | 'plain' | 'banner';
 export type UnreadBadgeStyle = 'dot' | 'count' | 'none';
 /** What the chat wallpaper does when nobody is touching it. */
-export type WallpaperAnimation = 'none' | 'aurora' | 'drift' | 'pulse';
+export type WallpaperAnimation = 'none' | 'aurora' | 'drift' | 'pulse' | 'liquid';
 
 /** Positions, shapes & ~40 GB-style knobs. */
 export type ThemeLayout = {
@@ -568,7 +568,22 @@ export const REPLY_STYLES: ReplyStyle[] = ['quote', 'bar', 'minimal'];
 export const SEND_STYLES: SendButtonStyle[] = ['circle', 'pill', 'icon'];
 export const SYSTEM_STYLES: SystemMsgStyle[] = ['pill', 'plain', 'banner'];
 
-export const WALLPAPER_ANIMATIONS: WallpaperAnimation[] = ['none', 'aurora', 'drift', 'pulse'];
+export const WALLPAPER_ANIMATIONS: WallpaperAnimation[] = [
+  'none',
+  'aurora',
+  'drift',
+  'pulse',
+  'liquid',
+];
+
+/**
+ * Liquid is more than a wallpaper: the home screen drops its solid ground so
+ * the flow shows behind the list, and the bottom bar floats as glass. It asks
+ * for glass chrome too, because a solid bar over moving colour is a lid.
+ */
+export function isLiquidLayout(layout: Pick<ThemeLayout, 'wallpaperAnimation' | 'glassChrome'>) {
+  return layout.wallpaperAnimation === 'liquid' && layout.glassChrome;
+}
 
 export const TAB_BAR_POSITIONS: TabBarPosition[] = ['top', 'bottom'];
 export const TAB_BAR_LABEL_MODES: TabBarLabels[] = ['labels', 'icons', 'both'];
