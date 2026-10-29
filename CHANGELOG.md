@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista
 
+#### Privacidade das conversas
+- Controlos de privacidade avançada por conversa: bloquear reencaminhamento, proteger capturas de ecrã quando a plataforma suporta, confirmar abertura de links, restringir mensagens/chamadas a administradores em grupos e limitar tipos de mensagem. As regras são persistidas e aplicadas no servidor; a proteção de captura é explicitamente best-effort no Android e não é prometida no iOS/web.
+
 #### Temas
 - Novo tema oficial **ZwoSocial Liquid**: fundo de cor líquida animado na GPU (Skia) por trás do ecrã inicial e das conversas, cabeçalho transparente com ações numa cápsula de vidro, barra inferior de vidro flutuante cujo indicador estica ao passar de um separador para outro, e bolhas translúcidas. Claro e escuro. Pára quando o ecrã fica tapado e respeita o "reduzir movimento"
 - "Líquido" passa a ser uma opção de movimento do fundo no criador de temas

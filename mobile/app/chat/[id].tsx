@@ -13,6 +13,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { allowScreenCaptureAsync, preventScreenCaptureAsync } from 'expo-screen-capture';
+import { openBrowserAsync } from 'expo-web-browser';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -844,6 +846,19 @@ export default function ChatScreen() {
     return () => clearTimeout(tId);
   }, [messages.length, dandaraTyping, peerTyping, searchMode]);
 
+  const isGroup = !!chat?.isGroup || apiChatInfo?.type === 'group';
+
+  // Android can enforce this with FLAG_SECURE through expo-screen-capture.
+  // iOS and web do not provide an equivalent guarantee, so this is best
+  // effort and the setting screen states that limitation explicitly.
+  useEffect(() => {
+    const key = id ? `chat:${id}` : undefined;
+    if (!key || !apiChatInfo?.privacy?.screenshot_protection_enabled) return;
+    void preventScreenCaptureAsync(key).catch(() => {});
+    return () => {
+      void allowScreenCaptureAsync(key).catch(() => {});
+    };
+  }, [id, apiChatInfo?.privacy?.screenshot_protection_enabled]);
   // Tell the notification builder which conversation is on screen, so it stays
   // quiet about this one. The server pushes to connected clients now; only the
   // client knows what the reader is actually looking at.
@@ -866,8 +881,46 @@ export default function ChatScreen() {
   const iSentRequest = isPending && apiChatInfo?.created_by === currentUser?.id;
   // Requester may send one intro message while pending; recipient only accept/block.
   const hasMyIntro = messages.some((m) => m.fromMe);
+  const group = useGroup(isGroup ? id : undefined);
+  const meIsGroupAdmin = !!group?.members.some(
+    (member) => member.id === currentUser?.id && member.role === 'admin',
+  );
+  const canMessageByPolicy =
+    !apiChatInfo?.privacy ||
+    apiChatInfo.privacy.who_can_message === 'everyone' ||
+    !isGroup ||
+    meIsGroupAdmin;
   const canCompose =
-    !isBlocked && (!isPending || (iSentRequest && !hasMyIntro));
+    !isBlocked &&
+    canMessageByPolicy &&
+    (!isPending || (iSentRequest && !hasMyIntro));
+  const canCallByPolicy =
+    !apiChatInfo?.privacy ||
+    apiChatInfo.privacy.who_can_call === 'everyone' ||
+    !isGroup ||
+    meIsGroupAdmin;
+  const isMessageTypeAllowed = (messageType: string) =>
+    !apiChatInfo?.privacy?.allowed_message_types?.length ||
+    apiChatInfo.privacy.allowed_message_types.includes(messageType);
+
+  const refuseMessageType = (messageType: string): boolean => {
+    if (isMessageTypeAllowed(messageType)) return false;
+    appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_message_type_body'));
+    return true;
+  };
+
+  const handleLinkPress = (url: string) => {
+    const open = () => void openBrowserAsync(url).catch(() => {});
+    if (apiChatInfo?.privacy?.links_require_confirmation) {
+      appAlert(t('chat.privacy_link_title'), t('chat.privacy_link_body'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('chat.privacy_link_open'), onPress: open },
+      ]);
+      return;
+    }
+    open();
+  };
+
   // Broadcast typing while the user is composing.
   useEffect(() => {
     if (!id || !canCompose || isAIChat) return;
@@ -982,6 +1035,7 @@ export default function ChatScreen() {
   };
 
   const beginRecording = async () => {
+    if (refuseMessageType('audio')) return;
     if (!recordPermRef.current) {
       const r = await requestRecordingPermissionsAsync().catch(() => null);
       recordPermRef.current = !!r?.granted;
@@ -1219,7 +1273,9 @@ export default function ChatScreen() {
   };
 
   const forwardFromMenu = () => {
-    if (menuTarget) setForwardTargets([menuTarget.msg]);
+    if (menuTarget && !apiChatInfo?.privacy?.forwarding_disabled) setForwardTargets([menuTarget.msg]);
+    else if (apiChatInfo?.privacy?.forwarding_disabled)
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
   };
 
   const editFromMenu = () => {
@@ -1301,9 +1357,11 @@ export default function ChatScreen() {
     (msgId: string) => {
       const msg = messages.find((m) => m.id === msgId);
       setViewerStart(null);
-      if (msg) setForwardTargets([msg]);
+      if (msg && !apiChatInfo?.privacy?.forwarding_disabled) setForwardTargets([msg]);
+      else if (apiChatInfo?.privacy?.forwarding_disabled)
+        appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
     },
-    [messages],
+    [apiChatInfo?.privacy?.forwarding_disabled, messages],
   );
 
   // ── Multi-select ─────────────────────────────────────────────────────────
@@ -1332,6 +1390,10 @@ export default function ChatScreen() {
     visible.filter((m) => selectedIds.has(m.id) && !m.deletedAt);
 
   const bulkForward = () => {
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     const list = selectedMessages();
     if (list.length === 0) return;
     setForwardTargets(list);
@@ -1434,6 +1496,10 @@ export default function ChatScreen() {
   const forwardToStory = () => {
     const msg = forwardTargets[0];
     if (!msg) return;
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     setForwardTargets([]);
     clearSelection();
 
@@ -1451,6 +1517,10 @@ export default function ChatScreen() {
 
   const forwardTo = async (destChatId: string) => {
     if (forwardTargets.length === 0) return;
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     const dest = storeChats.find((c) => c.id === destChatId);
     const toSend = [...forwardTargets];
 
@@ -1480,6 +1550,8 @@ export default function ChatScreen() {
           forwardCount: msg.forwardCount ?? 0,
           sourceChannelId: msg.sourceChannelId,
           sourcePostId: msg.sourcePostId,
+          sourceChatId: msg.sourceChatId ?? id,
+          sourceMessageId: msg.sourceMessageId ?? serverMessageId(msg.id) ?? undefined,
           mediaIds: mediaId ? [mediaId] : [],
         });
       }
@@ -1509,6 +1581,7 @@ export default function ChatScreen() {
 
   const submitText = (text: string) => {
     if (!text) return;
+    if (!canCompose || refuseMessageType('text')) return;
     // If we're editing an existing message, update it in place and bail out.
     if (editingMsgId) {
       const editId = editingMsgId;
@@ -1595,7 +1668,7 @@ export default function ChatScreen() {
    * the server as a media object either way.
    */
   const sendSticker = async (sticker: StickerDTO) => {
-    if (!canCompose || !id) return;
+    if (!canCompose || !id || refuseMessageType('sticker')) return;
     setShowStickers(false);
     noteStickerUsed(sticker);
 
@@ -1640,7 +1713,7 @@ export default function ChatScreen() {
     captionOverride?: string,
     viewLimit?: number | null,
   ) => {
-    if (!canCompose) return;
+    if (!canCompose || refuseMessageType(asset.type === 'video' ? 'video' : 'image')) return;
     // The editor hands its caption in directly. Reading `draft` here would
     // see the value from before setDraft landed — React state is async, so
     // the caption was always empty on the first send.
@@ -1810,6 +1883,7 @@ export default function ChatScreen() {
    * button; this is for music or a clip the user already has.
    */
   const pickAudio = async () => {
+    if (refuseMessageType('audio')) return;
     const result = await DocumentPicker.getDocumentAsync({
       type: 'audio/*',
       copyToCacheDirectory: true,
@@ -1886,6 +1960,8 @@ export default function ChatScreen() {
    * body, using the message_type the schema already allowed.
    */
   const sendAttachment = async (attachment: MessageAttachment) => {
+    const wireType = ATTACHMENT_WIRE_TYPE[attachment.kind];
+    if (wireType && refuseMessageType(wireType)) return;
     const reply = replyTarget;
     appendMessage({
       text: '',
@@ -1900,7 +1976,6 @@ export default function ChatScreen() {
     // Documents upload their bytes separately and are sent there.
     if (!id || isAIChat || attachment.kind === 'document') return;
 
-    const wireType = ATTACHMENT_WIRE_TYPE[attachment.kind];
     if (!wireType) return;
     try {
       await apiSendMessage(
@@ -1916,6 +1991,7 @@ export default function ChatScreen() {
   };
 
   const pickDocument = async () => {
+    if (refuseMessageType('document')) return;
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
@@ -2515,7 +2591,7 @@ export default function ChatScreen() {
               >
                 <Ionicons name="search" size={20} color={colors.text} />
               </Pressable>
-              {!isAIChat ? (
+              {!isAIChat && canCallByPolicy ? (
                 <Pressable
                   hitSlop={8}
                   style={styles.iconBtn}
@@ -2535,6 +2611,7 @@ export default function ChatScreen() {
                   <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
                 </Pressable>
               ) : (
+                canCallByPolicy ? (
                 <>
                   <Pressable
                     hitSlop={8}
@@ -2553,6 +2630,7 @@ export default function ChatScreen() {
                     <Ionicons name="call-outline" size={20} color={colors.text} />
                   </Pressable>
                 </>
+                ) : null
               )}
             </View>
           </View>
@@ -2640,6 +2718,7 @@ export default function ChatScreen() {
                   onViewOnce={handleViewOnce}
                   revealed={revealed}
                   onRetry={handleRetry}
+                onLinkPress={handleLinkPress}
                 />
               )
             }
@@ -3192,6 +3271,7 @@ function HighlightedText({
   style,
   highlight,
   mentionColor,
+  onLinkPress,
 }: {
   text: string;
   query: string;
@@ -3199,10 +3279,11 @@ function HighlightedText({
   style: StyleProp<TextStyle>;
   highlight: string;
   mentionColor?: string;
+  onLinkPress?: (url: string) => void;
 }) {
   const q = (query ?? '').trim().toLowerCase();
   const hasMentions = !!mentions && mentions.length > 0;
-  if (!q && !hasMentions) return <Text style={style}>{text}</Text>;
+  if (!q && !hasMentions && !onLinkPress) return <Text style={style}>{text}</Text>;
 
   // 1) Split by mentions first so each "@user" is its own segment we won't recolor.
   const mentionRe = hasMentions ? new RegExp(`@(?:${mentions!.join('|')})\\b`, 'gi') : null;
@@ -3245,6 +3326,30 @@ function HighlightedText({
     if (last < tok.text.length) parts.push({ text: tok.text.slice(last), kind: 'plain' });
   }
 
+  const linkRe = /https?:\/\/[^\s]+/gi;
+  const renderText = (value: string, key: string | number, style?: TextStyle) => {
+    if (!onLinkPress) return <Text key={key} style={style}>{value}</Text>;
+    const chunks = value.split(linkRe);
+    const matches = value.match(linkRe) ?? [];
+    return (
+      <Text key={key} style={style}>
+        {chunks.map((chunk, index) => (
+          <Text key={`${key}-${index}`}>
+            {chunk}
+            {matches[index] ? (
+              <Text
+                onPress={() => onLinkPress(matches[index])}
+                style={{ textDecorationLine: 'underline' }}
+              >
+                {matches[index]}
+              </Text>
+            ) : null}
+          </Text>
+        ))}
+      </Text>
+    );
+  };
+
   return (
     <Text style={style}>
       {parts.map((p, i) =>
@@ -3257,7 +3362,7 @@ function HighlightedText({
             {p.text}
           </Text>
         ) : (
-          <Text key={i}>{p.text}</Text>
+          renderText(p.text, i)
         ),
       )}
     </Text>
@@ -3757,6 +3862,7 @@ function BubbleBody({
   onOpenMedia,
   onLongPressMedia,
   onRetry,
+  onLinkPress,
 }: {
   msg: GroupedMessage;
   mine: boolean;
@@ -3770,6 +3876,7 @@ function BubbleBody({
   onOpenMedia?: (msg: Message) => void;
   onLongPressMedia?: () => void;
   onRetry?: (msgId: string) => void;
+  onLinkPress?: (url: string) => void;
 }) {
   const { colors, chat, metrics, layout } = useTheme();
   const isAudio = msg.media?.type === 'audio';
@@ -3989,6 +4096,7 @@ function BubbleBody({
                 fontWeight: mine && layout.boldOutgoing ? '700' : '400',
               },
             ]}
+            onLinkPress={onLinkPress}
           />
           <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
         </View>
@@ -4018,6 +4126,7 @@ function Bubble({
   revealed,
   onOpenMedia,
   onRetry,
+  onLinkPress,
 }: {
   msg: GroupedMessage;
   isGroup: boolean;
@@ -4035,6 +4144,7 @@ function Bubble({
   revealed: Set<string>;
   onOpenMedia: (msg: Message) => void;
   onRetry?: (msgId: string) => void;
+  onLinkPress?: (url: string) => void;
 }) {
   const { colors, chat: chrome, layout, metrics } = useTheme();
   const mine = msg.fromMe;
@@ -4199,6 +4309,7 @@ function Bubble({
               onOpenMedia={onOpenMedia}
               onLongPressMedia={handleLongPress}
               onRetry={onRetry}
+              onLinkPress={onLinkPress}
             />
           </Pressable>
 

@@ -51,6 +51,13 @@ type Participation interface {
 	MemberIDs(ctx context.Context, chatID uuid.UUID) ([]uuid.UUID, error)
 }
 
+// Privacy is optional for backwards-compatible service construction. When
+// wired, it lets the chat owner/admin policy gate call-token issuance rather
+// than relying on the call screen hiding its buttons.
+type Privacy interface {
+	CanCall(ctx context.Context, chatID, userID uuid.UUID) (bool, error)
+}
+
 // Identity resolves the display name shown to the other participants.
 type Identity interface {
 	DisplayName(ctx context.Context, userID uuid.UUID) (string, error)
@@ -112,8 +119,9 @@ type Service struct {
 	blocks BlockList
 	// log records what happened. Optional: without it calls still work, they
 	// simply leave no trace.
-	log   *HistoryRepo
-	trace Trace
+	log     *HistoryRepo
+	trace   Trace
+	privacy Privacy
 }
 
 func NewService(cfg Config, chats Participation, users Identity, ring Ringer, log *HistoryRepo, trace Trace) *Service {
@@ -124,6 +132,11 @@ func NewService(cfg Config, chats Participation, users Identity, ring Ringer, lo
 // call sites and tests keep working unchanged.
 func (s *Service) WithBlocks(b BlockList) *Service {
 	s.blocks = b
+	return s
+}
+
+func (s *Service) WithPrivacy(p Privacy) *Service {
+	s.privacy = p
 	return s
 }
 
@@ -198,6 +211,15 @@ func (s *Service) TokenFor(ctx context.Context, chatID, userID uuid.UUID, ring b
 		// Reported as not-found rather than forbidden: "you may not join this"
 		// also confirms the call exists.
 		return Grant{}, ErrNotAllowed
+	}
+	if s.privacy != nil {
+		allowed, err := s.privacy.CanCall(ctx, chatID, userID)
+		if err != nil {
+			return Grant{}, err
+		}
+		if !allowed {
+			return Grant{}, ErrNotAllowed
+		}
 	}
 
 	// A blocked one-to-one call does not happen — in either direction, and
