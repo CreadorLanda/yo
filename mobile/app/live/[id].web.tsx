@@ -5,7 +5,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { endLive, joinLive, leaveLive, startLive, type LiveGrant } from '@/data/api/lives';
+import {
+  endLive,
+  joinLive,
+  leaveLive,
+  startOrJoinLive,
+  type LiveGrant,
+} from '@/data/api/lives';
 import { appAlert } from '@/data/dialog-store';
 import { useLiveViewers } from '@/data/live-store';
 import { availableMedia } from '@/data/media-devices';
@@ -77,7 +83,7 @@ export default function LiveScreen() {
       try {
         const g =
           id === 'new'
-            ? await startLive({ chatId: chat, channelId: channel, title })
+            ? await startOrJoinLive({ chatId: chat, channelId: channel, title })
             : await joinLive(id!);
         if (!cancelled) setGrant(g);
       } catch (err) {
