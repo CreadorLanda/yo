@@ -22,7 +22,7 @@ import {
   endLive,
   joinLive,
   leaveLive,
-  startLive,
+  startOrJoinLive,
   type LiveGrant,
 } from '@/data/api/lives';
 import { availableMedia, type AvailableMedia } from '@/data/media-devices';
@@ -66,7 +66,7 @@ export default function LiveScreen() {
       try {
         const g =
           id === 'new'
-            ? await startLive({ chatId: chat, channelId: channel, title })
+            ? await startOrJoinLive({ chatId: chat, channelId: channel, title })
             : await joinLive(id!);
         // Publish only what exists: an emulator has no camera, and asking
         // WebRTC for one there took the screen down.
