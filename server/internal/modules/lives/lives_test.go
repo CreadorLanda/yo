@@ -92,6 +92,38 @@ type fakeAudience struct {
 	watchers     map[uuid.UUID]bool
 	inChat       map[uuid.UUID]bool
 	members      []uuid.UUID
+	// peer makes a chat direct: the other person of a joint live.
+	peer     *uuid.UUID
+	contacts map[uuid.UUID][]uuid.UUID
+	chatMods map[uuid.UUID]bool
+}
+
+func (f fakeAudience) DirectPeer(_ context.Context, _, u uuid.UUID) (*uuid.UUID, error) {
+	if f.peer != nil && *f.peer != u {
+		return f.peer, nil
+	}
+	return nil, nil
+}
+
+func (f fakeAudience) IsContact(_ context.Context, a, b uuid.UUID) (bool, error) {
+	for _, c := range f.contacts[a] {
+		if c == b {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f fakeAudience) Contacts(_ context.Context, u uuid.UUID) ([]uuid.UUID, error) {
+	return f.contacts[u], nil
+}
+
+func (f fakeAudience) ModeratesChat(_ context.Context, _, u uuid.UUID) (bool, error) {
+	return f.chatMods[u], nil
+}
+
+func (f fakeAudience) ModeratesChannel(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return false, nil
 }
 
 func (f fakeAudience) CanBroadcastToChannel(_ context.Context, _, u uuid.UUID) (bool, error) {
@@ -122,6 +154,15 @@ type fakeAnnouncer struct {
 	started, ended int
 	lastViewers    int
 	viewerCalls    int
+	// events is every Notify, by type, with who it went to.
+	events map[string][][]uuid.UUID
+}
+
+func (f *fakeAnnouncer) Notify(_ context.Context, users []uuid.UUID, event string, _ uuid.UUID, _ map[string]any) {
+	if f.events == nil {
+		f.events = map[string][][]uuid.UUID{}
+	}
+	f.events[event] = append(f.events[event], users)
 }
 
 func (f *fakeAnnouncer) Started(context.Context, []uuid.UUID, Live)    { f.started++ }

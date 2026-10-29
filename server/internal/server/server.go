@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
@@ -215,10 +216,14 @@ func New(cfg config.Config) (*Server, error) {
 			APISecret: cfg.LiveKit.APISecret,
 		}),
 		livesRepo,
-		liveAudience{chats: msgRepo, channels: channelsRepo},
+		liveAudience{chats: msgRepo, channels: channelsRepo, groups: groupsRepo},
 		userNames{usersRepo},
 		liveAnnouncer{hub: hub},
-	))
+	).WithRoom(liveRoom(lkplatform.NewRoom(lkplatform.Config{
+		URL:       cfg.LiveKit.URL,
+		APIKey:    cfg.LiveKit.APIKey,
+		APISecret: cfg.LiveKit.APISecret,
+	}))))
 	lives.Register(authed, livesCtl)
 
 	return &Server{
@@ -377,6 +382,7 @@ func (c callBlocks) PeerOf(ctx context.Context, chatID, userID uuid.UUID) (uuid.
 type liveAudience struct {
 	chats    *messages.Repository
 	channels *channels.Repository
+	groups   *groups.Repository
 }
 
 // CanBroadcastToChannel mirrors who may post: a live is a post that happens
@@ -422,6 +428,66 @@ func (a liveAudience) ChannelFollowers(ctx context.Context, channelID uuid.UUID)
 	return a.channels.MemberIDs(ctx, channelID)
 }
 
+// DirectPeer: a live in a direct chat is hosted by both people in it.
+func (a liveAudience) DirectPeer(ctx context.Context, chatID, userID uuid.UUID) (*uuid.UUID, error) {
+	c, err := a.chats.GetChat(ctx, chatID)
+	if err != nil || c.Type != messages.ChatDirect {
+		return nil, err
+	}
+	ids, err := a.chats.ParticipantIDs(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if id != userID {
+			return &id, nil
+		}
+	}
+	return nil, nil
+}
+
+func (a liveAudience) IsContact(ctx context.Context, x, y uuid.UUID) (bool, error) {
+	c, err := a.chats.FindDirectChat(ctx, x, y)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return c.Status == messages.ChatStatusActive, nil
+}
+
+func (a liveAudience) Contacts(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	return a.chats.DirectPeerIDs(ctx, userID)
+}
+
+// ModeratesChat: group admins and moderators look after a live in their group.
+func (a liveAudience) ModeratesChat(ctx context.Context, chatID, userID uuid.UUID) (bool, error) {
+	role, err := a.groups.MemberRole(ctx, chatID, userID)
+	if err != nil {
+		return false, nil
+	}
+	return role == groups.RoleAdmin || role == groups.RoleModerator, nil
+}
+
+// ModeratesChannel: a channel's owner and admins, likewise.
+func (a liveAudience) ModeratesChannel(ctx context.Context, channelID, userID uuid.UUID) (bool, error) {
+	c, err := a.channels.Get(ctx, channelID, userID)
+	if err != nil {
+		return false, nil
+	}
+	return c.Role == string(channels.RoleOwner) || c.Role == string(channels.RoleAdmin), nil
+}
+
+// liveRoom keeps a nil *Room a nil interface, so "no SFU" stays "nothing to
+// tell it" instead of a call on a nil pointer.
+func liveRoom(r *lkplatform.Room) lives.RoomControl {
+	if r == nil {
+		return nil
+	}
+	return r
+}
+
 // liveAnnouncer tells people over the websocket.
 //
 // No push. A broadcast is worth interrupting someone for only if they asked to
@@ -445,6 +511,20 @@ func (a liveAnnouncer) Ended(_ context.Context, users []uuid.UUID, liveID uuid.U
 	a.hub.PublishJSON(users, "live.ended", liveID.String(), map[string]string{
 		"type": "live.ended", "live_id": liveID.String(),
 	})
+}
+
+// Notify carries everything that happens inside a live: comments, the stage,
+// bans. The body gets the type and live id added so the client can route it
+// without knowing which event it asked for.
+func (a liveAnnouncer) Notify(_ context.Context, users []uuid.UUID, event string, liveID uuid.UUID, data map[string]any) {
+	if a.hub == nil || len(users) == 0 {
+		return
+	}
+	body := map[string]any{"type": event, "live_id": liveID.String()}
+	for k, v := range data {
+		body[k] = v
+	}
+	a.hub.PublishJSON(users, event, liveID.String(), body)
 }
 
 func (a liveAnnouncer) Viewers(_ context.Context, users []uuid.UUID, liveID uuid.UUID, n int) {
