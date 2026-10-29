@@ -23,7 +23,7 @@ import {
   endLive,
   joinLive,
   leaveLive,
-  startLive,
+  startOrJoinLive,
   type LiveGrant,
 } from '@/data/api/lives';
 import { appAlert } from '@/data/dialog-store';
@@ -96,7 +96,7 @@ export default function LiveScreen() {
 
         const g =
           id === 'new'
-            ? await startLive({ chatId: chat, channelId: channel, title })
+            ? await startOrJoinLive({ chatId: chat, channelId: channel, title })
             : await joinLive(id!);
 
         // A host returning to an existing room still needs the same honest
