@@ -31,6 +31,11 @@ var (
 	ErrGroupPermission       = errors.New("group_permission_denied")
 	ErrInvalidEmoji          = platformreactions.ErrInvalidEmoji
 	ErrTooManyReactions      = platformreactions.ErrTooMany
+	ErrPrivacyAdmin          = errors.New("chat_privacy_admin_required")
+	ErrInvalidPrivacy        = errors.New("invalid_chat_privacy")
+	ErrMessageTypeNotAllowed = errors.New("message_type_not_allowed")
+	ErrForwardingDisabled    = errors.New("forwarding_disabled")
+	ErrMessagingRestricted   = errors.New("messaging_restricted")
 )
 
 // Broadcaster is satisfied by *realtime.Hub. Kept as an interface so the
@@ -209,6 +214,69 @@ func (s *Service) UpdateChatSettings(ctx context.Context, chatID, userID uuid.UU
 	return s.loadChat(ctx, chatID, userID)
 }
 
+// UpdateChatPrivacy changes the shared conversation policy. A direct-chat
+// creator or a group administrator owns this setting; arbitrary members must
+// not be able to weaken a policy for everyone else.
+func (s *Service) UpdateChatPrivacy(ctx context.Context, chatID, userID uuid.UUID, req ChatPrivacySettingsRequest) (Chat, error) {
+	if err := s.requireParticipant(ctx, chatID, userID); err != nil {
+		return Chat{}, err
+	}
+	chat, err := s.repo.GetChat(ctx, chatID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Chat{}, ErrChatNotFound
+		}
+		return Chat{}, err
+	}
+	canManage, err := s.repo.CanManageChatPrivacy(ctx, chatID, userID)
+	if err != nil {
+		return Chat{}, err
+	}
+	if !canManage {
+		return Chat{}, ErrPrivacyAdmin
+	}
+	if err := validatePrivacyRequest(chat.Type, req); err != nil {
+		return Chat{}, err
+	}
+	if err := s.repo.UpdateChatPrivacy(ctx, chatID, req); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Chat{}, ErrChatNotFound
+		}
+		return Chat{}, err
+	}
+	return s.loadChat(ctx, chatID, userID)
+}
+
+func validatePrivacyRequest(chatType ChatType, req ChatPrivacySettingsRequest) error {
+	for _, permission := range []*ChatPermission{req.WhoCanMessage, req.WhoCanCall} {
+		if permission == nil {
+			continue
+		}
+		if *permission != PermissionEveryone && *permission != PermissionAdmins {
+			return ErrInvalidPrivacy
+		}
+		if chatType == ChatDirect && *permission == PermissionAdmins {
+			return ErrInvalidPrivacy
+		}
+	}
+	if req.AllowedMessageTypes != nil {
+		if len(*req.AllowedMessageTypes) == 0 {
+			return ErrInvalidPrivacy
+		}
+		seen := make(map[MessageType]struct{}, len(*req.AllowedMessageTypes))
+		for _, typ := range *req.AllowedMessageTypes {
+			if !userSendableMessageType(typ) {
+				return ErrInvalidPrivacy
+			}
+			if _, ok := seen[typ]; ok {
+				return ErrInvalidPrivacy
+			}
+			seen[typ] = struct{}{}
+		}
+	}
+	return nil
+}
+
 // ClearChatHistory hides existing messages from the caller only.
 func (s *Service) ClearChatHistory(ctx context.Context, chatID, userID uuid.UUID) error {
 	if err := s.requireParticipant(ctx, chatID, userID); err != nil {
@@ -302,6 +370,13 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	if err != nil {
 		return Message{}, err
 	}
+	canMessage, err := s.repo.CanSendMessage(ctx, chatID, senderID)
+	if err != nil {
+		return Message{}, err
+	}
+	if !canMessage {
+		return Message{}, ErrMessagingRestricted
+	}
 	if s.groupPolicy != nil && chat.Type == ChatGroup {
 		allowed, err := s.groupPolicy.CanSend(ctx, chatID, senderID, string(msgType))
 		if err != nil {
@@ -343,6 +418,25 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	if !userSendableMessageType(msgType) {
 		return Message{}, ErrInvalidMessageType
 	}
+	allowed, err := s.repo.IsMessageTypeAllowed(ctx, chatID, msgType)
+	if err != nil {
+		return Message{}, err
+	}
+	if !allowed {
+		return Message{}, ErrMessageTypeNotAllowed
+	}
+	if req.SourceChatID != nil {
+		allowed, err := s.repo.ForwardingAllowed(ctx, *req.SourceChatID, senderID, req.SourceMessageID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Message{}, ErrForwardingDisabled
+		}
+		if err != nil {
+			return Message{}, err
+		}
+		if !allowed {
+			return Message{}, ErrForwardingDisabled
+		}
+	}
 	if !validateEnvelopeForChat(req.Content, senderID, chat.Type) {
 		return Message{}, envelopeError(req.Content)
 	}
@@ -378,6 +472,8 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	}
 	origin.ChannelID = req.SourceChannelID
 	origin.PostID = req.SourcePostID
+	origin.ChatID = req.SourceChatID
+	origin.MessageID = req.SourceMessageID
 
 	id, err := s.repo.InsertMessage(ctx, chatID, senderID, req.Content, msgType,
 		req.ReplyToID, req.ViewLimit, origin, req.MediaIDs)
@@ -502,11 +598,33 @@ func (s *Service) SetReceipts(ctx context.Context, chatID, userID uuid.UUID, req
 	//
 	// Groups are exempt because a group read receipt is about a room rather
 	// than about you, and hiding one person's would make the rest wrong.
+	chat, err := s.repo.ChatForUser(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	isDirect := chat.Type == ChatDirect
 	if req.Status == ReceiptRead {
-		if chat, err := s.repo.ChatForUser(ctx, chatID, userID); err == nil && chat.Type == ChatDirect {
-			if u, err := s.users.ByID(ctx, userID); err == nil && (!u.ReadReceipts || u.GhostMode) {
+		if isDirect {
+			u, err := s.users.ByID(ctx, userID)
+			if err != nil {
+				return err
+			}
+			if !u.ReadReceipts || u.GhostMode {
 				req.Status = ReceiptDelivered
 			}
+		}
+	}
+	var receiptRecipients []uuid.UUID
+	if s.hub != nil {
+		if isDirect {
+			// Ghost mode is reciprocal for read receipts too: a ghost participant
+			// must not receive the live receipt event emitted by another participant.
+			receiptRecipients, err = s.repo.NonGhostParticipantIDs(ctx, chatID)
+		} else {
+			receiptRecipients, err = s.repo.ParticipantIDs(ctx, chatID)
+		}
+		if err != nil {
+			return err
 		}
 	}
 	ids, err := s.repo.MessageIDsInChat(ctx, chatID, req.MessageIDs)
@@ -529,11 +647,13 @@ func (s *Service) SetReceipts(ctx context.Context, chatID, userID uuid.UUID, req
 		if id > maxID {
 			maxID = id
 		}
-		s.broadcast(ctx, chatID, "receipt", Receipt{
-			MessageID: id,
-			UserID:    userID,
-			Status:    req.Status,
-		})
+		if len(receiptRecipients) > 0 {
+			s.hub.PublishJSON(receiptRecipients, "receipt", chatID.String(), Receipt{
+				MessageID: id,
+				UserID:    userID,
+				Status:    req.Status,
+			})
+		}
 	}
 	if req.Status == ReceiptRead && maxID > 0 {
 		_ = s.repo.SetLastRead(ctx, chatID, userID, maxID)

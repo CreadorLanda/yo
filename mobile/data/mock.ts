@@ -219,6 +219,8 @@ export type Message = {
   /** A forwarded channel post keeps a way back to where it came from. */
   sourceChannelId?: string;
   sourcePostId?: string;
+  sourceChatId?: string;
+  sourceMessageId?: number;
   id: string;
   text: string;
   fromMe: boolean;

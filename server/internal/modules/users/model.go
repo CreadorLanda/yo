@@ -28,7 +28,30 @@ type User struct {
 	ReadReceipts bool `json:"read_receipts"`
 	// The wider switch: no read receipts, no typing, no recording indicator.
 	// Reciprocal on the same terms — see migration 0042.
-	GhostMode bool `json:"ghost_mode"`
+	GhostMode                 bool       `json:"ghost_mode"`
+	GhostModeStartedAt        *time.Time `json:"ghost_mode_started_at,omitempty"`
+	GhostModeExpiresAt        *time.Time `json:"ghost_mode_expires_at,omitempty"`
+	GhostModeNextActivationAt *time.Time `json:"ghost_mode_next_activation_at,omitempty"`
+	// Last activation is used for the server-side daily quota and is never
+	// exposed as a user profile field.
+	GhostModeLastActivatedAt *time.Time `json:"-"`
+}
+
+const GhostModeDuration = 2 * time.Hour
+
+func (u *User) applyGhostModeState(now time.Time) {
+	now = now.UTC()
+	if u.GhostMode && u.GhostModeExpiresAt != nil && !now.Before(u.GhostModeExpiresAt.UTC()) {
+		u.GhostMode = false
+	}
+	if u.GhostModeLastActivatedAt == nil {
+		return
+	}
+	last := u.GhostModeLastActivatedAt.UTC()
+	next := time.Date(last.Year(), last.Month(), last.Day()+1, 0, 0, 0, 0, time.UTC)
+	if now.Before(next) {
+		u.GhostModeNextActivationAt = &next
+	}
 }
 
 // Visibility is who may see a given detail.
