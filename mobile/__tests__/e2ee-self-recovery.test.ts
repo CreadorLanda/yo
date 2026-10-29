@@ -3,6 +3,7 @@ import nacl from 'tweetnacl';
 
 const userId = '00000000-0000-4000-8000-000000000001';
 const secureStore = new Map<string, string>();
+secureStore.set('auth.access', 'access-token-for-test');
 const encryptedSecrets = new Map<string, string>();
 let randomCounter = 0;
 
@@ -43,8 +44,8 @@ mock.module('@/data/api/client', () => ({
   ApiError: class ApiError extends Error {},
   ACCESS_KEY: 'auth.access',
   REFRESH_KEY: 'auth.refresh',
-  BASE_URL: 'http://localhost',
-  getBaseUrl: () => 'http://localhost',
+  BASE_URL: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost',
+  getBaseUrl: () => process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost',
 }));
 
 encryptedSecrets.set(
