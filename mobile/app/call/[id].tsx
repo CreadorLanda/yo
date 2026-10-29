@@ -27,6 +27,7 @@ import { RING_TIMEOUT_MS } from '@/data/incoming-call';
 import { listChats } from '@/data/api/messages';
 import { callKeyFingerprint, callKeyFor } from '@/data/crypto/call-key';
 import { appAlert } from '@/data/dialog-store';
+import { availableMedia, type AvailableMedia } from '@/data/media-devices';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -63,6 +64,7 @@ export default function CallScreen() {
   const [e2eeKey, setE2eeKey] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [media, setMedia] = useState<AvailableMedia>({ camera: false, microphone: true });
 
   useEffect(() => {
     if (!id) return;
@@ -76,6 +78,15 @@ export default function CallScreen() {
         // placing the call and the other phones should ring.
         const g = await callToken(id, { ring: incoming !== '1', mode: callMode });
         if (cancelled) return;
+
+        // Join with the devices that exist. An emulator has no camera, and
+        // asking WebRTC to publish one there crashed the call screen.
+        const devices = await availableMedia();
+        if (cancelled) return;
+        setMedia(devices);
+        if (callMode === 'video' && !devices.camera) {
+          appAlert(t('call.camera_failed_title'), t('call.no_camera_body'));
+        }
 
         // The media key is derived from the pairwise session, so both sides
         // arrive at the same bytes without anything being transmitted. A
@@ -159,8 +170,8 @@ export default function CallScreen() {
       serverUrl={grant.url}
       token={grant.token}
       connect
-      audio
-      video={callMode === 'video'}
+      audio={media.microphone}
+      video={callMode === 'video' && media.camera}
       options={{ adaptiveStream: true, dynacast: true }}
       {...(e2eeKey
         ? { e2ee: { keyProviderOptions: { sharedKey: e2eeKey } } as never }
