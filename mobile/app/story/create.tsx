@@ -297,13 +297,15 @@ export default function CreateStoryScreen() {
     stopTimer.current = null;
   };
 
-  const waitForCameraHandle = async (): Promise<FilteredCameraHandle | null> => {
+  const waitForCameraHandle = async (
+    previousHandle?: FilteredCameraHandle | null,
+  ): Promise<FilteredCameraHandle | null> => {
     // Granting permission schedules the native camera tree for the next
     // render. Give that render a bounded chance to publish its ref instead of
     // treating the first shutter tap as a capture failure.
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const handle = cameraRef.current;
-      if (handle) return handle;
+      if (handle && (!previousHandle || handle !== previousHandle)) return handle;
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
     return cameraRef.current;
@@ -332,6 +334,7 @@ export default function CreateStoryScreen() {
     // Permission is asked here rather than on mount: someone who opens the
     // composer to type a text story should not be met with a camera prompt.
     let cameraGranted = hasCam;
+    const handleBeforeMicRequest = cameraRef.current;
     if (!cameraGranted) {
       cameraGranted = await askCam();
       if (!cameraGranted) {
@@ -339,10 +342,11 @@ export default function CreateStoryScreen() {
         return;
       }
     }
-    if (wantsVideo && !hasMic) {
+    let microphoneGranted = hasMic;
+    if (wantsVideo && !microphoneGranted) {
       // A silent video is worth more than no video, so a refused microphone
       // does not stop the recording — it just records without sound.
-      await askMic();
+      microphoneGranted = await askMic();
     }
 
     // No camera on this hardware: the shutter opens the library instead of
@@ -354,10 +358,17 @@ export default function CreateStoryScreen() {
       return;
     }
 
-    const cam = cameraRef.current ?? (cameraGranted ? await waitForCameraHandle() : null);
+    let cam = cameraRef.current ?? (cameraGranted ? await waitForCameraHandle() : null);
     if (!cam) {
       appAlert(t('stories.capture_failed_title'), t('stories.camera_not_ready'));
       return;
+    }
+
+    // Permission hooks update on the next render. If the first video capture
+    // granted microphone access, wait for the camera ref backed by the new
+    // audio-enabled output before starting the recorder.
+    if (wantsVideo && microphoneGranted && !hasMic) {
+      cam = (await waitForCameraHandle(handleBeforeMicRequest)) ?? cam;
     }
 
     if (wantsVideo) {

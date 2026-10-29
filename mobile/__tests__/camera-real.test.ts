@@ -298,3 +298,15 @@ test('o handle nao tenta capturar sem dispositivo nativo', () => {
   expect(camera).toContain('if (!device || failed) return null;');
   expect(camera).toContain("throw new Error('camera_unavailable')");
 });
+
+test('a troca entre filtros reinicia a arvore nativa de forma independente', () => {
+  expect(camera).toContain('const treeKey = `${front}:${filter}`;');
+});
+
+test('a primeira gravacao aguarda o output apos conceder microfone', () => {
+  const start = screen.indexOf('const takePhoto = async () =>');
+  const end = screen.indexOf('const buildInteractiveCaption', start);
+  const capture = screen.slice(start, end);
+  expect(capture).toContain('microphoneGranted = await askMic()');
+  expect(capture).toContain('waitForCameraHandle(handleBeforeMicRequest)');
+});

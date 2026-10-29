@@ -14,7 +14,15 @@ import * as SecureStore from 'expo-secure-store';
  *   - Throws a typed ApiError so screens can map status / code to UX.
  */
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
+const DEFAULT_BASE_URL = 'http://localhost:8080';
+
+/** Resolve the URL at request time so tests and runtime configuration cannot
+ * be made stale by an earlier module import. */
+export function getBaseUrl(): string {
+  return process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_BASE_URL;
+}
+
+const BASE_URL = getBaseUrl();
 
 export const ACCESS_KEY = 'auth.access';
 export const REFRESH_KEY = 'auth.refresh';

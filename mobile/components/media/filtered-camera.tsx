@@ -110,7 +110,7 @@ export const FilteredCamera = forwardRef<
 
   // A flipped lens or a different filter is a different camera tree; give
   // it its own chance rather than keeping the blank from the last one.
-  const treeKey = `${front}:${matrix ? 'filtered' : 'plain'}`;
+  const treeKey = `${front}:${filter}`;
 
   /**
    * The camera tree that threw, if any.
