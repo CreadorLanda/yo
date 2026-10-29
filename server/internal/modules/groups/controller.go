@@ -141,6 +141,81 @@ func (c *Controller) PatchMemberRole(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, g)
 }
 
+func (c *Controller) PostBulkMembers(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	var req BulkMemberRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+	g, err := c.svc.BulkMemberChanges(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), req)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, g)
+}
+
+func (c *Controller) GetAchievements(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	list, err := c.svc.ListAchievements(ctx.Request.Context(), id, middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, list)
+}
+
+func (c *Controller) PostAchievement(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	var req CreateAchievementRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+	a, err := c.svc.CreateAchievement(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), req)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, a)
+}
+
+func (c *Controller) PostAchievementAward(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	achievementID, err := uuid.Parse(ctx.Param("achievementId"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_achievement_id"})
+		return
+	}
+	var req AwardAchievementRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+	if err := c.svc.AwardAchievement(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), achievementID, req); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
 func (c *Controller) PostLeave(ctx *gin.Context) {
 	id, err := uuid.Parse(ctx.Param("id"))
 	if err != nil {
@@ -161,9 +236,12 @@ func writeErr(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrNotMember), errors.Is(err, ErrNotAdmin):
 		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-	case errors.Is(err, ErrLastAdmin), errors.Is(err, ErrInvalidTitle),
-		errors.Is(err, ErrInvalidRole), errors.Is(err, ErrInvalidHistory):
+	case errors.Is(err, ErrLastAdmin), errors.Is(err, ErrNoEligibleAdmin), errors.Is(err, ErrInvalidTitle),
+		errors.Is(err, ErrInvalidRole), errors.Is(err, ErrInvalidHistory), errors.Is(err, ErrInvalidPermission),
+		errors.Is(err, ErrInvalidAchievement), errors.Is(err, ErrInvalidAchievementEvidence):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrAchievementAlreadyAwarded):
+		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 	}

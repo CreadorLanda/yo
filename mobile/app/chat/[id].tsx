@@ -304,6 +304,20 @@ export default function ChatScreen() {
       muted: !!apiChatInfo.muted_until,
     };
   }, [isAIChat, apiChatInfo]);
+  const isGroup = !!chat?.isGroup || apiChatInfo?.type === 'group';
+  const group = useGroup(isGroup ? id : undefined);
+  const mentionIdentifiers = useMemo(() => {
+    if (!isGroup) return [];
+    return [
+      'admins',
+      'moderators',
+      ...(group?.members ?? []).map((member) => member.username.replace(/^@/, '')).filter(Boolean),
+    ];
+  }, [isGroup, group?.members]);
+  const mentionsIn = useCallback((text: string) => {
+    const lower = text.toLowerCase();
+    return mentionIdentifiers.filter((identifier) => lower.includes(`@${identifier.toLowerCase()}`));
+  }, [mentionIdentifiers]);
   // Only the assistant thread seeds from fixtures; real chats load from the API.
   const [messages, setMessages] = useState<Message[]>(() =>
     id === DANDARA.id ? MESSAGES[DANDARA.id] ?? [] : [],
@@ -554,7 +568,8 @@ export default function ChatScreen() {
             // thread render differently from a freshly fetched one — and
             // an encrypted media envelope would surface as raw JSON.
             const plainDTO = { ...m, content: plain };
-            decrypted.push({ dto: plainDTO, body: plain, msg: mapApiMessage(plainDTO, meId) });
+            const mapped = mapApiMessage(plainDTO, meId);
+            decrypted.push({ dto: plainDTO, body: plain, msg: { ...mapped, mentions: mentionsIn(plain) } });
           } else {
             decrypted.push({ dto: m, body: m.content, msg: base });
           }
@@ -603,7 +618,7 @@ export default function ChatScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, meId, apiChatInfo?.peer_user_id, chatType, isAIChat]);
+  }, [id, meId, apiChatInfo?.peer_user_id, chatType, isAIChat, mentionsIn]);
 
   // Load chat info from the API + ensure E2EE keys are ready.
   useEffect(() => {
@@ -666,7 +681,7 @@ export default function ChatScreen() {
             // with no attachment — while the same message rendered correctly
             // after a reload, which is the history path a few lines up.
             const plain = await decryptMessageContent(dto, meId, peerId);
-            mapped = mapApiMessage({ ...dto, content: plain }, meId);
+            mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(plain) };
           }
           setMessages((prev) => {
             if (prev.some((m) => m.id === mapped.id)) return prev;
@@ -820,7 +835,7 @@ export default function ChatScreen() {
       // Stop typing on leave.
       apiSetTyping(id, false).catch(() => {});
     };
-  }, [id, meId]);
+  }, [id, meId, isGroup, apiChatInfo?.peer_user_id, mentionsIn]);
 
   // Keep the latest message (and typing bubble) in view.
   useEffect(() => {
@@ -829,7 +844,6 @@ export default function ChatScreen() {
     return () => clearTimeout(tId);
   }, [messages.length, dandaraTyping, peerTyping, searchMode]);
 
-  const isGroup = !!chat?.isGroup || apiChatInfo?.type === 'group';
   // Tell the notification builder which conversation is on screen, so it stays
   // quiet about this one. The server pushes to connected clients now; only the
   // client knows what the reader is actually looking at.
@@ -854,8 +868,6 @@ export default function ChatScreen() {
   const hasMyIntro = messages.some((m) => m.fromMe);
   const canCompose =
     !isBlocked && (!isPending || (iSentRequest && !hasMyIntro));
-  const group = useGroup(isGroup ? id : undefined);
-
   // Broadcast typing while the user is composing.
   useEffect(() => {
     if (!id || !canCompose || isAIChat) return;
@@ -1549,6 +1561,7 @@ export default function ChatScreen() {
     appendMessage({
       id: tempId,
       text,
+      mentions: mentionsIn(text),
       replyTo: reply,
       status: id && !isAIChat ? 'sending' : 'sent',
     });
@@ -1558,9 +1571,8 @@ export default function ChatScreen() {
     if (id && !isAIChat) {
       // Persist first, network after: this is the whole fix for a message
       // that used to vanish if the app closed before the send finished.
-      // Direct chats are end-to-end encrypted or they do not send — groups
-      // are exempt because they have no E2EE yet, not because encryption is
-      // optional. Encryption itself happens inside the outbox, at the moment
+      // Direct and group chats are end-to-end encrypted or they do not send.
+      // Encryption itself happens inside the outbox, at the moment
       // of actual send, not here: sealing now would spend a ratchet step on
       // a message that has not even tried the network yet.
       const replyTo = reply ? serverMessageId(reply.id) ?? undefined : undefined;
@@ -2607,6 +2619,7 @@ export default function ChatScreen() {
                   msg={item}
                   mine={item.fromMe}
                   peerName={chat?.name ?? ''}
+                  groupMembers={group?.members ?? []}
                   onPressDisappearing={pickDisappearing}
                 />
               ) : (
@@ -3064,11 +3077,13 @@ function SystemDivider({
   msg,
   mine,
   peerName,
+  groupMembers,
   onPressDisappearing,
 }: {
   msg: GroupedMessage;
   mine: boolean;
   peerName: string;
+  groupMembers: { id: string; name: string }[];
   onPressDisappearing?: () => void;
 }) {
   const { colors } = useTheme();
@@ -3093,6 +3108,32 @@ function SystemDivider({
           </Text>
         </View>
       </Pressable>
+    );
+  }
+
+  if (ev?.kind === 'group') {
+    const nameFor = (id: string | undefined) =>
+      id === msg.senderId && mine
+        ? t('chat.you')
+        : groupMembers.find((member) => member.id === id)?.name ?? t('chat.deleted_user');
+    const actor = nameFor(ev.actorId);
+    const target = nameFor(ev.targetId);
+    const targets = (ev.targetIds ?? []).map(nameFor).join(', ');
+    let label = t('chat.group_changed');
+    if (ev.event === 'created') label = t('chat.group_created', { actor });
+    if (ev.event === 'members_added') label = t('chat.group_members_added', { actor, members: targets });
+    if (ev.event === 'member_removed') label = t('chat.group_member_removed', { actor, member: target });
+    if (ev.event === 'role_changed') label = t('chat.group_role_changed', { actor, member: target, role: ev.role ?? '' });
+    if (ev.event === 'admin_handoff') label = t('chat.group_admin_handoff', { oldAdmin: actor, newAdmin: target });
+    if (ev.event === 'achievement_created') label = t('chat.group_achievement_created', { actor });
+    if (ev.event === 'achievement_awarded') label = t('chat.group_achievement_awarded', { actor, member: target });
+    return (
+      <View style={styles.systemRow}>
+        <View style={[styles.systemPill, { backgroundColor: colors.surface }]}>
+          <Ionicons name="people-outline" size={11} color={colors.textSecondary} />
+          <Text style={[styles.systemText, { color: colors.textSecondary }]}>{label}</Text>
+        </View>
+      </View>
     );
   }
 

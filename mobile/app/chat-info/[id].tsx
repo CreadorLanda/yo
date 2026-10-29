@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ListPicker } from '@/components/chat/list-picker';
@@ -17,6 +17,7 @@ import {
   DISAPPEAR_OPTIONS,
   setDisappearing,
   listMessages,
+  createChat,
   reportChat,
   type ChatDTO,
   type ReportReason,
@@ -24,6 +25,7 @@ import {
 import { appAlert, appPrompt } from '@/data/dialog-store';
 import {
   addGroupMembers,
+  bulkGroupMembers,
   leaveGroup,
   removeGroupMember,
   setGroupMemberRole,
@@ -32,7 +34,6 @@ import { getCurrentUser } from '@/data/auth-store';
 import {
   hasLockCode,
   isValidCode,
-  LOCK_CODE_MIN_LENGTH,
   setLockCode,
   relockAll,
   verifyLockCode,
@@ -379,19 +380,90 @@ export default function ChatInfoScreen() {
   const isGroupAdmin =
     isGroup && (group?.members ?? []).some((m) => m.id === meId && m.role === 'admin');
   const [addingMembers, setAddingMembers] = useState(false);
+  const [memberQuery, setMemberQuery] = useState('');
+  const [showAllMembers, setShowAllMembers] = useState(false);
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+
+  const visibleMembers = useMemo(() => {
+    const query = memberQuery.trim().toLowerCase();
+    const filtered = (group?.members ?? []).filter(
+      (m) => !query || `${m.name} ${m.username}`.toLowerCase().includes(query),
+    );
+    return showAllMembers || query ? filtered : filtered.slice(0, 8);
+  }, [group?.members, memberQuery, showAllMembers]);
+
+  const openMemberChat = (memberId: string) => {
+    createChat(memberId)
+      .then((result) => router.push(`/chat/${result.chat_id}`))
+      .catch(failed);
+  };
+
+  const toggleMember = (memberId: string) => {
+    setSelectedMembers((current) =>
+      current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId],
+    );
+  };
+
+  const applyBulkRole = (role: 'admin' | 'moderator' | 'member') => {
+    if (!id || selectedMembers.length === 0) return;
+    bulkGroupMembers(id, selectedMembers, 'role', role)
+      .then(() => {
+        setSelectedMembers([]);
+        return refreshGroup(id);
+      })
+      .catch(failed);
+  };
+
+  const confirmBulkMembers = () => {
+    if (!id || selectedMembers.length === 0) return;
+    appAlert(t('chat_info.selected_members', { count: selectedMembers.length }), t('chat_info.bulk_members_hint'), [
+      { text: t('chat_info.make_moderator'), onPress: () => applyBulkRole('moderator') },
+      { text: t('chat_info.make_admin'), onPress: () => applyBulkRole('admin') },
+      {
+        text: t('chat_info.remove_member'),
+        style: 'destructive',
+        onPress: () => appAlert(t('chat_info.remove_member'), t('chat_info.bulk_remove_confirm'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('chat_info.remove_member'),
+            style: 'destructive',
+            onPress: () => {
+              bulkGroupMembers(id, selectedMembers, 'remove')
+                .then(() => {
+                  setSelectedMembers([]);
+                  invalidateGroupEpoch(id);
+                  return refreshGroup(id);
+                })
+                .catch(failed);
+            },
+          },
+        ]),
+      },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  };
 
   const manageMember = (m: { id: string; name: string; role?: string }) => {
     if (!id || !isGroupAdmin || m.id === meId) return;
     const isAdmin = m.role === 'admin';
     appAlert(m.name, t('chat_info.manage_member_hint'), [
       {
-        text: isAdmin ? t('chat_info.demote_member') : t('chat_info.promote_member'),
+        text: isAdmin ? t('chat_info.make_moderator') : t('chat_info.make_admin'),
         onPress: () => {
-          setGroupMemberRole(id, m.id, isAdmin ? 'member' : 'admin')
+          setGroupMemberRole(id, m.id, isAdmin ? 'moderator' : 'admin')
             .then(() => refreshGroup(id))
             .catch(failed);
         },
       },
+      ...(m.role === 'moderator'
+        ? [
+            {
+              text: t('chat_info.demote_member'),
+              onPress: () =>
+                setGroupMemberRole(id, m.id, 'member').then(() => refreshGroup(id)).catch(failed),
+            },
+          ]
+        : []),
       {
         text: t('chat_info.remove_member'),
         style: 'destructive',
@@ -869,17 +941,45 @@ export default function ChatInfoScreen() {
                   </View>
                 </>
               ) : null}
-              {(group?.members ?? []).slice(0, 8).map((m) => (
+              <TextInput
+                value={memberQuery}
+                onChangeText={setMemberQuery}
+                placeholder={t('chat_info.search_members')}
+                placeholderTextColor={colors.textMuted}
+                style={[styles.memberSearch, { color: colors.text, borderColor: colors.border }]}
+                autoCapitalize="none"
+                clearButtonMode="while-editing"
+              />
+              {isGroupAdmin && selectedMembers.length > 0 ? (
+                <Pressable
+                  onPress={confirmBulkMembers}
+                  style={[styles.bulkAction, { backgroundColor: colors.surfaceMuted }]}
+                >
+                  <Ionicons name="people-outline" size={17} color={colors.primary} />
+                  <Text style={[styles.bulkActionText, { color: colors.primary }]}>
+                    {t('chat_info.manage_selected', { count: selectedMembers.length })}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {visibleMembers.map((m) => (
                 <View key={m.id}>
                   <Divider colors={colors} />
                   <Pressable
-                    onPress={() => manageMember(m)}
-                    disabled={!isGroupAdmin || m.id === meId}
+                    onPress={() => openMemberChat(m.id)}
                     style={({ pressed }) => [
                       styles.row,
-                      pressed && isGroupAdmin && { backgroundColor: colors.surfaceMuted },
+                      pressed && { backgroundColor: colors.surfaceMuted },
                     ]}
                   >
+                    {isGroupAdmin && m.id !== meId ? (
+                      <Pressable onPress={() => toggleMember(m.id)} hitSlop={8}>
+                        <Ionicons
+                          name={selectedMembers.includes(m.id) ? 'checkbox' : 'square-outline'}
+                          size={20}
+                          color={selectedMembers.includes(m.id) ? colors.primary : colors.textMuted}
+                        />
+                      </Pressable>
+                    ) : null}
                     <Image
                       source={{ uri: m.avatarUri }}
                       style={[styles.rowAvatar, { backgroundColor: colors.surfaceMuted }]}
@@ -895,16 +995,28 @@ export default function ChatInfoScreen() {
                         </Text>
                       ) : null}
                     </View>
-                    {m.role === 'admin' ? (
+                    {m.role !== 'member' ? (
                       <View style={[styles.adminPill, { backgroundColor: colors.surfaceMuted }]}>
                         <Text style={[styles.adminPillText, { color: colors.textSecondary }]}>
-                          {t('chat_info.admin')}
+                          {m.role === 'admin' ? t('chat_info.admin') : t('chat_info.moderator')}
                         </Text>
                       </View>
+                    ) : null}
+                    {isGroupAdmin && m.id !== meId ? (
+                      <Pressable onPress={() => manageMember(m)} hitSlop={8}>
+                        <Ionicons name="ellipsis-vertical" size={18} color={colors.textSecondary} />
+                      </Pressable>
                     ) : null}
                   </Pressable>
                 </View>
               ))}
+              {(group?.members ?? []).length > 8 && !memberQuery ? (
+                <Pressable onPress={() => setShowAllMembers((v) => !v)} style={styles.expandMembers}>
+                  <Text style={[styles.expandMembersText, { color: colors.primary }]}>
+                    {showAllMembers ? t('chat_info.show_less') : t('chat_info.show_all_members')}
+                  </Text>
+                </Pressable>
+              ) : null}
             </Section>
           </>
         ) : null}
@@ -1289,6 +1401,26 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   adminPillText: { ...Typography.micro, fontWeight: '700' },
+  memberSearch: {
+    margin: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: Radii.md,
+    ...Typography.body,
+  },
+  bulkAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: Radii.md,
+  },
+  bulkActionText: { ...Typography.caption, fontWeight: '700' },
+  expandMembers: { alignItems: 'center', padding: Spacing.md },
+  expandMembersText: { ...Typography.caption, fontWeight: '700' },
 
   mediaRow: { gap: Spacing.sm, padding: Spacing.sm },
   wallpaperControls: {

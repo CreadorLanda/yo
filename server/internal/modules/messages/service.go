@@ -27,6 +27,7 @@ var (
 	ErrInvalidMessageType    = errors.New("invalid_message_type")
 	ErrInvalidEnvelopeChat   = errors.New("invalid_e2ee_envelope_for_chat")
 	ErrInvalidMediaReference = errors.New("invalid_media_reference")
+	ErrGroupPermission       = errors.New("group_permission_denied")
 )
 
 // Broadcaster is satisfied by *realtime.Hub. Kept as an interface so the
@@ -61,13 +62,21 @@ type MediaAccess interface {
 	CanRead(ctx context.Context, mediaID, userID uuid.UUID) (bool, error)
 }
 
+// GroupPolicy is deliberately expressed in messages terms. It keeps the
+// transport from importing group storage while ensuring every message path
+// (HTTP and websocket callers share this service) sees the same policy.
+type GroupPolicy interface {
+	CanSend(ctx context.Context, chatID, userID uuid.UUID, messageType string) (bool, error)
+}
+
 type Service struct {
-	repo   *Repository
-	users  *users.Repository
-	hub    Broadcaster
-	push   PushNotifier
-	blocks BlockList
-	media  MediaAccess
+	repo        *Repository
+	users       *users.Repository
+	hub         Broadcaster
+	push        PushNotifier
+	blocks      BlockList
+	media       MediaAccess
+	groupPolicy GroupPolicy
 }
 
 func NewService(repo *Repository, usersRepo *users.Repository, hub Broadcaster, push PushNotifier) *Service {
@@ -88,6 +97,11 @@ func (s *Service) WithBlocks(b BlockList) *Service {
 // grants are committed together.
 func (s *Service) WithMediaAccess(access MediaAccess) *Service {
 	s.media = access
+	return s
+}
+
+func (s *Service) WithGroupPolicy(policy GroupPolicy) *Service {
+	s.groupPolicy = policy
 	return s
 }
 
@@ -285,11 +299,19 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	if err != nil {
 		return Message{}, err
 	}
+	if s.groupPolicy != nil && chat.Type == ChatGroup {
+		allowed, err := s.groupPolicy.CanSend(ctx, chatID, senderID, string(msgType))
+		if err != nil {
+			return Message{}, err
+		}
+		if !allowed {
+			return Message{}, ErrGroupPermission
+		}
+	}
 	// A block stops a one-to-one conversation and nothing else.
 	//
-	// Groups are deliberately untouched: a group is a place with other people
-	// in it, and one member's decision about another is not a reason to take
-	// their conversation away. The app tells you who in the room you blocked.
+	// Group moderation is enforced by groupPolicy above; personal blocks still
+	// do not remove another member's ability to participate in the room.
 	if s.blocks != nil && chat.Type == ChatDirect {
 		peer, err := s.repo.PeerUser(ctx, chatID, senderID)
 		if err == nil && peer != nil {
