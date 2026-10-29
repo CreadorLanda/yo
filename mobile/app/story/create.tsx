@@ -11,7 +11,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Modal,
@@ -37,10 +37,12 @@ import { Text, TextInput } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { bakeFilter } from '@/data/bake-filter';
 import { appAlert } from '@/data/dialog-store';
-import type { FilterId } from '@/data/photo-filters';
+import { FILTERS, type FilterId } from '@/data/photo-filters';
 import { FilteredPhoto } from '@/components/media/filtered-photo';
 import { FilterStrip } from '@/components/media/filter-strip';
 import { FilteredCamera, type FilteredCameraHandle } from '@/components/media/filtered-camera';
+import { bootstrapChannels, canPublish, useChannels } from '@/data/channel-store';
+import { refreshChats, useChats } from '@/data/chat-store';
 import type { StoryVisibility } from '@/data/mock';
 import { useProfile } from '@/data/profile-store';
 import { queueStoryPublish } from '@/data/story-store';
@@ -67,12 +69,18 @@ const BOOMERANG_SECONDS = 3;
 const HANDSFREE_SECONDS = 15;
 type EditTool = 'text' | 'sticker' | 'draw' | 'music' | 'filter' | null;
 type StickerKind = 'poll' | 'question' | 'mention' | null;
+type LiveAudience = {
+  kind: 'chat' | 'channel';
+  id: string;
+  label: string;
+  hint: string;
+};
 
 const { width: W, height: H } = Dimensions.get('window');
 // The brand violet leads; the rest are the user's own choices, so blue
 // stays available as one of them rather than as the product's colour.
 const ACCENTS = ['#4F46E5', '#111827', '#10B981', '#FF6FB5', '#F59E0B', '#2D5BFF', '#EF4444', '#FFFFFF'];
-/** All creatable modes — live is listed but blocked until hangout ships. */
+/** All creatable modes. Live uses the existing broadcast room. */
 const CAPTURE_MODES: CaptureMode[] = ['type', 'normal', 'boomerang', 'handsfree', 'audio', 'live'];
 
 /**
@@ -80,6 +88,10 @@ const CAPTURE_MODES: CaptureMode[] = ['type', 'normal', 'boomerang', 'handsfree'
  * see StoryTTLMinHours / StoryTTLMaxHours in the stories module.
  */
 const TTL_CHOICES = [1, 3, 6, 12, 24, 36, 48, 72] as const;
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
 
 export default function CreateStoryScreen() {
   // Prefill from a forward. The composer is the same screen either way — a
@@ -93,6 +105,8 @@ export default function CreateStoryScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const { chats } = useChats();
+  const channels = useChannels();
 
   // A forward arrives with its content already chosen, so it starts in the
   // editor. Opening the camera would ask for something the person just
@@ -128,6 +142,7 @@ export default function CreateStoryScreen() {
   const audioStart = useRef(0);
   const publishLock = useRef(false);
   const [filter, setFilter] = useState<FilterId>('none');
+  const [liveAudience, setLiveAudience] = useState<LiveAudience | null>(null);
 
   /**
    * The camera itself.
@@ -151,7 +166,33 @@ export default function CreateStoryScreen() {
    * opposite things: one resolves on its own, the other does not.
    */
   const [noCamera, setNoCamera] = useState(false);
+  const noCameraRef = useRef(false);
   const [zoom, setZoom] = useState(0);
+
+  const liveAudiences = useMemo<LiveAudience[]>(
+    () => [
+      ...chats
+        .filter((chat) => chat.status !== 'blocked' && chat.status !== 'pending')
+        .map((chat) => ({
+          kind: 'chat' as const,
+          id: chat.id,
+          label:
+            chat.title ||
+            chat.peer_username ||
+            (chat.type === 'direct' ? t('stories.live_direct') : t('stories.live_group')),
+          hint: chat.type === 'direct' ? t('stories.live_direct_hint') : t('stories.live_group_hint'),
+        })),
+      ...channels
+        .filter((channel) => canPublish(channel) && isUuid(channel.id))
+        .map((channel) => ({
+          kind: 'channel' as const,
+          id: channel.id,
+          label: channel.name,
+          hint: channel.handle || t('stories.live_channel_hint'),
+        })),
+    ],
+    [chats, channels],
+  );
 
   const shutterScale = useSharedValue(1);
   const shutterStyle = useAnimatedStyle(() => ({ transform: [{ scale: shutterScale.value }] }));
@@ -193,13 +234,28 @@ export default function CreateStoryScreen() {
     }
   }, [captureMode, phase]);
 
+  useEffect(() => {
+    if (captureMode !== 'live') return;
+    void refreshChats();
+    void bootstrapChannels();
+  }, [captureMode]);
+
+  useEffect(() => {
+    if (captureMode !== 'live') return;
+    setLiveAudience((current) =>
+      current && liveAudiences.some((item) => item.kind === current.kind && item.id === current.id)
+        ? current
+        : liveAudiences[0] ?? null,
+    );
+  }, [captureMode, liveAudiences]);
+
   const selectCaptureMode = (mode: CaptureMode) => {
-    if (mode === 'live') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      appAlert(t('stories.go_live'), t('stories.live_coming_soon') || 'Live is coming soon.');
-      return;
-    }
     setCaptureMode(mode);
+    setActiveTool(null);
+    // The live preview can apply a matrix, but the current recorder writes the
+    // native video stream without that Skia overlay. Never let a photo filter
+    // survive into a video capture whose published bytes would be unfiltered.
+    if (mode === 'boomerang' || mode === 'handsfree') setFilter('none');
   };
 
   const lastGalleryThumb = mediaUri && !isAudio ? mediaUri : null;
@@ -291,6 +347,20 @@ export default function CreateStoryScreen() {
     stopTimer.current = null;
   };
 
+  const waitForCameraHandle = async (
+    previousHandle?: FilteredCameraHandle | null,
+  ): Promise<FilteredCameraHandle | null> => {
+    // Granting permission schedules the native camera tree for the next
+    // render. Give that render a bounded chance to publish its ref instead of
+    // treating the first shutter tap as a capture failure.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const handle = cameraRef.current;
+      if (handle && (!previousHandle || handle !== previousHandle)) return handle;
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    }
+    return cameraRef.current;
+  };
+
   const takePhoto = async () => {
     shutterScale.value = withSequence(
       withSpring(0.86, { damping: 12, stiffness: 280 }),
@@ -313,30 +383,43 @@ export default function CreateStoryScreen() {
 
     // Permission is asked here rather than on mount: someone who opens the
     // composer to type a text story should not be met with a camera prompt.
-    if (!hasCam) {
-      const granted = await askCam();
-      if (!granted) {
+    let cameraGranted = hasCam;
+    const handleBeforeMicRequest = cameraRef.current;
+    if (!cameraGranted) {
+      cameraGranted = await askCam();
+      if (!cameraGranted) {
         await pickFromLibrary();
         return;
       }
     }
-    if (wantsVideo && !hasMic) {
+    let microphoneGranted = hasMic;
+    if (wantsVideo && !microphoneGranted) {
       // A silent video is worth more than no video, so a refused microphone
       // does not stop the recording — it just records without sound.
-      await askMic();
+      microphoneGranted = await askMic();
     }
 
     // No camera on this hardware: the shutter opens the library instead of
     // reporting a capture failure. There is nothing to retry, and the gallery
     // is the way a story actually gets made on a device like this — the same
     // fall-back a refused permission already takes.
-    if (noCamera) {
+    if (noCameraRef.current || noCamera) {
       await pickFromLibrary();
       return;
     }
 
-    const cam = cameraRef.current;
-    if (!cam) return;
+    let cam = cameraRef.current ?? (cameraGranted ? await waitForCameraHandle() : null);
+    if (!cam) {
+      appAlert(t('stories.capture_failed_title'), t('stories.camera_not_ready'));
+      return;
+    }
+
+    // Permission hooks update on the next render. If the first video capture
+    // granted microphone access, wait for the camera ref backed by the new
+    // audio-enabled output before starting the recorder.
+    if (wantsVideo && microphoneGranted && !hasMic) {
+      cam = (await waitForCameraHandle(handleBeforeMicRequest)) ?? cam;
+    }
 
     if (wantsVideo) {
       // Tap to start, tap to stop. That is what "handsfree" always meant, and
@@ -371,6 +454,8 @@ export default function CreateStoryScreen() {
     try {
       const path = await cam.takePhoto();
       if (path) enterEdit({ uri: path });
+      else if (noCameraRef.current || noCamera) await pickFromLibrary();
+      else appAlert(t('stories.capture_failed_title'), t('stories.camera_not_ready'));
     } catch {
       appAlert(t('stories.capture_failed_title'), t('stories.capture_failed_body'));
     }
@@ -408,6 +493,11 @@ export default function CreateStoryScreen() {
    */
   const publish = async () => {
     if (publishLock.current) return;
+
+    if (captureMode === 'live') {
+      startStoryLive();
+      return;
+    }
 
     let kind: 'image' | 'video' | 'text' | 'audio' | 'poll' | 'question' = 'text';
 
@@ -477,8 +567,37 @@ export default function CreateStoryScreen() {
     router.back();
   };
 
+  const startStoryLive = () => {
+    if (!liveAudience) {
+      appAlert(t('stories.go_live'), t('stories.live_choose_audience'));
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const target = `${liveAudience.kind}=${encodeURIComponent(liveAudience.id)}`;
+    const liveTitle = caption.trim();
+    const title = liveTitle ? `&title=${encodeURIComponent(liveTitle)}` : '';
+    router.push(`/live/new?${target}${title}`);
+  };
+
   // ── CAPTURE ──────────────────────────────────────────────────────────────
   if (phase === 'capture') {
+    if (captureMode === 'live') {
+      return (
+        <LiveSetup
+          profileAvatar={profile.avatarUri}
+          title={caption}
+          onTitleChange={setCaption}
+          audiences={liveAudiences}
+          selected={liveAudience}
+          onSelect={setLiveAudience}
+          onBack={() => setCaptureMode('normal')}
+          onClose={() => router.back()}
+          onStart={startStoryLive}
+        />
+      );
+    }
+
     return (
       <View style={styles.root}>
         <StatusBar style="light" />
@@ -510,7 +629,10 @@ export default function CreateStoryScreen() {
               zoom={zoom}
               isActive={phase === 'capture'}
               onReady={() => setCamReady(true)}
-              onDeviceAvailability={(available) => setNoCamera(!available)}
+              onDeviceAvailability={(available) => {
+                noCameraRef.current = !available;
+                setNoCamera(!available);
+              }}
             />
           ) : null}
           <View style={styles.viewfinderGrain} pointerEvents="none" />
@@ -582,19 +704,23 @@ export default function CreateStoryScreen() {
             </View>
           </View>
 
-          {/* Both side tools were drawn with no onPress at all — two buttons
-              that did nothing at any point. Filters land in the next change;
-              until they do, saying so beats a tap into silence. */}
-          {captureMode !== 'audio' ? (
+          {/* Filters are available for still capture only. Video keeps the
+              native recording clean because the Skia overlay is preview-only. */}
+          {captureMode !== 'audio' && !isVideoMode ? (
             <View style={[styles.sideRail, { top: insets.top + 72 }]}>
               <SideTool
                 icon="color-filter-outline"
                 label={t('stories.filters')}
-                onPress={() => appAlert(t('stories.filters'), t('stories.filters_soon'))}
+                active={activeTool === 'filter'}
+                onPress={() => setActiveTool((cur) => (cur === 'filter' ? null : 'filter'))}
               />
             </View>
           ) : null}
         </SafeAreaView>
+
+        {activeTool === 'filter' && !isVideoMode ? (
+          <LiveFilterStrip value={filter} onChange={setFilter} />
+        ) : null}
 
         <View style={[styles.captureBottom, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           {captureMode !== 'audio' ? (
@@ -1039,6 +1165,129 @@ function Waveform({ live }: { live?: boolean }) {
   );
 }
 
+function LiveSetup({
+  profileAvatar,
+  title,
+  onTitleChange,
+  audiences,
+  selected,
+  onSelect,
+  onBack,
+  onClose,
+  onStart,
+}: {
+  profileAvatar?: string;
+  title: string;
+  onTitleChange: (value: string) => void;
+  audiences: LiveAudience[];
+  selected: LiveAudience | null;
+  onSelect: (audience: LiveAudience) => void;
+  onBack: () => void;
+  onClose: () => void;
+  onStart: () => void;
+}) {
+  return (
+    <View style={styles.root}>
+      <StatusBar style="light" />
+      <View style={styles.liveSetupBg} />
+      <View style={styles.livePulseRing} />
+      <SafeAreaView style={styles.captureChrome} edges={['top']}>
+        <View style={[styles.topBar, { paddingTop: Spacing.xs }]}>
+          <RoundBtn onPress={onClose} icon="close" />
+          <RoundBtn onPress={onBack} icon="arrow-back" />
+        </View>
+      </SafeAreaView>
+
+      <ScrollView
+        contentContainerStyle={styles.liveSetupScroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.liveSetupCard}>
+          <View style={styles.liveBadgeBig}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveBadgeBigText}>{t('stories.live_now')}</Text>
+          </View>
+          {profileAvatar ? <Image source={{ uri: profileAvatar }} style={styles.liveAvatar} /> : null}
+          <Text style={styles.liveTitle}>{t('stories.live_starting')}</Text>
+          <Text style={styles.liveHint}>{t('stories.live_hint')}</Text>
+          <TextInput
+            value={title}
+            onChangeText={onTitleChange}
+            placeholder={t('stories.live_title_placeholder')}
+            placeholderTextColor="rgba(255,255,255,0.4)"
+            maxLength={100}
+            style={styles.liveTitleInput}
+          />
+
+          <Text style={styles.liveAudienceHeading}>{t('stories.live_audience')}</Text>
+          {audiences.length === 0 ? (
+            <View style={styles.liveEmptyAudience}>
+              <Ionicons name="people-outline" size={22} color="rgba(255,255,255,0.55)" />
+              <Text style={styles.liveEmptyAudienceText}>{t('stories.live_no_audience')}</Text>
+            </View>
+          ) : (
+            <View style={styles.liveAudienceList}>
+              {audiences.map((item) => {
+                const active = selected?.kind === item.kind && selected.id === item.id;
+                return (
+                  <Pressable
+                    key={`${item.kind}:${item.id}`}
+                    onPress={() => onSelect(item)}
+                    style={[styles.liveAudienceRow, active && styles.liveAudienceRowActive]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <View style={[styles.liveAudienceIcon, active && { backgroundColor: '#EF4444' }]}>
+                      <Ionicons
+                        name={item.kind === 'channel' ? 'megaphone-outline' : 'people-outline'}
+                        size={18}
+                        color="#FFF"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.liveAudienceLabel} numberOfLines={1}>
+                        {item.label}
+                      </Text>
+                      <Text style={styles.liveAudienceHint} numberOfLines={1}>
+                        {item.hint}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={active ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={22}
+                      color={active ? '#EF4444' : 'rgba(255,255,255,0.32)'}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          <View style={styles.livePermissionNote}>
+            <Ionicons name="information-circle-outline" size={15} color="rgba(255,255,255,0.55)" />
+            <Text style={styles.liveHint}>{t('stories.live_permission_note')}</Text>
+          </View>
+
+          <Pressable
+            onPress={onStart}
+            disabled={!selected}
+            style={({ pressed }) => [
+              styles.liveStartButton,
+              { backgroundColor: selected ? '#EF4444' : 'rgba(255,255,255,0.16)' },
+              pressed && selected && { opacity: 0.88 },
+            ]}
+          >
+            <Ionicons name="radio" size={18} color={selected ? '#FFF' : 'rgba(255,255,255,0.4)'} />
+            <Text style={[styles.liveStartButtonText, { color: selected ? '#FFF' : 'rgba(255,255,255,0.4)' }]}>
+              {t('stories.go_live')}
+            </Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
 function RoundBtn({
   icon,
   onPress,
@@ -1075,6 +1324,41 @@ function SideTool({
       <Ionicons name={icon} size={22} color="#FFF" />
       <Text style={styles.sideToolLabel}>{label}</Text>
     </Pressable>
+  );
+}
+
+function LiveFilterStrip({
+  value,
+  onChange,
+}: {
+  value: FilterId;
+  onChange: (id: FilterId) => void;
+}) {
+  return (
+    <View style={styles.filterTray}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.liveFilterRow}
+      >
+        {FILTERS.map((item) => {
+          const active = item.id === value;
+          return (
+            <Pressable
+              key={item.id}
+              onPress={() => onChange(item.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              style={[styles.liveFilterChip, active && styles.liveFilterChipActive]}
+            >
+              <Text style={[styles.liveFilterText, active && styles.liveFilterTextActive]}>
+                {t(`filters.${item.nameKey}`)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -1601,6 +1885,17 @@ const styles = StyleSheet.create({
     bottom: 92,
     backgroundColor: 'rgba(10,11,15,0.82)',
   },
+  liveFilterRow: { gap: Spacing.sm, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
+  liveFilterChip: {
+    borderRadius: Radii.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  liveFilterChipActive: { borderColor: '#FFF', backgroundColor: 'rgba(255,255,255,0.16)' },
+  liveFilterText: { ...Typography.micro, color: 'rgba(255,255,255,0.72)' },
+  liveFilterTextActive: { color: '#FFF', fontWeight: '700' },
   shareBtn: {
     minHeight: 52,
     borderRadius: Radii.pill,
@@ -1700,4 +1995,80 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
+  liveSetupScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingTop: 90,
+    paddingBottom: Spacing.xxl,
+  },
+  liveAudienceHeading: {
+    alignSelf: 'stretch',
+    ...Typography.micro,
+    color: 'rgba(255,255,255,0.58)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: Spacing.md,
+  },
+  liveAudienceList: { width: '100%', gap: Spacing.xs },
+  liveAudienceRow: {
+    minHeight: 58,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  liveAudienceRowActive: {
+    borderColor: '#EF4444',
+    backgroundColor: 'rgba(239,68,68,0.12)',
+  },
+  liveAudienceIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  liveAudienceLabel: { ...Typography.bodyStrong, color: '#FFF' },
+  liveAudienceHint: { ...Typography.micro, color: 'rgba(255,255,255,0.52)', marginTop: 2 },
+  liveEmptyAudience: {
+    width: '100%',
+    minHeight: 70,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  liveEmptyAudienceText: {
+    ...Typography.caption,
+    color: 'rgba(255,255,255,0.62)',
+    textAlign: 'center',
+  },
+  livePermissionNote: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: Spacing.sm,
+  },
+  liveStartButton: {
+    minHeight: 52,
+    width: '100%',
+    borderRadius: Radii.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  liveStartButtonText: { ...Typography.bodyStrong, fontSize: 16 },
 });
