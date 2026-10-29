@@ -41,6 +41,10 @@ mock.module('@/data/api/keys', () => ({
 }));
 mock.module('@/data/api/client', () => ({
   ApiError: class ApiError extends Error {},
+  ACCESS_KEY: 'auth.access',
+  REFRESH_KEY: 'auth.refresh',
+  getBaseUrl: () => 'http://localhost:8080',
+  BASE_URL: 'http://localhost:8080',
 }));
 
 encryptedSecrets.set(
