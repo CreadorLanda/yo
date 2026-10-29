@@ -846,8 +846,6 @@ export default function ChatScreen() {
     return () => clearTimeout(tId);
   }, [messages.length, dandaraTyping, peerTyping, searchMode]);
 
-  const isGroup = !!chat?.isGroup || apiChatInfo?.type === 'group';
-
   // Android can enforce this with FLAG_SECURE through expo-screen-capture.
   // iOS and web do not provide an equivalent guarantee, so this is best
   // effort and the setting screen states that limitation explicitly.
@@ -881,7 +879,6 @@ export default function ChatScreen() {
   const iSentRequest = isPending && apiChatInfo?.created_by === currentUser?.id;
   // Requester may send one intro message while pending; recipient only accept/block.
   const hasMyIntro = messages.some((m) => m.fromMe);
-  const group = useGroup(isGroup ? id : undefined);
   const meIsGroupAdmin = !!group?.members.some(
     (member) => member.id === currentUser?.id && member.role === 'admin',
   );
