@@ -360,6 +360,7 @@ function Stage({
 
   // ── leaving, ending ──
   const [summary, setSummary] = useState<LiveStats | null>(null);
+  const ending = useRef(false);
   const left = useRef(false);
   const reportLeaving = useCallback(() => {
     if (left.current) return;
@@ -379,12 +380,22 @@ function Stage({
       {
         text: t('live.end_confirm'),
         style: 'destructive',
-        onPress: () => {
-          void endLive(liveId)
-            .then(() => liveStats(liveId))
-            .then(setSummary)
-            .catch(() => router.back())
-            .finally(() => void refreshRunningLives());
+        // Leave only once the server confirms: a request that failed would
+        // otherwise drop the host out of a broadcast that is still on air.
+        onPress: async () => {
+          if (ending.current) return;
+          ending.current = true;
+          try {
+            await endLive(liveId);
+            await refreshRunningLives();
+          } catch {
+            ending.current = false;
+            appAlert(t('live.end_title'), t('live.end_failed'));
+            return;
+          }
+          const stats = await liveStats(liveId).catch(() => null);
+          if (stats) setSummary(stats);
+          else router.back();
         },
       },
     ]);

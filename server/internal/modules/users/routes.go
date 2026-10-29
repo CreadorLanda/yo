@@ -9,6 +9,8 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	g.GET("/me", c.GetMe)
 	g.PATCH("/me", c.PatchMe)
 	g.DELETE("/me", c.DeleteMe)
+	g.POST("/me/ghost-mode", c.PostGhostMode)
+	g.DELETE("/me/ghost-mode", c.DeleteGhostMode)
 	g.GET("/availability", c.GetAvailability)
 	g.GET("/search", c.GetSearch)
 	g.GET("/by-username/:username", c.GetByUsername)

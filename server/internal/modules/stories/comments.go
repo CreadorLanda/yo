@@ -3,9 +3,11 @@ package stories
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
+	platformreactions "github.com/CreadorLanda/zwosocial/server/internal/platform/reactions"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -34,13 +36,15 @@ type StoryComment struct {
 	// Empty on anonymous comments. Not omitted-when-empty on purpose: a
 	// missing field and an anonymous author should look the same to a client
 	// that forgot to check IsAnonymous.
-	AuthorID     string    `json:"author_id"`
-	AuthorName   string    `json:"author_name"`
-	AuthorUser   string    `json:"author_username"`
-	AuthorAvatar string    `json:"author_avatar"`
-	IsAnonymous  bool      `json:"is_anonymous"`
-	IsMine       bool      `json:"is_mine"`
-	CreatedAt    time.Time `json:"created_at"`
+	AuthorID     string     `json:"author_id"`
+	AuthorName   string     `json:"author_name"`
+	AuthorUser   string     `json:"author_username"`
+	AuthorAvatar string     `json:"author_avatar"`
+	IsAnonymous  bool       `json:"is_anonymous"`
+	IsMine       bool       `json:"is_mine"`
+	CreatedAt    time.Time  `json:"created_at"`
+	Reactions    []Reaction `json:"reactions"`
+	MyReactions  []string   `json:"my_reactions"`
 }
 
 // ── repository ──────────────────────────────────────────────────────────────
@@ -78,6 +82,74 @@ func (r *Repository) listComments(ctx context.Context, storyID, viewer uuid.UUID
 			return nil, err
 		}
 		out = append(out, c)
+		c.Reactions, _ = r.commentReactions(ctx, c.ID)
+		c.MyReactions, _ = r.myCommentReactions(ctx, c.ID, viewer)
+		out[len(out)-1] = c
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) commentContext(ctx context.Context, id int64) (uuid.UUID, error) {
+	var storyID uuid.UUID
+	err := r.db.QueryRow(ctx, `SELECT story_id FROM story_comments WHERE id = $1`, id).Scan(&storyID)
+	return storyID, err
+}
+
+func (r *Repository) setCommentReactions(ctx context.Context, id int64, user uuid.UUID, emojis []string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, fmt.Sprintf("story-comment-reaction:%d:%s", id, user)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM story_comment_reactions WHERE comment_id = $1 AND user_id = $2`, id, user); err != nil {
+		return err
+	}
+	for _, emoji := range emojis {
+		if _, err := tx.Exec(ctx, `INSERT INTO story_comment_reactions (comment_id, user_id, emoji) VALUES ($1,$2,$3)`, id, user, emoji); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) clearCommentReactions(ctx context.Context, id int64, user uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM story_comment_reactions WHERE comment_id = $1 AND user_id = $2`, id, user)
+	return err
+}
+
+func (r *Repository) commentReactions(ctx context.Context, id int64) ([]Reaction, error) {
+	rows, err := r.db.Query(ctx, `SELECT emoji, COUNT(*) FROM story_comment_reactions WHERE comment_id = $1 GROUP BY emoji ORDER BY COUNT(*) DESC`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Reaction
+	for rows.Next() {
+		var x Reaction
+		if err := rows.Scan(&x.Emoji, &x.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) myCommentReactions(ctx context.Context, id int64, user uuid.UUID) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT emoji FROM story_comment_reactions WHERE comment_id = $1 AND user_id = $2 ORDER BY created_at ASC`, id, user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var emoji string
+		if err := rows.Scan(&emoji); err != nil {
+			return nil, err
+		}
+		out = append(out, emoji)
 	}
 	return out, rows.Err()
 }
@@ -196,4 +268,25 @@ func (s *Service) DeleteComment(ctx context.Context, commentID int64, user uuid.
 		return ErrCommentNotFound
 	}
 	return s.repo.deleteComment(ctx, commentID)
+}
+
+func (s *Service) ReactComment(ctx context.Context, commentID int64, user uuid.UUID, emojis []string, clear bool) error {
+	storyID, err := s.repo.commentContext(ctx, commentID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrCommentNotFound
+		}
+		return err
+	}
+	if _, err := s.Get(ctx, storyID, user); err != nil {
+		return err
+	}
+	if clear {
+		return s.repo.clearCommentReactions(ctx, commentID, user)
+	}
+	normalized, err := platformreactions.NormalizeSet(emojis)
+	if err != nil {
+		return err
+	}
+	return s.repo.setCommentReactions(ctx, commentID, user, normalized)
 }

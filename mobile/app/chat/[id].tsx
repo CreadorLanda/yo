@@ -13,6 +13,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { allowScreenCaptureAsync, preventScreenCaptureAsync } from 'expo-screen-capture';
+import { openBrowserAsync } from 'expo-web-browser';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -76,6 +78,7 @@ import type { StickerDTO } from '@/data/api/stickers';
 import { noteStickerUsed, refreshStickerPacks, useStickerPacks } from '@/data/sticker-store';
 import { removeSticker, saveSticker } from '@/data/api/stickers';
 import { showToast } from '@/data/toast-store';
+import { MAX_REACTIONS_PER_ITEM, searchEmojiCatalogue } from '@/data/reactions';
 import { refreshGroup, useGroup } from '@/data/group-store';
 import {
   encodeMediaContent,
@@ -107,6 +110,7 @@ import {
   type RealtimeEvent,
   type ReactionDTO,
 } from '@/data/api/messages';
+import { displayChatName } from '@/data/chat-identity';
 import {
   CHATS,
   DANDARA,
@@ -289,7 +293,7 @@ export default function ChatScreen() {
     if (!apiChatInfo) return undefined;
     return {
       id: apiChatInfo.id,
-      name: apiChatInfo.title ?? 'Chat',
+      name: displayChatName(apiChatInfo, t('chats.saved_messages'), 'Chat'),
       username: apiChatInfo.peer_username
         ? `@${apiChatInfo.peer_username.replace(/^@/, '')}`
         : '',
@@ -300,6 +304,7 @@ export default function ChatScreen() {
       online: false,
       isGroup: apiChatInfo.type === 'group',
       isPending: apiChatInfo.status === 'pending',
+      isSelf: apiChatInfo.is_self,
       pinned: !!apiChatInfo.pinned_at,
       muted: !!apiChatInfo.muted_until,
     };
@@ -844,6 +849,17 @@ export default function ChatScreen() {
     return () => clearTimeout(tId);
   }, [messages.length, dandaraTyping, peerTyping, searchMode]);
 
+  // Android can enforce this with FLAG_SECURE through expo-screen-capture.
+  // iOS and web do not provide an equivalent guarantee, so this is best
+  // effort and the setting screen states that limitation explicitly.
+  useEffect(() => {
+    const key = id ? `chat:${id}` : undefined;
+    if (!key || !apiChatInfo?.privacy?.screenshot_protection_enabled) return;
+    void preventScreenCaptureAsync(key).catch(() => {});
+    return () => {
+      void allowScreenCaptureAsync(key).catch(() => {});
+    };
+  }, [id, apiChatInfo?.privacy?.screenshot_protection_enabled]);
   // Tell the notification builder which conversation is on screen, so it stays
   // quiet about this one. The server pushes to connected clients now; only the
   // client knows what the reader is actually looking at.
@@ -863,11 +879,49 @@ export default function ChatScreen() {
   }, [isGroup, id]);
   const isPending = apiChatInfo?.status === 'pending';
   const isBlocked = apiChatInfo?.status === 'blocked';
+  const isSelf = !!apiChatInfo?.is_self;
   const iSentRequest = isPending && apiChatInfo?.created_by === currentUser?.id;
   // Requester may send one intro message while pending; recipient only accept/block.
   const hasMyIntro = messages.some((m) => m.fromMe);
+  const meIsGroupAdmin = !!group?.members.some(
+    (member) => member.id === currentUser?.id && member.role === 'admin',
+  );
+  const canMessageByPolicy =
+    !apiChatInfo?.privacy ||
+    apiChatInfo.privacy.who_can_message === 'everyone' ||
+    !isGroup ||
+    meIsGroupAdmin;
   const canCompose =
-    !isBlocked && (!isPending || (iSentRequest && !hasMyIntro));
+    !isBlocked &&
+    canMessageByPolicy &&
+    (!isPending || (iSentRequest && !hasMyIntro));
+  const canCallByPolicy =
+    !apiChatInfo?.privacy ||
+    apiChatInfo.privacy.who_can_call === 'everyone' ||
+    !isGroup ||
+    meIsGroupAdmin;
+  const isMessageTypeAllowed = (messageType: string) =>
+    !apiChatInfo?.privacy?.allowed_message_types?.length ||
+    apiChatInfo.privacy.allowed_message_types.includes(messageType);
+
+  const refuseMessageType = (messageType: string): boolean => {
+    if (isMessageTypeAllowed(messageType)) return false;
+    appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_message_type_body'));
+    return true;
+  };
+
+  const handleLinkPress = (url: string) => {
+    const open = () => void openBrowserAsync(url).catch(() => {});
+    if (apiChatInfo?.privacy?.links_require_confirmation) {
+      appAlert(t('chat.privacy_link_title'), t('chat.privacy_link_body'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('chat.privacy_link_open'), onPress: open },
+      ]);
+      return;
+    }
+    open();
+  };
+
   // Broadcast typing while the user is composing.
   useEffect(() => {
     if (!id || !canCompose || isAIChat) return;
@@ -982,6 +1036,7 @@ export default function ChatScreen() {
   };
 
   const beginRecording = async () => {
+    if (refuseMessageType('audio')) return;
     if (!recordPermRef.current) {
       const r = await requestRecordingPermissionsAsync().catch(() => null);
       recordPermRef.current = !!r?.granted;
@@ -1149,20 +1204,22 @@ export default function ChatScreen() {
   const handleReact = (msgId: string, emoji: string) => {
     const mid = serverMessageId(msgId);
     const existing = reactionsMap[msgId] ?? [];
-    const mine = existing.find((r) => r.mine);
-    const removing = mine?.emoji === emoji;
+	const mine = existing.filter((r) => r.mine).map((r) => r.emoji);
+	const removing = mine.includes(emoji);
+	if (!removing && mine.length >= MAX_REACTIONS_PER_ITEM) {
+	  appAlert(t('stories.reactions'), t('stories.reaction_limit'));
+	  return;
+	}
 
     // Optimistic UI
     setReactionsMap((prev) => {
       const list = [...(prev[msgId] ?? [])];
-      const mineIdx = list.findIndex((r) => r.mine);
-      const myEmoji = mineIdx >= 0 ? list[mineIdx].emoji : null;
-
-      if (mineIdx >= 0) {
-        if (list[mineIdx].count <= 1) list.splice(mineIdx, 1);
-        else list[mineIdx] = { ...list[mineIdx], count: list[mineIdx].count - 1, mine: false };
-      }
-      if (myEmoji === emoji) return { ...prev, [msgId]: list };
+	  const mineIdx = list.findIndex((r) => r.mine && r.emoji === emoji);
+	  if (mineIdx >= 0) {
+	    if (list[mineIdx].count <= 1) list.splice(mineIdx, 1);
+	    else list[mineIdx] = { ...list[mineIdx], count: list[mineIdx].count - 1, mine: false };
+	    return { ...prev, [msgId]: list };
+	  }
 
       const idx = list.findIndex((r) => r.emoji === emoji);
       if (idx >= 0) list[idx] = { ...list[idx], count: list[idx].count + 1, mine: true };
@@ -1219,7 +1276,9 @@ export default function ChatScreen() {
   };
 
   const forwardFromMenu = () => {
-    if (menuTarget) setForwardTargets([menuTarget.msg]);
+    if (menuTarget && !apiChatInfo?.privacy?.forwarding_disabled) setForwardTargets([menuTarget.msg]);
+    else if (apiChatInfo?.privacy?.forwarding_disabled)
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
   };
 
   const editFromMenu = () => {
@@ -1301,9 +1360,11 @@ export default function ChatScreen() {
     (msgId: string) => {
       const msg = messages.find((m) => m.id === msgId);
       setViewerStart(null);
-      if (msg) setForwardTargets([msg]);
+      if (msg && !apiChatInfo?.privacy?.forwarding_disabled) setForwardTargets([msg]);
+      else if (apiChatInfo?.privacy?.forwarding_disabled)
+        appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
     },
-    [messages],
+    [apiChatInfo?.privacy?.forwarding_disabled, messages],
   );
 
   // ── Multi-select ─────────────────────────────────────────────────────────
@@ -1332,6 +1393,10 @@ export default function ChatScreen() {
     visible.filter((m) => selectedIds.has(m.id) && !m.deletedAt);
 
   const bulkForward = () => {
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     const list = selectedMessages();
     if (list.length === 0) return;
     setForwardTargets(list);
@@ -1434,6 +1499,10 @@ export default function ChatScreen() {
   const forwardToStory = () => {
     const msg = forwardTargets[0];
     if (!msg) return;
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     setForwardTargets([]);
     clearSelection();
 
@@ -1451,6 +1520,10 @@ export default function ChatScreen() {
 
   const forwardTo = async (destChatId: string) => {
     if (forwardTargets.length === 0) return;
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     const dest = storeChats.find((c) => c.id === destChatId);
     const toSend = [...forwardTargets];
 
@@ -1480,6 +1553,8 @@ export default function ChatScreen() {
           forwardCount: msg.forwardCount ?? 0,
           sourceChannelId: msg.sourceChannelId,
           sourcePostId: msg.sourcePostId,
+          sourceChatId: msg.sourceChatId ?? id,
+          sourceMessageId: msg.sourceMessageId ?? serverMessageId(msg.id) ?? undefined,
           mediaIds: mediaId ? [mediaId] : [],
         });
       }
@@ -1509,6 +1584,7 @@ export default function ChatScreen() {
 
   const submitText = (text: string) => {
     if (!text) return;
+    if (!canCompose || refuseMessageType('text')) return;
     // If we're editing an existing message, update it in place and bail out.
     if (editingMsgId) {
       const editId = editingMsgId;
@@ -1595,7 +1671,7 @@ export default function ChatScreen() {
    * the server as a media object either way.
    */
   const sendSticker = async (sticker: StickerDTO) => {
-    if (!canCompose || !id) return;
+    if (!canCompose || !id || refuseMessageType('sticker')) return;
     setShowStickers(false);
     noteStickerUsed(sticker);
 
@@ -1640,7 +1716,7 @@ export default function ChatScreen() {
     captionOverride?: string,
     viewLimit?: number | null,
   ) => {
-    if (!canCompose) return;
+    if (!canCompose || refuseMessageType(asset.type === 'video' ? 'video' : 'image')) return;
     // The editor hands its caption in directly. Reading `draft` here would
     // see the value from before setDraft landed — React state is async, so
     // the caption was always empty on the first send.
@@ -1738,7 +1814,12 @@ export default function ChatScreen() {
 
   const openCamera = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
+    if (!perm.granted) {
+      // Camera denial must not discard the attachment flow. The gallery is a
+      // safe, explicit fallback and keeps the same encrypted send path.
+      await pickFromLibrary();
+      return;
+    }
     // No camera hardware (an emulator) makes the system picker throw rather
     // than cancel. The gallery is the way to attach something on that device.
     let result: ImagePicker.ImagePickerResult;
@@ -1818,6 +1899,7 @@ export default function ChatScreen() {
    * button; this is for music or a clip the user already has.
    */
   const pickAudio = async () => {
+    if (refuseMessageType('audio')) return;
     const result = await DocumentPicker.getDocumentAsync({
       type: 'audio/*',
       copyToCacheDirectory: true,
@@ -1894,6 +1976,8 @@ export default function ChatScreen() {
    * body, using the message_type the schema already allowed.
    */
   const sendAttachment = async (attachment: MessageAttachment) => {
+    const wireType = ATTACHMENT_WIRE_TYPE[attachment.kind];
+    if (wireType && refuseMessageType(wireType)) return;
     const reply = replyTarget;
     appendMessage({
       text: '',
@@ -1908,7 +1992,6 @@ export default function ChatScreen() {
     // Documents upload their bytes separately and are sent there.
     if (!id || isAIChat || attachment.kind === 'document') return;
 
-    const wireType = ATTACHMENT_WIRE_TYPE[attachment.kind];
     if (!wireType) return;
     try {
       await apiSendMessage(
@@ -1924,6 +2007,7 @@ export default function ChatScreen() {
   };
 
   const pickDocument = async () => {
+    if (refuseMessageType('document')) return;
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
@@ -2504,11 +2588,13 @@ export default function ChatScreen() {
                   <Text style={[styles.peerStatus, { color: colors.textSecondary }]} numberOfLines={1}>
                     {isAIChat
                       ? t('chat.ai_subtitle')
-                      : isGroup
-                        ? t('group.members_count', { count: memberCount })
-                        : chat?.online
-                          ? t('chats.online')
-                          : t('chats.last_seen')}
+                      : isSelf
+                        ? t('chats.saved_messages_hint')
+                        : isGroup
+                          ? t('group.members_count', { count: memberCount })
+                          : chat?.online
+                            ? t('chats.online')
+                            : t('chats.last_seen')}
                   </Text>
                 </View>
               </View>
@@ -2523,7 +2609,7 @@ export default function ChatScreen() {
               >
                 <Ionicons name="search" size={20} color={colors.text} />
               </Pressable>
-              {!isAIChat ? (
+              {!isAIChat && canCallByPolicy ? (
                 <Pressable
                   hitSlop={8}
                   style={styles.iconBtn}
@@ -2543,6 +2629,7 @@ export default function ChatScreen() {
                   <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
                 </Pressable>
               ) : (
+                canCallByPolicy ? (
                 <>
                   <Pressable
                     hitSlop={8}
@@ -2561,6 +2648,7 @@ export default function ChatScreen() {
                     <Ionicons name="call-outline" size={20} color={colors.text} />
                   </Pressable>
                 </>
+                ) : null
               )}
             </View>
           </View>
@@ -2648,6 +2736,7 @@ export default function ChatScreen() {
                   onViewOnce={handleViewOnce}
                   revealed={revealed}
                   onRetry={handleRetry}
+                onLinkPress={handleLinkPress}
                 />
               )
             }
@@ -3200,6 +3289,7 @@ function HighlightedText({
   style,
   highlight,
   mentionColor,
+  onLinkPress,
 }: {
   text: string;
   query: string;
@@ -3207,10 +3297,11 @@ function HighlightedText({
   style: StyleProp<TextStyle>;
   highlight: string;
   mentionColor?: string;
+  onLinkPress?: (url: string) => void;
 }) {
   const q = (query ?? '').trim().toLowerCase();
   const hasMentions = !!mentions && mentions.length > 0;
-  if (!q && !hasMentions) return <Text style={style}>{text}</Text>;
+  if (!q && !hasMentions && !onLinkPress) return <Text style={style}>{text}</Text>;
 
   // 1) Split by mentions first so each "@user" is its own segment we won't recolor.
   const mentionRe = hasMentions ? new RegExp(`@(?:${mentions!.join('|')})\\b`, 'gi') : null;
@@ -3253,6 +3344,30 @@ function HighlightedText({
     if (last < tok.text.length) parts.push({ text: tok.text.slice(last), kind: 'plain' });
   }
 
+  const linkRe = /https?:\/\/[^\s]+/gi;
+  const renderText = (value: string, key: string | number, style?: TextStyle) => {
+    if (!onLinkPress) return <Text key={key} style={style}>{value}</Text>;
+    const chunks = value.split(linkRe);
+    const matches = value.match(linkRe) ?? [];
+    return (
+      <Text key={key} style={style}>
+        {chunks.map((chunk, index) => (
+          <Text key={`${key}-${index}`}>
+            {chunk}
+            {matches[index] ? (
+              <Text
+                onPress={() => onLinkPress(matches[index])}
+                style={{ textDecorationLine: 'underline' }}
+              >
+                {matches[index]}
+              </Text>
+            ) : null}
+          </Text>
+        ))}
+      </Text>
+    );
+  };
+
   return (
     <Text style={style}>
       {parts.map((p, i) =>
@@ -3265,7 +3380,7 @@ function HighlightedText({
             {p.text}
           </Text>
         ) : (
-          <Text key={i}>{p.text}</Text>
+          renderText(p.text, i)
         ),
       )}
     </Text>
@@ -3765,6 +3880,7 @@ function BubbleBody({
   onOpenMedia,
   onLongPressMedia,
   onRetry,
+  onLinkPress,
 }: {
   msg: GroupedMessage;
   mine: boolean;
@@ -3778,6 +3894,7 @@ function BubbleBody({
   onOpenMedia?: (msg: Message) => void;
   onLongPressMedia?: () => void;
   onRetry?: (msgId: string) => void;
+  onLinkPress?: (url: string) => void;
 }) {
   const { colors, chat, metrics, layout } = useTheme();
   const isAudio = msg.media?.type === 'audio';
@@ -3997,6 +4114,7 @@ function BubbleBody({
                 fontWeight: mine && layout.boldOutgoing ? '700' : '400',
               },
             ]}
+            onLinkPress={onLinkPress}
           />
           <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
         </View>
@@ -4026,6 +4144,7 @@ function Bubble({
   revealed,
   onOpenMedia,
   onRetry,
+  onLinkPress,
 }: {
   msg: GroupedMessage;
   isGroup: boolean;
@@ -4043,6 +4162,7 @@ function Bubble({
   revealed: Set<string>;
   onOpenMedia: (msg: Message) => void;
   onRetry?: (msgId: string) => void;
+  onLinkPress?: (url: string) => void;
 }) {
   const { colors, chat: chrome, layout, metrics } = useTheme();
   const mine = msg.fromMe;
@@ -4207,6 +4327,7 @@ function Bubble({
               onOpenMedia={onOpenMedia}
               onLongPressMedia={handleLongPress}
               onRetry={onRetry}
+              onLinkPress={onLinkPress}
             />
           </Pressable>
 
@@ -4285,6 +4406,8 @@ function ReactionMenu({
   const { msg, rect, mine } = target;
 
   const [visible, setVisible] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -4324,7 +4447,7 @@ function ReactionMenu({
     Number(showDelete);
   const menuH = menuItems * MENU_ITEM_HEIGHT;
   const menuW = 230;
-  const barW = CHAT_REACTIONS.length * 46 + 14;
+  const barW = (CHAT_REACTIONS.length + 1) * 46 + 14;
 
   // Vertical placement — shift the bubble so the bar and menu stay on-screen.
   const topSafe = insets.top + 8;
@@ -4363,7 +4486,7 @@ function ReactionMenu({
     ],
   }));
 
-  const myEmoji = reactions.find((r) => r.mine)?.emoji ?? null;
+  const myEmojis = new Set(reactions.filter((r) => r.mine).map((r) => r.emoji));
 
   return (
     <Modal transparent statusBarTranslucent animationType="fade" visible={visible} onRequestClose={close}>
@@ -4392,7 +4515,7 @@ function ReactionMenu({
         ]}
       >
         {CHAT_REACTIONS.map((emoji) => {
-          const active = myEmoji === emoji;
+          const active = myEmojis.has(emoji);
           return (
             <Pressable
               key={emoji}
@@ -4410,7 +4533,41 @@ function ReactionMenu({
             </Pressable>
           );
         })}
+        <Pressable onPress={() => setPickerOpen(true)} style={styles.menuBarBtn} accessibilityLabel="More reactions">
+          <Ionicons name="add" size={22} color={colors.text} />
+        </Pressable>
       </Animated.View>
+
+      <Modal transparent visible={pickerOpen} animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.emojiPickerScrim} onPress={() => setPickerOpen(false)}>
+          <Pressable style={[styles.emojiPicker, { backgroundColor: colors.surface }]} onPress={() => {}}>
+            <Text style={[styles.emojiPickerTitle, { color: colors.text }]}>Reactions</Text>
+            <TextInput
+              value={pickerQuery}
+              onChangeText={setPickerQuery}
+              placeholder="Search emoji"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.emojiPickerSearch, { color: colors.text, borderColor: colors.border }]}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <ScrollView contentContainerStyle={styles.emojiPickerGrid}>
+              {searchEmojiCatalogue(pickerQuery).map(({ emoji }) => (
+                <Pressable
+                  key={emoji}
+                  onPress={() => {
+                    onReact(emoji);
+                    if (!myEmojis.has(emoji)) setPickerOpen(false);
+                  }}
+                  style={[styles.emojiPickerCell, myEmojis.has(emoji) && { backgroundColor: `${colors.primary}22` }]}
+                >
+                  <Text style={styles.emojiPickerEmoji}>{emoji}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Cloned message bubble — stays crisp above the blur */}
       <Animated.View
@@ -4837,6 +4994,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   menuBarEmoji: { fontSize: 27 },
+	 emojiPickerScrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+	 emojiPicker: { maxHeight: '70%', borderTopLeftRadius: Radii.xl, borderTopRightRadius: Radii.xl, padding: Spacing.lg },
+	 emojiPickerTitle: { ...Typography.h3, marginBottom: Spacing.sm },
+	 emojiPickerSearch: { height: 42, borderWidth: 1, borderRadius: Radii.md, paddingHorizontal: Spacing.md, marginBottom: Spacing.md },
+	 emojiPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, paddingBottom: Spacing.xl },
+	 emojiPickerCell: { width: 44, height: 44, borderRadius: Radii.sm, alignItems: 'center', justifyContent: 'center' },
+	 emojiPickerEmoji: { fontSize: 25 },
 
   menuCard: {
     position: 'absolute',

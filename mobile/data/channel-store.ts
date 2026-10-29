@@ -2,7 +2,6 @@ import { useSyncExternalStore } from 'react';
 
 import {
   addPostComment as apiAddComment,
-  clearPostReaction as apiClearReact,
   createChannelApi,
   createChannelPost as apiCreatePost,
   followChannel as apiFollow,
@@ -12,10 +11,11 @@ import {
   mapChannelDTO,
   mapPostDTO,
   patchChannel as apiPatchChannel,
-  reactToPost as apiReact,
+  setPostReactions as apiSetReactions,
   unfollowChannel as apiUnfollow,
   type ChannelCommentDTO,
   type ChannelDTO,
+  type ChannelPostDTO,
 } from '@/data/api/channels';
 import {
   type Channel,
@@ -23,6 +23,10 @@ import {
   type ChannelComment,
   type ChannelPost,
 } from './mock';
+import type { GameMessagePayload } from '@/data/game';
+import { comparePostsNewestFirst } from './channel-post-order';
+
+export { comparePostsNewestFirst } from './channel-post-order';
 
 function isUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -36,6 +40,8 @@ function mapCommentDTO(c: ChannelCommentDTO): ChannelComment {
     anonymous: c.anonymous,
     authorName: c.anonymous ? undefined : c.author_name || undefined,
     likes: 0,
+    reactions: (c.reactions ?? []).map((r) => ({ emoji: r.emoji, count: r.count })),
+    myReactions: c.my_emojis ?? [],
   };
 }
 
@@ -164,6 +170,19 @@ export async function refreshChannel(id: string): Promise<ManagedChannel | undef
   } catch {
     return getChannel(id);
   }
+}
+
+/** Merge a server-announced post without a second fetch. */
+export function mergeChannelPost(channelId: string, dto: ChannelPostDTO): void {
+  if (dto.channel_id !== channelId) return;
+  const mapped = mapPostDTO(dto);
+  channels = channels.map((c) => {
+    if (c.id !== channelId) return c;
+    const posts = [mapped, ...c.posts.filter((p) => p.id !== mapped.id)];
+    posts.sort(comparePostsNewestFirst);
+    return { ...c, posts };
+  });
+  emit();
 }
 
 function mergeDTO(dto: ChannelDTO) {
@@ -394,7 +413,29 @@ export type AddPostInput = {
   type?: ChannelPost['type'];
   mediaUri?: string;
   gameKind?: ChannelPost['gameKind'];
+  gamePayload?: GameMessagePayload;
 };
+
+/** Publish an event without optimistic state; game events are append-only. */
+export async function publishChannelPost(
+  channelId: string,
+  input: AddPostInput,
+): Promise<ChannelPost> {
+  if (!isUUID(channelId)) throw new Error('channel_not_persisted');
+  let mediaUrl = input.mediaUri;
+  if (mediaUrl?.includes('/api/media/')) {
+    mediaUrl = mediaUrl.slice(mediaUrl.indexOf('/api/media/'));
+  }
+  const dto = await apiCreatePost(channelId, {
+    text: input.text.trim(),
+    post_type: input.type,
+    media_url: mediaUrl,
+    game_payload: input.gamePayload,
+  });
+  const mapped = mapPostDTO(dto);
+  mergeChannelPost(channelId, dto);
+  return mapped;
+}
 
 export function addChannelPost(
   channelId: string,
@@ -416,6 +457,7 @@ export function addChannelPost(
     type: input.type ?? (input.mediaUri ? 'image' : 'text'),
     mediaUri: input.mediaUri,
     gameKind: input.gameKind,
+    gamePayload: input.gamePayload,
   };
 
   channels = channels.map((c) =>
@@ -434,6 +476,7 @@ export function addChannelPost(
       text: post.text,
       post_type: post.type,
       media_url: mediaUrl,
+      game_payload: post.gamePayload,
     })
       .then((dto) => {
         const mapped = mapPostDTO(dto);
@@ -452,20 +495,20 @@ export function addChannelPost(
   return post;
 }
 
-/** Optimistic reaction toggle; persists for UUID posts. */
-export function setPostReaction(
+/** Optimistic reaction replacement; persists for UUID posts. */
+export function setPostReactions(
   channelId: string,
   postId: string,
-  emoji: string | null,
+  emojis: readonly string[],
 ): void {
-  let previous: string | null | undefined;
+  let previous: string[] = [];
   channels = channels.map((c) => {
     if (c.id !== channelId) return c;
     return {
       ...c,
       posts: c.posts.map((post) => {
         if (post.id !== postId) return post;
-        previous = post.myReaction ?? null;
+        previous = post.myReactions ?? (post.myReaction ? [post.myReaction] : []);
         const reactions = [...(post.reactions ?? [])];
         const apply = (em: string, delta: number) => {
           const i = reactions.findIndex((r) => r.emoji === em);
@@ -477,12 +520,13 @@ export function setPostReaction(
           if (n <= 0) reactions.splice(i, 1);
           else reactions[i] = { ...reactions[i], count: n };
         };
-        if (previous) apply(previous, -1);
-        if (emoji && emoji !== previous) apply(emoji, 1);
+        for (const oldEmoji of previous) if (!emojis.includes(oldEmoji)) apply(oldEmoji, -1);
+        for (const newEmoji of emojis) if (!previous.includes(newEmoji)) apply(newEmoji, 1);
         return {
           ...post,
           reactions,
-          myReaction: emoji && emoji !== previous ? emoji : null,
+          myReaction: emojis[0] ?? null,
+          myReactions: [...emojis],
         };
       }),
     };
@@ -490,12 +534,14 @@ export function setPostReaction(
   emit();
 
   if (!isUUID(postId)) return;
-  const nextEmoji = emoji && emoji !== previous ? emoji : null;
-  if (nextEmoji) {
-    apiReact(postId, nextEmoji).catch(() => {});
-  } else if (previous) {
-    apiClearReact(postId).catch(() => {});
-  }
+  apiSetReactions(postId, emojis).catch(() => {});
+}
+
+export function setPostReaction(channelId: string, postId: string, emoji: string | null): void {
+  const post = getChannel(channelId)?.posts.find((item) => item.id === postId);
+  const current = post?.myReactions ?? (post?.myReaction ? [post.myReaction] : []);
+  const next = emoji && !current.includes(emoji) ? [...current, emoji] : current.filter((item) => item !== emoji);
+  setPostReactions(channelId, postId, next.slice(0, 2));
 }
 
 /** Load comments for a post from the API and merge into the store. */

@@ -63,6 +63,8 @@ export function GameRoom({
   onSend,
   chat,
   onSendText,
+  onShareScore,
+  canPlay = true,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -73,6 +75,10 @@ export function GameRoom({
   /** The group's ordinary messages, oldest first. */
   chat: GameChatMessage[];
   onSendText: (text: string) => void;
+  /** Share the final deterministic scoreboard in the surrounding surface. */
+  onShareScore?: (text: string) => void;
+  /** Surrounding surface permission for starting and advancing the stream. */
+  canPlay?: boolean;
 }) {
   const { colors } = useTheme();
   const memberIds = useMemo(() => sortedMemberIds(players.map((p) => p.id)), [players]);
@@ -87,13 +93,14 @@ export function GameRoom({
   const spinAnim = useRef(new Animated.Value(0)).current;
   const [spinIndex, setSpinIndex] = useState<number | null>(null);
 
-  const isMyTurn = !!me && state.active && state.currentPlayerId === me.id;
+  const isMyTurn = canPlay && !!me && state.active && state.currentPlayerId === me.id;
   const canWriteChallenge =
     state.active && state.choice != null && state.challenge == null && !isMyTurn;
   const challengeOpen = state.active && state.choice != null;
 
   const [draft, setDraft] = useState('');
   const [choicePending, setChoicePending] = useState<TruthOrDareChoice | null>(null);
+  const [scoreShared, setScoreShared] = useState(false);
 
   const resetLocal = () => {
     setWheelOpen(false);
@@ -101,6 +108,7 @@ export function GameRoom({
     setSpinIndex(null);
     setDraft('');
     setChoicePending(null);
+    setScoreShared(false);
   };
 
   // Sync local transient UI with a state reset (new game / end).
@@ -115,15 +123,34 @@ export function GameRoom({
   }, [visible, state.active]);
 
   const startGame = () => {
+    if (!canPlay) return;
     onSend({
       kind: 'game',
       game: 'truth-or-dare',
       action: 'start',
       seed: newSeed(),
       maxRounds: MAX_ROUNDS,
+      playerId: me?.id,
+      playerIds: memberIds,
     });
     setWheelOpen(true);
     setSpinIndex(null);
+  };
+
+  const joinGame = () => {
+    if (!canPlay || !me || state.playerIds.includes(me.id)) return;
+    onSend({ kind: 'game', game: 'truth-or-dare', action: 'join', playerId: me.id });
+  };
+
+  const shareScore = () => {
+    if (!onShareScore || scoreShared || !state.ended) return;
+    const scores = Object.entries(state.scoreboard)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([id, score]) => `${players.find((p) => p.id === id)?.name ?? id}: ${score}`)
+      .join(' · ');
+    const winner = players.find((p) => p.id === state.winnerId)?.name ?? '—';
+    onShareScore(`${t('game.score_shared')} ${winner} — ${scores}`);
+    setScoreShared(true);
   };
 
   const spinWheel = () => {
@@ -184,6 +211,7 @@ export function GameRoom({
   };
 
   const endGame = () => {
+    if (!canPlay) return;
     onSend({ kind: 'game', game: 'truth-or-dare', action: 'end' });
     resetLocal();
   };
@@ -267,7 +295,15 @@ export function GameRoom({
             <Text style={[styles.winnerSub, { color: colors.textSecondary }]}>
               {t('game.winner')}
             </Text>
-            <PrimaryButtonInline label={t('game.play_again')} onPress={startGame} />
+            {onShareScore ? (
+              <PrimaryButtonInline
+                label={scoreShared ? t('game.score_shared_done') : t('game.share_score')}
+                onPress={shareScore}
+                disabled={scoreShared}
+                variant="secondary"
+              />
+            ) : null}
+            {canPlay ? <PrimaryButtonInline label={t('game.play_again')} onPress={startGame} /> : null}
             <Pressable onPress={onClose} hitSlop={8}>
               <Text style={[styles.linkText, { color: colors.textSecondary }]}>
                 {t('common.close')}
@@ -277,7 +313,7 @@ export function GameRoom({
         ) : (
           <ScrollView contentContainerStyle={styles.body}>
             {/* Floating player tiles — Meet/Discord style */}
-            {state.active && (
+            {state.active && canPlay && (
               <View style={styles.tilesRow}>
                 {players.map((p) =>
                   tile(
@@ -309,6 +345,19 @@ export function GameRoom({
                     {t('game.need_two')}
                   </Text>
                 )}
+              </View>
+            ) : state.currentPlayerId == null ? (
+              <View style={styles.center}>
+                <Ionicons name="people" size={48} color={Palette.brand[400]} />
+                <Text style={[styles.startTitle, { color: colors.text }]}>
+                  {t('game.waiting_players')}
+                </Text>
+                <Text style={[styles.startHint, { color: colors.textSecondary }]}>
+                  {t('game.waiting_players_hint')}
+                </Text>
+                {canPlay && me && !state.playerIds.includes(me.id) ? (
+                  <PrimaryButtonInline label={t('game.join')} onPress={joinGame} />
+                ) : null}
               </View>
             ) : challengeOpen && state.challenge ? (
               /* ── Challenge card (revealed) ───────────────────────── */

@@ -33,6 +33,8 @@ export type ChatPreview = {
   isAI?: boolean;
   /** Pending friend request chat */
   isPending?: boolean;
+  /** Saved-messages chat owned by the current user. */
+  isSelf?: boolean;
 };
 
 /** The Dandara AI assistant — her own chat plus an in-chat helper. */
@@ -204,10 +206,11 @@ export type MessageAttachment =
       icon: string;
       /** Truth or Dare engine payload — present on real game messages. */
       game?: 'truth-or-dare';
-      action?: 'start' | 'choose' | 'challenge' | 'done' | 'end';
+      action?: 'start' | 'join' | 'choose' | 'challenge' | 'done' | 'end';
       seed?: string;
       maxRounds?: number;
       playerId?: string;
+      playerIds?: string[];
       choice?: 'truth' | 'dare';
       text?: string;
       winnerId?: string;
@@ -219,6 +222,8 @@ export type Message = {
   /** A forwarded channel post keeps a way back to where it came from. */
   sourceChannelId?: string;
   sourcePostId?: string;
+  sourceChatId?: string;
+  sourceMessageId?: number;
   id: string;
   text: string;
   fromMe: boolean;
@@ -424,6 +429,8 @@ export type StoryComment = {
   isMine?: boolean;
   /** Nested replies on the public comment thread. */
   replies?: StoryComment[];
+  reactions?: { emoji: string; count: number }[];
+  myReactions?: string[];
 };
 
 export type Story = {
@@ -550,13 +557,18 @@ export type ChannelPost = {
   text: string;
   mediaUri?: string;
   timestamp: string;
+  /** Server timestamp used as the first key when replaying channel events. */
+  createdAt?: string;
   views: number;
   reactions?: ChannelReaction[];
   myReaction?: string | null;
+  myReactions?: string[];
   comments?: ChannelComment[];
   /** Post kind — defaults to text/image based on mediaUri when omitted. */
   type?: ChannelPostType;
   gameKind?: ChannelGameKind;
+  /** Persisted event for the deterministic game stream. */
+  gamePayload?: import('@/data/game').GameMessagePayload;
   /** Live / voice hangout is currently active. */
 };
 
@@ -574,6 +586,8 @@ export type ChannelComment = {
   pending?: boolean;
   likes?: number;
   liked?: boolean;
+  reactions?: ChannelReaction[];
+  myReactions?: string[];
   replies?: ChannelComment[];
 };
 

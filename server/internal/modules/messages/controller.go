@@ -40,6 +40,16 @@ func (c *Controller) PostChat(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, CreateChatResponse{ChatID: chat.ID, Chat: chat})
 }
 
+// PostSelfChat — POST /chats/self
+func (c *Controller) PostSelfChat(ctx *gin.Context) {
+	chat, err := c.svc.CreateSelfChat(ctx.Request.Context(), middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, CreateChatResponse{ChatID: chat.ID, Chat: chat})
+}
+
 // GetChats — GET /chats?limit=&offset=&archived=
 func (c *Controller) GetChats(ctx *gin.Context) {
 	limit, _ := strconv.Atoi(ctx.Query("limit"))
@@ -298,6 +308,26 @@ func (c *Controller) PatchChatSettings(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, chat)
 }
 
+// PatchChatPrivacy — PATCH /chats/:id/privacy
+func (c *Controller) PatchChatPrivacy(ctx *gin.Context) {
+	chatID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_chat_id"})
+		return
+	}
+	var req ChatPrivacySettingsRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_body"})
+		return
+	}
+	chat, err := c.svc.UpdateChatPrivacy(ctx.Request.Context(), chatID, middleware.UserIDFrom(ctx), req)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, chat)
+}
+
 // PostClearChat — POST /chats/:id/clear
 func (c *Controller) PostClearChat(ctx *gin.Context) {
 	chatID, err := uuid.Parse(ctx.Param("id"))
@@ -424,7 +454,8 @@ func writeErr(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrChatNotFound), errors.Is(err, users.ErrNotFound), errors.Is(err, ErrMessageNotFound):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case errors.Is(err, ErrNotParticipant), errors.Is(err, ErrCannotAcceptOwn), errors.Is(err, ErrNotSender), errors.Is(err, ErrGroupPermission):
+	case errors.Is(err, ErrNotParticipant), errors.Is(err, ErrCannotAcceptOwn), errors.Is(err, ErrNotSender),
+		errors.Is(err, ErrGroupPermission), errors.Is(err, ErrPrivacyAdmin):
 		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrChatBlocked):
 		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
@@ -433,8 +464,12 @@ func writeErr(ctx *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidReceipt), errors.Is(err, ErrInvalidReport),
 		errors.Is(err, ErrInvalidTTL), errors.Is(err, ErrUnencryptedMessage),
 		errors.Is(err, ErrInvalidMessageType), errors.Is(err, ErrInvalidEnvelopeChat),
-		errors.Is(err, ErrInvalidMediaReference):
+		errors.Is(err, ErrInvalidMediaReference), errors.Is(err, ErrInvalidEmoji),
+		errors.Is(err, ErrTooManyReactions), errors.Is(err, ErrInvalidPrivacy):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrForwardingDisabled), errors.Is(err, ErrMessagingRestricted),
+		errors.Is(err, ErrMessageTypeNotAllowed):
+		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 	}

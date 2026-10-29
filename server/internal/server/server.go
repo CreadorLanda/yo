@@ -194,13 +194,13 @@ func New(cfg config.Config) (*Server, error) {
 		callRinger{repo: msgRepo, hub: hub, push: notifSvc},
 		callsHistory,
 		callTrace{repo: msgRepo, hub: hub},
-	).WithBlocks(callBlocks{blocks: blocksRepo, chats: msgRepo}))
+	).WithBlocks(callBlocks{blocks: blocksRepo, chats: msgRepo}).WithPrivacy(msgRepo))
 	calls.Register(authed, callsCtl)
 	blocks.Register(authed, blocksCtl)
 
 	// Discover channels + posts.
 	channelsRepo := channels.NewRepository(pg)
-	channelsCtl := channels.NewController(channels.NewService(channelsRepo))
+	channelsCtl := channels.NewController(channels.NewService(channelsRepo).WithBroadcaster(hub))
 	channels.Register(authed, channelsCtl)
 
 	// Live broadcasts. One person publishing to an audience that cannot

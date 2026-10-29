@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 
 import { AnonInbox } from '@/components/story/anon-inbox';
 import { ReactionBar } from '@/components/story/reaction-bar';
+import { ReactionTray } from '@/components/ui/reaction-tray';
 import { StoryVideo } from '@/components/story/story-video';
 import { Text, TextInput } from '@/components/ui/text';
 import { appAlert } from '@/data/dialog-store';
@@ -46,12 +47,14 @@ import {
   deleteStory,
   listComments,
   deleteComment,
+  setStoryCommentReactions,
   viewStory,
   writeAnon,
   type StoryCommentDTO,
 } from '@/data/api/stories';
 import type { Story, StoryComment } from '@/data/mock';
 import { toggleReaction } from '@/data/story-reactions';
+import { MAX_REACTIONS_PER_ITEM } from '@/data/reactions';
 import {
   bootstrapStories,
   ensureStory,
@@ -226,6 +229,8 @@ export default function StoryViewerScreen() {
       // Comes from the server, which knows the author of an anonymous
       // comment without telling anyone who it is.
       isMine: c.is_mine,
+      reactions: c.reactions ?? [],
+      myReactions: c.my_reactions ?? [],
     });
 
     // The server sends one flat list with parent_id; the sheet renders a
@@ -258,6 +263,21 @@ export default function StoryViewerScreen() {
    * that appears to work and silently didn't is worse than one that visibly
    * failed.
    */
+  const toggleStoryCommentReaction = (commentId: number, emoji: string) => {
+    let nextForApi: string[] | undefined;
+    setServerComments((prev) => prev.map((comment) => {
+      if (comment.id !== commentId) return comment;
+      const current = comment.my_reactions ?? [];
+      const next = current.includes(emoji)
+        ? current.filter((item) => item !== emoji)
+        : current.length >= MAX_REACTIONS_PER_ITEM ? current : [...current, emoji];
+      if (next.length === current.length && next.every((item, i) => item === current[i])) return comment;
+      nextForApi = next;
+      return { ...comment, my_reactions: next };
+    }));
+    if (nextForApi) void setStoryCommentReactions(commentId, nextForApi);
+  };
+
   const removeComment = (commentId: number) => {
     const snapshot = serverComments;
     setServerComments((prev) => prev.filter((c) => c.id !== commentId && c.parent_id !== commentId));
@@ -369,6 +389,11 @@ export default function StoryViewerScreen() {
     if (!story) return;
     const mine = story.myReactions ?? [];
     const adding = !mine.includes(emoji);
+    if (adding && mine.length >= MAX_REACTIONS_PER_ITEM) {
+      setToast(t('stories.reaction_limit'));
+      setTimeout(() => setToast(null), 1800);
+      return;
+    }
     if (adding) {
       setReactBurst(emoji);
       setTimeout(() => setReactBurst(null), 700);
@@ -895,6 +920,7 @@ export default function StoryViewerScreen() {
         // only remove what they wrote.
         canModerate={!!story.isOwn}
         onDeleteComment={removeComment}
+        onReact={toggleStoryCommentReaction}
         onReply={(text, anonymous) => {
           if (!text.trim()) return;
           postComment(text, anonymous, replyTo?.id);
@@ -999,6 +1025,7 @@ function CommentsSheet({
   onCancelReplyTo,
   canModerate,
   onDeleteComment,
+  onReact,
 }: {
   visible: boolean;
   story: Story;
@@ -1013,6 +1040,7 @@ function CommentsSheet({
   /** You are the story's author, so you may remove anyone's comment. */
   canModerate: boolean;
   onDeleteComment: (commentId: number) => void;
+  onReact: (commentId: number, emoji: string) => void;
 }) {
   const [draft, setDraft] = useState('');
   const [anon, setAnon] = useState(false);
@@ -1059,6 +1087,7 @@ function CommentsSheet({
                 onReplyTo={onReplyTo}
                 canModerate={canModerate}
                 onDelete={onDeleteComment}
+                onReact={onReact}
               />
             )}
           />
@@ -1152,15 +1181,18 @@ function CommentRow({
   onReplyTo,
   canModerate,
   onDelete,
+  onReact,
 }: {
   comment: StoryComment;
   onReplyTo: (id: number, author: string) => void;
   canModerate: boolean;
   onDelete: (commentId: number) => void;
+  onReact: (commentId: number, emoji: string) => void;
 }) {
   // Optimistic rows carry a `local-…` id the server has never seen; a reply
   // to one would be orphaned, so it cannot be a reply target until it lands.
   const numericId = /^\d+$/.test(comment.id) ? Number(comment.id) : null;
+  const [reactionOpen, setReactionOpen] = useState(false);
 
   /**
    * Long press to delete — the same gesture as a message, and out of the way
@@ -1215,6 +1247,17 @@ function CommentRow({
             <Text style={styles.replyBtnText}>{t('stories.reply_to_comment')}</Text>
           </Pressable>
         ) : null}
+        {numericId != null ? (
+          <Pressable onPress={() => setReactionOpen(true)} hitSlop={6} style={styles.replyBtn}>
+            <Text style={styles.replyBtnText}>{comment.myReactions?.[0] ?? '＋'}</Text>
+          </Pressable>
+        ) : null}
+        <ReactionTray
+          visible={reactionOpen}
+          activeEmoji={comment.myReactions?.[0]}
+          onSelect={(emoji) => onReact(numericId ?? 0, emoji)}
+          onClose={() => setReactionOpen(false)}
+        />
         {comment.replies?.map((r) => (
           <View key={r.id} style={styles.nestedReply}>
             <Image source={{ uri: r.avatarUri }} style={styles.nestedAvatar} contentFit="cover" />

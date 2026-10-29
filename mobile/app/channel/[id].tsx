@@ -29,9 +29,15 @@ import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { Palette, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { CachedImage } from '@/components/ui/cached-image';
 import { appAlert, appPrompt } from '@/data/dialog-store';
-import { deleteChannelPost, editChannelPost } from '@/data/api/channels';
+import {
+  deleteChannelPost,
+  editChannelPost,
+  setCommentReactions,
+  type ChannelPostDTO,
+} from '@/data/api/channels';
 import { ForwardPicker } from '@/components/chat/forward-picker';
-import { sendMessage as apiSendMessage } from '@/data/api/messages';
+import { connectRealtime, sendMessage as apiSendMessage } from '@/data/api/messages';
+import { displayChatName } from '@/data/chat-identity';
 import { refreshChats, useChats } from '@/data/chat-store';
 import { getGroup, type GroupMemberDTO } from '@/data/api/groups';
 import {
@@ -55,14 +61,21 @@ import {
   addCommentToPost,
   canManage,
   canPublish,
+  comparePostsNewestFirst,
   loadPostComments,
+  mergeChannelPost,
+  publishChannelPost,
   refreshChannel,
-  setPostReaction,
+  setPostReactions,
   toggleFollow,
   useChannel,
   useIsFollowing,
+  type AddPostInput,
 } from '@/data/channel-store';
 import { type ChannelComment, type ChannelPost } from '@/data/mock';
+import { newSeed, parseGamePayload, type GameMessagePayload } from '@/data/game';
+import { GameRoom, type GamePlayer } from '@/components/game/game-room';
+import { MAX_REACTIONS_PER_ITEM } from '@/data/reactions';
 import { getCurrentUser } from '@/data/auth-store';
 import { useProfile } from '@/data/profile-store';
 import { refreshRunningLives, useRunningLives } from '@/data/live-store';
@@ -122,6 +135,7 @@ export default function ChannelScreen() {
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [gameOpen, setGameOpen] = useState(false);
 
   const actionBarWidth = Math.min(ACTION_BAR_WIDTH, screenWidth - Spacing.lg * 2);
   const actionBarPosition = useMemo(() => {
@@ -153,9 +167,71 @@ export default function ChannelScreen() {
     void refreshRunningLives();
   }, [id]);
 
+  // Channel posts use the same authenticated user-scoped socket as chats.
+  // The server emits only after the insert commits, so every participant
+  // replays the same append-only game stream instead of relying on a reload.
+  useEffect(() => {
+    if (!id || !meId) return;
+    let closed = false;
+    let socket: WebSocket | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      connectRealtime((event) => {
+        if (event.type !== 'channel.post.new' || event.chat_id !== id || !event.payload) return;
+        mergeChannelPost(id, event.payload as ChannelPostDTO);
+      }, () => {
+        if (!closed) retry = setTimeout(connect, 2500);
+      }).then((next) => {
+        if (closed) {
+          next?.close();
+          return;
+        }
+        socket = next;
+      }).catch(() => {
+        if (!closed) retry = setTimeout(connect, 2500);
+      });
+    };
+    connect();
+    return () => {
+      closed = true;
+      if (retry) clearTimeout(retry);
+      socket?.close();
+    };
+  }, [id, meId]);
+
   useEffect(() => {
     setPosts(channel?.posts ?? []);
   }, [channel, channel?.posts]);
+
+  const chronologicalPosts = useMemo(
+    () => [...posts].sort(comparePostsNewestFirst).reverse(),
+    [posts],
+  );
+  const gamePayloads = useMemo<GameMessagePayload[]>(
+    () =>
+      chronologicalPosts.flatMap((post) => {
+        const gameEvent = parseGamePayload(post.gamePayload);
+        return gameEvent ? [gameEvent] : [];
+      }),
+    [chronologicalPosts],
+  );
+  const gamePlayers = useMemo<GamePlayer[]>(() => {
+    const ids = new Set<string>();
+    for (const payload of gamePayloads) {
+      if (payload.action === 'start') {
+        payload.playerIds?.forEach((playerId) => ids.add(playerId));
+        if (payload.playerId) ids.add(payload.playerId);
+      } else if ('playerId' in payload) {
+        ids.add(payload.playerId);
+      }
+    }
+    if (meId) ids.add(meId);
+    return [...ids].sort().map((playerId) => ({
+      id: playerId,
+      name: playerId === meId ? myName : playerId.slice(0, 8),
+    }));
+  }, [gamePayloads, meId, myName]);
 
   const actionPost = useMemo(
     () => posts.find((post) => post.id === actionPostId),
@@ -170,7 +246,10 @@ export default function ChannelScreen() {
 
   // The store and the API both work newest-first; only the view is
   // chronological, so nothing else has to care about the direction.
-  const orderedPosts = useMemo(() => [...posts].reverse(), [posts]);
+  const orderedPosts = useMemo(
+    () => chronologicalPosts.filter((post) => post.type !== 'game' || post.gamePayload?.action === 'start'),
+    [chronologicalPosts],
+  );
   const listRef = useRef<FlatList<ChannelPost>>(null);
 
   // The whole channel's media, so the viewer swipes across it rather than
@@ -196,7 +275,7 @@ export default function ChannelScreen() {
    * Offering an action the server will refuse is worse than not offering it.
    */
   const canMutatePost = (post: ChannelPost) =>
-    (!!meId && post.authorId === meId) || manageOk;
+    post.type !== 'game' && ((!!meId && post.authorId === meId) || manageOk);
 
   const mutationFailed = () =>
     appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
@@ -332,7 +411,7 @@ export default function ChannelScreen() {
         sourcePostId: post.id,
       });
       await refreshChats();
-      appAlert(t('chat.forward_sent', { name: dest?.title ?? '' }));
+      appAlert(t('chat.forward_sent', { name: dest ? displayChatName(dest, t('chats.saved_messages'), '') : '' }));
     } catch {
       appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
     }
@@ -380,9 +459,14 @@ export default function ChannelScreen() {
 
   const handleReaction = (emoji: string) => {
     if (!actionPostId || !channel) return;
-    const current = actionPost?.myReaction ?? null;
-    // Toggle off when re-selecting the same emoji.
-    setPostReaction(channel.id, actionPostId, current === emoji ? null : emoji);
+    const current = actionPost?.myReactions ?? (actionPost?.myReaction ? [actionPost.myReaction] : []);
+    const next = current.includes(emoji)
+      ? current.filter((item) => item !== emoji)
+      : current.length >= MAX_REACTIONS_PER_ITEM
+        ? current
+        : [...current, emoji];
+    if (next.length === current.length && next.every((item, index) => item === current[index])) return;
+    setPostReactions(channel.id, actionPostId, next);
     // Mirror into local posts for snappy UI before store re-emit.
     updatePost(actionPostId, (post) => {
       const reactions = [...(post.reactions ?? [])];
@@ -396,12 +480,13 @@ export default function ChannelScreen() {
         if (n <= 0) reactions.splice(i, 1);
         else reactions[i] = { ...reactions[i], count: n };
       };
-      if (current) apply(current, -1);
-      if (current !== emoji) apply(emoji, 1);
+      for (const oldEmoji of current) if (!next.includes(oldEmoji)) apply(oldEmoji, -1);
+      for (const newEmoji of next) if (!current.includes(newEmoji)) apply(newEmoji, 1);
       return {
         ...post,
         reactions,
-        myReaction: current === emoji ? null : emoji,
+        myReaction: next[0] ?? null,
+        myReactions: next,
       };
     });
     closeActionBar();
@@ -502,12 +587,20 @@ export default function ChannelScreen() {
     setCommentReplyTo(null);
   };
 
-  const toggleCommentLike = (commentId: string) => {
+  const toggleCommentReaction = (commentId: string, emoji: string) => {
     if (!commentPostId) return;
+    let nextForApi: string[] | undefined;
     const flip = (c: ChannelComment): ChannelComment => {
       if (c.id === commentId) {
-        const liked = !c.liked;
-        return { ...c, liked, likes: Math.max(0, (c.likes ?? 0) + (liked ? 1 : -1)) };
+        const current = c.myReactions ?? [];
+        const next = current.includes(emoji)
+          ? current.filter((item) => item !== emoji)
+          : current.length >= MAX_REACTIONS_PER_ITEM
+            ? current
+            : [...current, emoji];
+        if (next === current || (next.length === current.length && next.every((item, i) => item === current[i]))) return c;
+        nextForApi = next;
+        return { ...c, myReactions: next, reactions: [...(c.reactions ?? [])] };
       }
       return c.replies ? { ...c, replies: c.replies.map(flip) } : c;
     };
@@ -515,6 +608,7 @@ export default function ChannelScreen() {
       ...post,
       comments: (post.comments ?? []).map(flip),
     }));
+    if (nextForApi) void setCommentReactions(commentId, nextForApi);
   };
 
   const toggleReplies = (commentId: string) => {
@@ -679,6 +773,7 @@ export default function ChannelScreen() {
             onLongPress={(event) => openActionBar(item.id, event)}
             onOpenComments={() => openCommentSheet(item.id)}
             onOpenMedia={openMediaViewer}
+            onOpenGame={() => setGameOpen(true)}
             onManage={canMutatePost(item) ? () => openPostMenu(item) : undefined}
           />
         )}
@@ -978,14 +1073,37 @@ export default function ChannelScreen() {
                     }
                   }
 
-                  const post = addChannelPost(channel.id, {
+                  const input: AddPostInput = {
                     text: postDraft.trim() || defaults[postKind] || t('channel_create.post_placeholder'),
                     type: postKind,
                     mediaUri,
                     gameKind: postKind === 'game' ? ('truth_or_dare' as const) : undefined,
-                  });
-                  if (post) {
-                    setPosts((prev) => [post, ...prev]);
+                    gamePayload:
+                      postKind === 'game' && meId
+                        ? {
+                            kind: 'game',
+                            game: 'truth-or-dare',
+                            action: 'start',
+                            seed: newSeed(),
+                            maxRounds: 5,
+                            playerId: meId,
+                            playerIds: [meId],
+                          }
+                        : undefined,
+                  };
+                  let post: ChannelPost | undefined;
+                  if (postKind === 'game') {
+                    try {
+                      await publishChannelPost(channel.id, input);
+                    } catch {
+                      mutationFailed();
+                      return;
+                    }
+                  } else {
+                    post = addChannelPost(channel.id, input);
+                  }
+                  if (post || postKind === 'game') {
+                    if (post) setPosts((prev) => [post, ...prev]);
                     setPostDraft('');
                     setPostKind('text');
                     setComposerOpen(false);
@@ -1001,7 +1119,8 @@ export default function ChannelScreen() {
                   }
                 }}
                 disabled={
-                  (postKind === 'text' || postKind === 'game') && !postDraft.trim()
+                  ((postKind === 'text' || postKind === 'game') && !postDraft.trim()) ||
+                  (postKind === 'game' && !meId)
                 }
                 style={[
                   styles.postComposerSend,
@@ -1143,7 +1262,7 @@ export default function ChannelScreen() {
                       comment={comment}
                       expanded={expandedComments.has(comment.id)}
                       onReply={openReplyTo}
-                      onLike={toggleCommentLike}
+                      onReact={toggleCommentReaction}
                       onToggleReplies={toggleReplies}
                     />
                   ))
@@ -1497,6 +1616,37 @@ export default function ChannelScreen() {
         </View>
       </Modal>
 
+      {gameOpen ? (
+        <GameRoom
+          visible
+          onClose={() => setGameOpen(false)}
+          players={gamePlayers}
+          payloads={gamePayloads}
+          meId={meId ?? null}
+          canPlay={publishOk}
+          onSend={(payload) => {
+            if (channel) {
+              void publishChannelPost(channel.id, {
+                text: '',
+                type: 'game',
+                gameKind: 'truth_or_dare',
+                gamePayload: payload,
+              }).catch(mutationFailed);
+            }
+          }}
+          chat={[]}
+          onSendText={(text) => {
+            if (channel) addChannelPost(channel.id, { text, type: 'text' });
+          }}
+          onShareScore={
+            publishOk
+              ? (text) => {
+                  if (channel) addChannelPost(channel.id, { text, type: 'text' });
+                }
+              : undefined
+          }
+        />
+      ) : null}
 
       <ForwardPicker
         count={forwardPost ? 1 : 0}
@@ -1532,6 +1682,7 @@ function Post({
   onLongPress,
   onOpenComments,
   onOpenMedia,
+  onOpenGame,
   onManage,
 }: {
   post: ChannelPost;
@@ -1539,6 +1690,7 @@ function Post({
   onLongPress: (event: GestureResponderEvent) => void;
   onOpenComments: () => void;
   onOpenMedia?: (post: ChannelPost) => void;
+  onOpenGame?: () => void;
   /** Absent when the viewer may not edit or delete this post. */
   onManage?: () => void;
 }) {
@@ -1605,13 +1757,8 @@ function Post({
 
       {kind === 'game' ? (
         <Pressable
-          onPress={() =>
-            // The game replays an event stream carried on a conversation's
-            // encrypted message channel. A channel is a broadcast, not a
-            // conversation — there is no such stream to replay, and the room
-            // this used to open only ever drew a picture of one.
-            appAlert(t('channel_post.kind_game'), t('game.channels_unsupported'))
-          }
+          onPress={post.gamePayload ? onOpenGame : undefined}
+          disabled={!post.gamePayload}
           style={[styles.specialCard, { backgroundColor: `${colors.primary}12`, borderColor: colors.primary }]}
         >
           <View style={[styles.specialIcon, { backgroundColor: colors.primary }]}>
@@ -1622,10 +1769,12 @@ function Post({
               {t('channel_post.kind_game')} · {t('hangout.game_tod')}
             </Text>
             <Text style={[styles.specialHint, { color: colors.textSecondary }]}>
-              {t('channel_post.tap_play')}
+              {post.gamePayload ? t('channel_post.tap_join') : t('game.channels_unsupported')}
             </Text>
           </View>
-          <Ionicons name="play-circle" size={28} color={colors.primary} />
+          {post.gamePayload ? (
+            <Ionicons name="play-circle" size={28} color={colors.primary} />
+          ) : null}
         </Pressable>
       ) : null}
 
@@ -1693,7 +1842,7 @@ function Post({
         {reactions.length > 0 ? (
           <View style={styles.reactionRow}>
             {reactions.map((reaction) => {
-              const active = post.myReaction === reaction.emoji;
+              const active = (post.myReactions ?? (post.myReaction ? [post.myReaction] : [])).includes(reaction.emoji);
               return (
                 <View
                   key={reaction.emoji}
@@ -1747,7 +1896,7 @@ function CommentRow({
   isReply,
   parentId,
   onReply,
-  onLike,
+  onReact,
   onToggleReplies,
 }: {
   comment: ChannelComment;
@@ -1755,7 +1904,7 @@ function CommentRow({
   isReply?: boolean;
   parentId?: string;
   onReply: (target: { id: string; author: string }) => void;
-  onLike: (id: string) => void;
+  onReact: (id: string, emoji: string) => void;
   onToggleReplies?: (id: string) => void;
 }) {
   const { colors } = useTheme();
@@ -1764,6 +1913,7 @@ function CommentRow({
   const initial = isAnon ? '?' : author.charAt(0).toUpperCase();
   const likes = comment.likes ?? 0;
   const replies = comment.replies ?? [];
+  const [reactionOpen, setReactionOpen] = useState(false);
 
   const pop = useSharedValue(1);
   const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
@@ -1773,7 +1923,7 @@ function CommentRow({
       withTiming(1.4, { duration: 110 }),
       withSpring(1, { damping: 6, stiffness: 220 }),
     );
-    onLike(comment.id);
+    setReactionOpen(true);
   };
 
   const handleReply = () => {
@@ -1858,7 +2008,7 @@ function CommentRow({
           <Pressable onPress={handleLike} hitSlop={8} style={styles.metaAction}>
             <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', gap: 3 }, heartStyle]}>
               <Ionicons
-                name={comment.liked ? 'heart' : 'heart-outline'}
+                name={comment.myReactions?.includes('❤️') ? 'heart' : 'heart-outline'}
                 size={13}
                 color={comment.liked ? '#FF3040' : colors.textMuted}
               />
@@ -1866,7 +2016,7 @@ function CommentRow({
                 <Text
                   style={[
                     styles.commentLikeCount,
-                    { color: comment.liked ? '#FF3040' : colors.textMuted },
+                    { color: comment.myReactions?.includes('❤️') ? '#FF3040' : colors.textMuted },
                   ]}
                 >
                   {likes}
@@ -1875,6 +2025,14 @@ function CommentRow({
             </Animated.View>
           </Pressable>
         </View>
+
+        <ReactionTray
+          visible={reactionOpen}
+          activeEmoji={comment.myReactions?.[0]}
+          onSelect={(emoji) => onReact(comment.id, emoji)}
+          onClose={() => setReactionOpen(false)}
+          commentLabel={t('channel.reply')}
+        />
 
         {!isReply && replies.length > 0 ? (
           <>
@@ -1900,7 +2058,7 @@ function CommentRow({
                     isReply
                     parentId={comment.id}
                     onReply={onReply}
-                    onLike={onLike}
+                    onReact={onReact}
                   />
                 ))
               : null}

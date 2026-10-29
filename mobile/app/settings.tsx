@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
@@ -19,7 +19,14 @@ import {
   authReauthStart,
 } from '@/data/api/auth';
 import { ApiError } from '@/data/api/client';
-import { deleteMe, me, patchMe, type UserPatch } from '@/data/api/users';
+import {
+  activateGhostMode,
+  deactivateGhostMode,
+  deleteMe,
+  me,
+  patchMe,
+  type UserPatch,
+} from '@/data/api/users';
 import {
   biometricsAvailable,
   setAppLockBiometrics,
@@ -66,34 +73,85 @@ export default function SettingsScreen() {
   const [profilePhoto, setProfilePhoto] = useState<Visibility>('everyone');
   const [readReceipts, setReadReceipts] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
+  const [ghostModeBusy, setGhostModeBusy] = useState(false);
+  const [ghostModeExpiresAt, setGhostModeExpiresAt] = useState<string | undefined>();
+  const [ghostModeNow, setGhostModeNow] = useState(() => Date.now());
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [emailVerified, setEmailVerified] = useState(false);
   const [privacyLoaded, setPrivacyLoaded] = useState(false);
+  const privacyRequestId = useRef(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const requestId = ++privacyRequestId.current;
+      me()
+        .then((u) => {
+          if (cancelled || requestId !== privacyRequestId.current) return;
+          setLastSeen(u.last_seen_visibility ?? 'everyone');
+          setProfilePhoto(u.photo_visibility ?? 'everyone');
+          setReadReceipts(u.read_receipts !== false);
+          setGhostMode(u.ghost_mode === true);
+          setGhostModeExpiresAt(u.ghost_mode_expires_at);
+          setEmail(u.email ?? '');
+          setEmailVerified(u.email_verified === true);
+          // Not from the server: it holds a hash of the number, never the
+          // number. The device is the only place that can answer this.
+          void getSessionPhone().then(setPhone);
+          setPrivacyLoaded(true);
+        })
+        .catch(() => {
+          if (!cancelled && requestId === privacyRequestId.current) setPrivacyLoaded(true);
+        });
+      const onAppStateChange = (state: string) => {
+        if (state !== 'active') return;
+        const foregroundRequestId = ++privacyRequestId.current;
+        me()
+          .then((u) => {
+            if (cancelled || foregroundRequestId !== privacyRequestId.current) return;
+            setGhostMode(u.ghost_mode === true);
+            setGhostModeExpiresAt(u.ghost_mode_expires_at);
+            setGhostModeNow(Date.now());
+          })
+          .catch(() => {});
+      };
+      const appStateSubscription = AppState.addEventListener('change', onAppStateChange);
+      return () => {
+        cancelled = true;
+        appStateSubscription.remove();
+      };
+    }, []),
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    me()
-      .then((u) => {
-        if (cancelled) return;
-        setLastSeen(u.last_seen_visibility ?? 'everyone');
-        setProfilePhoto(u.photo_visibility ?? 'everyone');
-        setReadReceipts(u.read_receipts !== false);
-        setGhostMode(u.ghost_mode === true);
-        setEmail(u.email ?? '');
-        setEmailVerified(u.email_verified === true);
-        // Not from the server: it holds a hash of the number, never the
-        // number. The device is the only place that can answer this.
-        void getSessionPhone().then(setPhone);
-        setPrivacyLoaded(true);
-      })
-      .catch(() => {
-        if (!cancelled) setPrivacyLoaded(true);
-      });
-    return () => {
-      cancelled = true;
+    if (!ghostMode || !ghostModeExpiresAt) return;
+    const refreshClock = () => setGhostModeNow(Date.now());
+    const expiry = new Date(ghostModeExpiresAt).getTime();
+    const refreshProfile = () => {
+      const requestId = ++privacyRequestId.current;
+      me()
+        .then((u) => {
+          if (requestId !== privacyRequestId.current) return;
+          setGhostMode(u.ghost_mode === true);
+          setGhostModeExpiresAt(u.ghost_mode_expires_at);
+          setGhostModeNow(Date.now());
+        })
+        .catch(() => {
+          if (requestId !== privacyRequestId.current) return;
+          // The server still enforces expiry; the local UI should not claim
+          // an active session after its last known deadline.
+          setGhostMode(false);
+          setGhostModeExpiresAt(undefined);
+        });
     };
-  }, []);
+    const interval = setInterval(refreshClock, 30_000);
+    const timeout = setTimeout(refreshProfile, Math.max(0, expiry - Date.now()) + 100);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [ghostMode, ghostModeExpiresAt]);
 
   /**
    * Optimistic, with a rollback.
@@ -275,6 +333,49 @@ export default function SettingsScreen() {
       },
     });
   };
+
+  const toggleGhostMode = async (enabled: boolean) => {
+    if (!privacyLoaded || ghostModeBusy) return;
+    const requestId = ++privacyRequestId.current;
+    setGhostModeBusy(true);
+    setGhostMode(enabled);
+    const reconcile = () => {
+      const recoveryRequestId = ++privacyRequestId.current;
+      void me().then((u) => {
+        if (recoveryRequestId !== privacyRequestId.current) return;
+        setGhostMode(u.ghost_mode === true);
+        setGhostModeExpiresAt(u.ghost_mode_expires_at);
+        setGhostModeNow(Date.now());
+      }).catch(() => {});
+    };
+    try {
+      const u = enabled ? await activateGhostMode() : await deactivateGhostMode();
+      if (requestId !== privacyRequestId.current) {
+        reconcile();
+        return;
+      }
+      setGhostMode(u.ghost_mode === true);
+      setGhostModeExpiresAt(u.ghost_mode_expires_at);
+      setGhostModeNow(Date.now());
+    } catch (err) {
+      if (requestId !== privacyRequestId.current) {
+        reconcile();
+        return;
+      }
+      setGhostMode(!enabled);
+      if (enabled && err instanceof ApiError && err.code === 'ghost_mode_daily_limit') {
+        appAlert(t('settings.ghost_mode_limit_title'), t('settings.ghost_mode_limit_body'));
+      } else if (enabled && err instanceof ApiError && err.code === 'ghost_mode_already_active') {
+        appAlert(t('settings.ghost_mode_active_title'), t('settings.ghost_mode_active_body'));
+      } else {
+        appAlert(t('settings.privacy_failed_title'), t('settings.privacy_failed_body'));
+      }
+      reconcile();
+    } finally {
+      setGhostModeBusy(false);
+    }
+  };
+
   const [notifMessages, setNotifMessages] = useState(true);
   const [notifGroups, setNotifGroups] = useState(true);
   const [notifCalls, setNotifCalls] = useState(false);
@@ -599,18 +700,23 @@ export default function SettingsScreen() {
           <Row
             icon="eye-off-outline"
             label={t('settings.ghost_mode')}
-            value={ghostMode ? undefined : t('settings.ghost_mode_off')}
+            value={
+              ghostMode
+                ? t('settings.ghost_mode_remaining', {
+                    time: formatGhostModeRemaining(ghostModeExpiresAt, ghostModeNow),
+                  })
+                : t('settings.ghost_mode_off')
+            }
             control={
               <Switch
                 value={ghostMode}
-                onValueChange={(v) => {
-                  setGhostMode(v);
-                  savePrivacy({ ghost_mode: v }, () => setGhostMode(!v));
-                }}
+                disabled={!privacyLoaded || ghostModeBusy}
+                onValueChange={(v) => void toggleGhostMode(v)}
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
               />
             }
+            below={<Text style={[styles.rowHint, { color: colors.textSecondary }]}>{t('settings.ghost_mode_hint')}</Text>}
             last
           />
         </Group>
@@ -822,6 +928,14 @@ export default function SettingsScreen() {
   );
 }
 
+function formatGhostModeRemaining(expiresAt: string | undefined, now: number): string {
+  if (!expiresAt) return '0m';
+  const seconds = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - now) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.ceil((seconds % 3600) / 60);
+  return hours > 0 ? `${hours}h ${minutes}m` : `${Math.max(1, minutes)}m`;
+}
+
 function Group({ title, children }: { title: string; children: ReactNode }) {
   const { colors } = useTheme();
   return (
@@ -907,6 +1021,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: { ...Typography.h3 },
+  rowHint: { ...Typography.caption, paddingLeft: 41, paddingRight: Spacing.md, paddingBottom: Spacing.sm },
 
   body: {
     padding: Spacing.lg,
