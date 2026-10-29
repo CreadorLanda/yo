@@ -68,14 +68,12 @@ export default function LiveScreen() {
           id === 'new'
             ? await startOrJoinLive({ chatId: chat, channelId: channel, title })
             : await joinLive(id!);
-        // Publish only what exists: an emulator has no camera, and asking
-        // WebRTC for one there took the screen down.
+        // Publish the microphone that exists. The camera starts off and the
+        // host turns it on: an emulator may advertise one that fails when
+        // WebRTC opens it, which took the screen down.
         const devices = await availableMedia();
         if (cancelled) return;
         setMedia(devices);
-        if (g.host && !devices.camera) {
-          appAlert(t('call.camera_failed_title'), t('call.no_camera_body'));
-        }
         setGrant(g);
       } catch (err) {
         if (cancelled) return;
@@ -137,7 +135,7 @@ export default function LiveScreen() {
       // not allowed to use. Asking anyway would put a permission prompt in
       // front of someone who only wants to watch.
       audio={grant.host && media.microphone}
-      video={grant.host && media.camera}
+      video={false}
       options={{ adaptiveStream: true, dynacast: true }}
       onError={() => setFailure(t('live.failed'))}
     >

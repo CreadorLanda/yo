@@ -881,7 +881,6 @@ export default {
     drop_e2ee_confirm: 'Adicionar mesmo assim',
     camera_failed_title: 'Câmara indisponível',
     camera_failed_body: 'Não foi possível ligar a câmara nesta chamada.',
-    no_camera_body: 'Este dispositivo não tem câmara, por isso entras sem vídeo.',
     camera_permission: 'O ZwoSocial precisa de acesso à câmara para ligar o vídeo. Concede-o nas definições do telemóvel.',
     someone: 'Alguém',
     incoming_voice: 'Chamada a entrar',
