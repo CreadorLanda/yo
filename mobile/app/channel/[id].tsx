@@ -63,6 +63,8 @@ import {
   useIsFollowing,
 } from '@/data/channel-store';
 import { type ChannelComment, type ChannelPost } from '@/data/mock';
+import { newSeed, parseGamePayload, type GameMessagePayload } from '@/data/game';
+import { GameRoom, type GamePlayer } from '@/components/game/game-room';
 import { getCurrentUser } from '@/data/auth-store';
 import { useProfile } from '@/data/profile-store';
 import { refreshRunningLives, useRunningLives } from '@/data/live-store';
@@ -122,6 +124,7 @@ export default function ChannelScreen() {
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [gameOpen, setGameOpen] = useState(false);
 
   const actionBarWidth = Math.min(ACTION_BAR_WIDTH, screenWidth - Spacing.lg * 2);
   const actionBarPosition = useMemo(() => {
@@ -157,6 +160,31 @@ export default function ChannelScreen() {
     setPosts(channel?.posts ?? []);
   }, [channel, channel?.posts]);
 
+  const gamePayloads = useMemo<GameMessagePayload[]>(
+    () =>
+      posts.slice().reverse().flatMap((post) => {
+        const gameEvent = parseGamePayload(post.gamePayload);
+        return gameEvent ? [gameEvent] : [];
+      }),
+    [posts],
+  );
+  const gamePlayers = useMemo<GamePlayer[]>(() => {
+    const ids = new Set<string>();
+    for (const payload of gamePayloads) {
+      if (payload.action === 'start') {
+        payload.playerIds?.forEach((playerId) => ids.add(playerId));
+        if (payload.playerId) ids.add(payload.playerId);
+      } else if ('playerId' in payload) {
+        ids.add(payload.playerId);
+      }
+    }
+    if (meId) ids.add(meId);
+    return [...ids].sort().map((playerId) => ({
+      id: playerId,
+      name: playerId === meId ? myName : playerId.slice(0, 8),
+    }));
+  }, [gamePayloads, meId, myName]);
+
   const actionPost = useMemo(
     () => posts.find((post) => post.id === actionPostId),
     [posts, actionPostId],
@@ -170,7 +198,10 @@ export default function ChannelScreen() {
 
   // The store and the API both work newest-first; only the view is
   // chronological, so nothing else has to care about the direction.
-  const orderedPosts = useMemo(() => [...posts].reverse(), [posts]);
+  const orderedPosts = useMemo(
+    () => [...posts].reverse().filter((post) => post.type !== 'game' || post.gamePayload?.action === 'start'),
+    [posts],
+  );
   const listRef = useRef<FlatList<ChannelPost>>(null);
 
   // The whole channel's media, so the viewer swipes across it rather than
@@ -679,6 +710,7 @@ export default function ChannelScreen() {
             onLongPress={(event) => openActionBar(item.id, event)}
             onOpenComments={() => openCommentSheet(item.id)}
             onOpenMedia={openMediaViewer}
+            onOpenGame={() => setGameOpen(true)}
             onManage={canMutatePost(item) ? () => openPostMenu(item) : undefined}
           />
         )}
@@ -983,6 +1015,18 @@ export default function ChannelScreen() {
                     type: postKind,
                     mediaUri,
                     gameKind: postKind === 'game' ? ('truth_or_dare' as const) : undefined,
+                    gamePayload:
+                      postKind === 'game' && meId
+                        ? {
+                            kind: 'game',
+                            game: 'truth-or-dare',
+                            action: 'start',
+                            seed: newSeed(),
+                            maxRounds: 5,
+                            playerId: meId,
+                            playerIds: [meId],
+                          }
+                        : undefined,
                   });
                   if (post) {
                     setPosts((prev) => [post, ...prev]);
@@ -1001,7 +1045,8 @@ export default function ChannelScreen() {
                   }
                 }}
                 disabled={
-                  (postKind === 'text' || postKind === 'game') && !postDraft.trim()
+                  ((postKind === 'text' || postKind === 'game') && !postDraft.trim()) ||
+                  (postKind === 'game' && !meId)
                 }
                 style={[
                   styles.postComposerSend,
@@ -1497,6 +1542,37 @@ export default function ChannelScreen() {
         </View>
       </Modal>
 
+      {gameOpen ? (
+        <GameRoom
+          visible
+          onClose={() => setGameOpen(false)}
+          players={gamePlayers}
+          payloads={gamePayloads}
+          meId={meId ?? null}
+          canPlay={publishOk}
+          onSend={(payload) => {
+            if (channel) {
+              addChannelPost(channel.id, {
+                text: '',
+                type: 'game',
+                gameKind: 'truth_or_dare',
+                gamePayload: payload,
+              });
+            }
+          }}
+          chat={[]}
+          onSendText={(text) => {
+            if (channel) addChannelPost(channel.id, { text, type: 'text' });
+          }}
+          onShareScore={
+            publishOk
+              ? (text) => {
+                  if (channel) addChannelPost(channel.id, { text, type: 'text' });
+                }
+              : undefined
+          }
+        />
+      ) : null}
 
       <ForwardPicker
         count={forwardPost ? 1 : 0}
@@ -1532,6 +1608,7 @@ function Post({
   onLongPress,
   onOpenComments,
   onOpenMedia,
+  onOpenGame,
   onManage,
 }: {
   post: ChannelPost;
@@ -1539,6 +1616,7 @@ function Post({
   onLongPress: (event: GestureResponderEvent) => void;
   onOpenComments: () => void;
   onOpenMedia?: (post: ChannelPost) => void;
+  onOpenGame?: () => void;
   /** Absent when the viewer may not edit or delete this post. */
   onManage?: () => void;
 }) {
@@ -1605,13 +1683,8 @@ function Post({
 
       {kind === 'game' ? (
         <Pressable
-          onPress={() =>
-            // The game replays an event stream carried on a conversation's
-            // encrypted message channel. A channel is a broadcast, not a
-            // conversation — there is no such stream to replay, and the room
-            // this used to open only ever drew a picture of one.
-            appAlert(t('channel_post.kind_game'), t('game.channels_unsupported'))
-          }
+          onPress={post.gamePayload ? onOpenGame : undefined}
+          disabled={!post.gamePayload}
           style={[styles.specialCard, { backgroundColor: `${colors.primary}12`, borderColor: colors.primary }]}
         >
           <View style={[styles.specialIcon, { backgroundColor: colors.primary }]}>
@@ -1622,10 +1695,12 @@ function Post({
               {t('channel_post.kind_game')} · {t('hangout.game_tod')}
             </Text>
             <Text style={[styles.specialHint, { color: colors.textSecondary }]}>
-              {t('channel_post.tap_play')}
+              {post.gamePayload ? t('channel_post.tap_join') : t('game.channels_unsupported')}
             </Text>
           </View>
-          <Ionicons name="play-circle" size={28} color={colors.primary} />
+          {post.gamePayload ? (
+            <Ionicons name="play-circle" size={28} color={colors.primary} />
+          ) : null}
         </Pressable>
       ) : null}
 

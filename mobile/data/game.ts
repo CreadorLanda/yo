@@ -16,7 +16,16 @@ export type GameKind = 'truth-or-dare';
 
 /** The single game message shape, serialised into the E2EE body. */
 export type GameMessagePayload =
-  | { kind: 'game'; game: 'truth-or-dare'; action: 'start'; seed: string; maxRounds: number }
+  | {
+      kind: 'game';
+      game: 'truth-or-dare';
+      action: 'start';
+      seed: string;
+      maxRounds: number;
+      playerId?: string;
+      playerIds?: string[];
+    }
+  | { kind: 'game'; game: 'truth-or-dare'; action: 'join'; playerId: string }
   | { kind: 'game'; game: 'truth-or-dare'; action: 'choose'; playerId: string; choice: 'truth' | 'dare' }
   | { kind: 'game'; game: 'truth-or-dare'; action: 'challenge'; playerId: string; text: string }
   | { kind: 'game'; game: 'truth-or-dare'; action: 'done'; playerId: string }
@@ -46,6 +55,8 @@ export interface TruthOrDareState {
   scoreboard: Record<string, number>;
   ended: boolean;
   winnerId: string | null;
+  /** Frozen roster for this stream. Channels build it through join events. */
+  playerIds: string[];
 }
 
 export const MAX_ROUNDS = 5;
@@ -107,6 +118,7 @@ export function emptyState(): TruthOrDareState {
     scoreboard: {},
     ended: false,
     winnerId: null,
+    playerIds: [],
   };
 }
 
@@ -141,18 +153,47 @@ export function replayGame(payloads: GameMessagePayload[], memberIds: string[]):
         state.challengeBy = null;
         state.ended = false;
         state.winnerId = null;
-        const idx = pickPlayer(state.seed, 1, memberIds);
+        state.playerIds = sortedMemberIds(
+          (p.playerIds?.length ? p.playerIds : memberIds).filter(Boolean),
+        );
+        if (p.playerId && !state.playerIds.includes(p.playerId)) {
+          state.playerIds = sortedMemberIds([...state.playerIds, p.playerId]);
+        }
+        const idx = state.playerIds.length >= 2
+          ? pickPlayer(state.seed, 1, state.playerIds)
+          : -1;
         state.currentIndex = idx;
-        state.currentPlayerId = idx >= 0 ? memberIds[idx] : null;
+        state.currentPlayerId = idx >= 0 ? state.playerIds[idx] : null;
+        break;
+      }
+      case 'join': {
+        if (!state.active || state.ended || state.currentPlayerId || !p.playerId) break;
+        if (!state.playerIds.includes(p.playerId)) {
+          state.playerIds = sortedMemberIds([...state.playerIds, p.playerId]);
+        }
+        if (state.playerIds.length >= 2) {
+          const idx = pickPlayer(state.seed, 1, state.playerIds);
+          state.currentIndex = idx;
+          state.currentPlayerId = state.playerIds[idx] ?? null;
+        }
         break;
       }
       case 'choose': {
+        if (!state.active || state.ended || p.playerId !== state.currentPlayerId || state.choice) break;
         state.choice = p.choice;
         state.challenge = null;
         state.challengeBy = null;
         break;
       }
       case 'challenge': {
+        if (
+          !state.active ||
+          state.ended ||
+          !state.choice ||
+          state.challenge ||
+          p.playerId === state.currentPlayerId ||
+          !state.playerIds.includes(p.playerId)
+        ) break;
         state.challenge = p.text;
         state.challengeBy = p.playerId;
         break;
@@ -188,9 +229,9 @@ export function replayGame(payloads: GameMessagePayload[], memberIds: string[]):
         state.choice = null;
         state.challenge = null;
         state.challengeBy = null;
-        const idx = nextPlayer(state.seed, state.round, memberIds, state.currentPlayerId);
+        const idx = nextPlayer(state.seed, state.round, state.playerIds, state.currentPlayerId);
         state.currentIndex = idx;
-        state.currentPlayerId = idx >= 0 ? memberIds[idx] : null;
+        state.currentPlayerId = idx >= 0 ? state.playerIds[idx] : null;
         break;
       }
       case 'end': {
@@ -215,10 +256,56 @@ export function extractGamePayloads(
     const a = m.attachment;
     if (a && a.kind === 'game') {
       const p = a as unknown as GameMessagePayload;
-      if (p.game === 'truth-or-dare' && p.action) out.push(p);
+      const parsed = parseGamePayload(p);
+      if (parsed) out.push(parsed);
     }
   }
   return out;
+}
+
+/** Parse persisted channel payloads without trusting their JSON shape. */
+export function parseGamePayload(value: unknown): GameMessagePayload | null {
+  if (!value || typeof value !== 'object') return null;
+  const p = value as Record<string, unknown>;
+  if (p.kind !== 'game' || p.game !== 'truth-or-dare' || typeof p.action !== 'string') {
+    return null;
+  }
+  if (p.action === 'start') {
+    if (typeof p.seed !== 'string' || !p.seed || typeof p.maxRounds !== 'number') return null;
+    return {
+      kind: 'game',
+      game: 'truth-or-dare',
+      action: 'start',
+      seed: p.seed,
+      maxRounds: p.maxRounds,
+      ...(typeof p.playerId === 'string' ? { playerId: p.playerId } : {}),
+      ...(Array.isArray(p.playerIds)
+        ? { playerIds: p.playerIds.filter((id): id is string => typeof id === 'string') }
+        : {}),
+    };
+  }
+  if (p.action === 'join' || p.action === 'choose' || p.action === 'challenge' || p.action === 'done') {
+    if (typeof p.playerId !== 'string' || !p.playerId) return null;
+    if (p.action === 'join' || p.action === 'done') {
+      return { kind: 'game', game: 'truth-or-dare', action: p.action, playerId: p.playerId };
+    }
+    if (p.action === 'choose' && (p.choice === 'truth' || p.choice === 'dare')) {
+      return { kind: 'game', game: 'truth-or-dare', action: p.action, playerId: p.playerId, choice: p.choice };
+    }
+    if (p.action === 'challenge' && typeof p.text === 'string' && p.text.trim()) {
+      return { kind: 'game', game: 'truth-or-dare', action: p.action, playerId: p.playerId, text: p.text };
+    }
+    return null;
+  }
+  if (p.action === 'end') {
+    return {
+      kind: 'game',
+      game: 'truth-or-dare',
+      action: 'end',
+      ...(typeof p.winnerId === 'string' ? { winnerId: p.winnerId } : {}),
+    };
+  }
+  return null;
 }
 
 /** Sorted member ids — the deterministic-order requirement for the wheel. */

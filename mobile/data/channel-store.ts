@@ -23,6 +23,7 @@ import {
   type ChannelComment,
   type ChannelPost,
 } from './mock';
+import type { GameMessagePayload } from '@/data/game';
 
 function isUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -394,6 +395,7 @@ export type AddPostInput = {
   type?: ChannelPost['type'];
   mediaUri?: string;
   gameKind?: ChannelPost['gameKind'];
+  gamePayload?: GameMessagePayload;
 };
 
 export function addChannelPost(
@@ -416,6 +418,7 @@ export function addChannelPost(
     type: input.type ?? (input.mediaUri ? 'image' : 'text'),
     mediaUri: input.mediaUri,
     gameKind: input.gameKind,
+    gamePayload: input.gamePayload,
   };
 
   channels = channels.map((c) =>
@@ -434,6 +437,7 @@ export function addChannelPost(
       text: post.text,
       post_type: post.type,
       media_url: mediaUrl,
+      game_payload: post.gamePayload,
     })
       .then((dto) => {
         const mapped = mapPostDTO(dto);

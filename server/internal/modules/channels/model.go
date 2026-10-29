@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,16 +63,17 @@ type Channel struct {
 }
 
 type Post struct {
-	ID        uuid.UUID `json:"id"`
-	ChannelID uuid.UUID `json:"channel_id"`
-	AuthorID  uuid.UUID `json:"author_id"`
-	Text      string    `json:"text"`
-	PostType  PostType  `json:"post_type"`
-	MediaURL  string    `json:"media_url,omitempty"`
-	Views     int       `json:"views"`
-	CreatedAt time.Time `json:"created_at"`
-	MyEmoji   string    `json:"my_emoji,omitempty"`
-	Reactions []React   `json:"reactions,omitempty"`
+	ID          uuid.UUID       `json:"id"`
+	ChannelID   uuid.UUID       `json:"channel_id"`
+	AuthorID    uuid.UUID       `json:"author_id"`
+	Text        string          `json:"text"`
+	PostType    PostType        `json:"post_type"`
+	MediaURL    string          `json:"media_url,omitempty"`
+	Views       int             `json:"views"`
+	CreatedAt   time.Time       `json:"created_at"`
+	MyEmoji     string          `json:"my_emoji,omitempty"`
+	Reactions   []React         `json:"reactions,omitempty"`
+	GamePayload json.RawMessage `json:"game_payload,omitempty"`
 }
 
 type React struct {
@@ -120,9 +122,10 @@ type PatchChannelRequest struct {
 }
 
 type CreatePostRequest struct {
-	Text     string   `json:"text"`
-	PostType PostType `json:"post_type"`
-	MediaURL string   `json:"media_url"`
+	Text        string          `json:"text"`
+	PostType    PostType        `json:"post_type"`
+	MediaURL    string          `json:"media_url"`
+	GamePayload json.RawMessage `json:"game_payload"`
 }
 
 type ReactRequest struct {

@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
@@ -24,6 +25,7 @@ var (
 	ErrCannotPost        = errors.New("cannot_post")
 	ErrCommentsOff       = errors.New("comments_disabled")
 	ErrReactionsOff      = errors.New("reactions_disabled")
+	ErrInvalidGame       = errors.New("invalid_game_payload")
 )
 
 var handleRe = regexp.MustCompile(`^[a-z0-9_]{2,24}$`)
@@ -290,8 +292,15 @@ func (s *Service) CreatePost(ctx context.Context, channelID, user uuid.UUID, req
 			ptype = PostText
 		}
 	}
+	if ptype == PostGame {
+		if err := validateGamePayload(req.GamePayload, user); err != nil {
+			return Post{}, err
+		}
+	} else if len(req.GamePayload) != 0 {
+		return Post{}, ErrInvalidGame
+	}
 	text := strings.TrimSpace(req.Text)
-	id, err := s.repo.InsertPost(ctx, channelID, user, text, ptype, strings.TrimSpace(req.MediaURL))
+	id, err := s.repo.InsertPost(ctx, channelID, user, text, ptype, strings.TrimSpace(req.MediaURL), req.GamePayload)
 	if err != nil {
 		return Post{}, err
 	}
@@ -304,7 +313,63 @@ func (s *Service) CreatePost(ctx context.Context, channelID, user uuid.UUID, req
 			return p, nil
 		}
 	}
-	return Post{ID: id, ChannelID: channelID, AuthorID: user, Text: text, PostType: ptype, MediaURL: req.MediaURL}, nil
+	return Post{ID: id, ChannelID: channelID, AuthorID: user, Text: text, PostType: ptype, MediaURL: req.MediaURL, GamePayload: req.GamePayload}, nil
+}
+
+// validateGamePayload keeps channel events append-only and attributable. The
+// client still replays the stream, but it cannot submit another user's turn
+// or an arbitrary JSON object as a game event.
+func validateGamePayload(raw json.RawMessage, user uuid.UUID) error {
+	if len(raw) == 0 || !json.Valid(raw) {
+		return ErrInvalidGame
+	}
+	var p struct {
+		Kind      string   `json:"kind"`
+		Game      string   `json:"game"`
+		Action    string   `json:"action"`
+		Seed      string   `json:"seed"`
+		MaxRounds int      `json:"maxRounds"`
+		PlayerID  string   `json:"playerId"`
+		PlayerIDs []string `json:"playerIds"`
+		Choice    string   `json:"choice"`
+		Text      string   `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil || p.Kind != "game" || p.Game != "truth-or-dare" {
+		return ErrInvalidGame
+	}
+	if p.Action == "start" {
+		if p.Seed == "" || len(p.Seed) > 128 || p.MaxRounds < 1 || p.MaxRounds > 5 || p.PlayerID != user.String() {
+			return ErrInvalidGame
+		}
+		if len(p.PlayerIDs) > 12 {
+			return ErrInvalidGame
+		}
+		for _, id := range p.PlayerIDs {
+			if _, err := uuid.Parse(id); err != nil {
+				return ErrInvalidGame
+			}
+		}
+		return nil
+	}
+	if p.Action == "end" {
+		return nil
+	}
+	if p.PlayerID == "" || p.PlayerID != user.String() {
+		return ErrInvalidGame
+	}
+	switch p.Action {
+	case "join", "done":
+		return nil
+	case "choose":
+		if p.Choice == "truth" || p.Choice == "dare" {
+			return nil
+		}
+	case "challenge":
+		if n := len(strings.TrimSpace(p.Text)); n >= 1 && n <= 2000 {
+			return nil
+		}
+	}
+	return ErrInvalidGame
 }
 
 func (s *Service) ListPosts(ctx context.Context, channelID, user uuid.UUID) ([]Post, error) {
