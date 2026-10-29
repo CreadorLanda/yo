@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	platformreactions "github.com/CreadorLanda/zwosocial/server/internal/platform/reactions"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -27,6 +28,8 @@ var (
 	ErrReactionsOff      = errors.New("reactions_disabled")
 	ErrInvalidGame       = errors.New("invalid_game_payload")
 	ErrImmutableGame     = errors.New("game_post_immutable")
+	ErrInvalidEmoji      = platformreactions.ErrInvalidEmoji
+	ErrTooManyReactions  = platformreactions.ErrTooMany
 )
 
 var handleRe = regexp.MustCompile(`^[a-z0-9_]{2,24}$`)
@@ -428,7 +431,29 @@ func (s *Service) React(ctx context.Context, postID, user uuid.UUID, emoji strin
 	if emoji == "" {
 		return ErrNotFound
 	}
-	return s.repo.SetReaction(ctx, postID, user, emoji)
+	return s.ReactSet(ctx, postID, user, []string{emoji})
+}
+
+func (s *Service) ReactSet(ctx context.Context, postID, user uuid.UUID, emojis []string) error {
+	post, err := s.repo.GetPost(ctx, postID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	ch, err := s.Get(ctx, post.ChannelID, user)
+	if err != nil {
+		return err
+	}
+	if !ch.ReactionsEnabled {
+		return ErrReactionsOff
+	}
+	normalized, err := platformreactions.NormalizeSet(emojis)
+	if err != nil {
+		return err
+	}
+	return s.repo.SetReactions(ctx, postID, user, normalized)
 }
 
 func (s *Service) Comment(ctx context.Context, postID, user uuid.UUID, req CommentRequest) (Comment, error) {
@@ -473,7 +498,58 @@ func (s *Service) ListComments(ctx context.Context, postID, user uuid.UUID) ([]C
 	if _, err := s.Get(ctx, post.ChannelID, user); err != nil {
 		return nil, err
 	}
-	return s.repo.ListComments(ctx, postID)
+	return s.repo.ListComments(ctx, postID, user)
+}
+
+func (s *Service) ReactComment(ctx context.Context, commentID, user uuid.UUID, emoji string, clear bool) error {
+	postID, err := s.repo.CommentPost(ctx, commentID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	post, err := s.repo.GetPost(ctx, postID)
+	if err != nil {
+		return err
+	}
+	ch, err := s.Get(ctx, post.ChannelID, user)
+	if err != nil {
+		return err
+	}
+	if !ch.ReactionsEnabled {
+		return ErrReactionsOff
+	}
+	if clear {
+		return s.repo.ClearCommentReactions(ctx, commentID, user)
+	}
+	return s.ReactCommentSet(ctx, commentID, user, []string{emoji})
+}
+
+func (s *Service) ReactCommentSet(ctx context.Context, commentID, user uuid.UUID, emojis []string) error {
+	postID, err := s.repo.CommentPost(ctx, commentID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	post, err := s.repo.GetPost(ctx, postID)
+	if err != nil {
+		return err
+	}
+	ch, err := s.Get(ctx, post.ChannelID, user)
+	if err != nil {
+		return err
+	}
+	if !ch.ReactionsEnabled {
+		return ErrReactionsOff
+	}
+	normalized, err := platformreactions.NormalizeSet(emojis)
+	if err != nil {
+		return err
+	}
+	return s.repo.SetCommentReactions(ctx, commentID, user, normalized)
 }
 
 func (s *Service) CheckHandle(ctx context.Context, handle string) (bool, error) {

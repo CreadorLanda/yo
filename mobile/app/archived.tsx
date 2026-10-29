@@ -14,6 +14,7 @@ import { useRevealedChats } from '@/data/chat-lock';
 import { useLockedChatIds } from '@/data/chat-prefs';
 import { refreshChats, setChatSettings, useArchivedChats } from '@/data/chat-store';
 import { useTheme } from '@/hooks/use-theme';
+import { displayChatName } from '@/data/chat-identity';
 import { t } from '@/i18n';
 
 /**
@@ -103,7 +104,7 @@ export default function ArchivedScreen() {
             />
             <View style={{ flex: 1 }}>
               <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-                {item.title ?? item.peer_username ?? t('chats.unknown')}
+                {displayChatName(item, t('chats.saved_messages'), t('chats.unknown'))}
               </Text>
               <Text style={[styles.sub, { color: colors.textSecondary }]} numberOfLines={1}>
                 {item.last_message ? '…' : t('chats.no_messages')}

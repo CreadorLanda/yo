@@ -72,6 +72,7 @@ type Post struct {
 	Views       int             `json:"views"`
 	CreatedAt   time.Time       `json:"created_at"`
 	MyEmoji     string          `json:"my_emoji,omitempty"`
+	MyEmojis    []string        `json:"my_emojis,omitempty"`
 	Reactions   []React         `json:"reactions,omitempty"`
 	GamePayload json.RawMessage `json:"game_payload,omitempty"`
 }
@@ -89,6 +90,8 @@ type Comment struct {
 	Text       string     `json:"text"`
 	Anonymous  bool       `json:"anonymous"`
 	CreatedAt  time.Time  `json:"created_at"`
+	MyEmojis   []string   `json:"my_emojis,omitempty"`
+	Reactions  []React    `json:"reactions,omitempty"`
 }
 
 type CreateChannelRequest struct {
@@ -129,7 +132,8 @@ type CreatePostRequest struct {
 }
 
 type ReactRequest struct {
-	Emoji string `json:"emoji" binding:"required"`
+	Emoji     string    `json:"emoji"`
+	Reactions *[]string `json:"reactions"`
 }
 
 type CommentRequest struct {

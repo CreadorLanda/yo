@@ -150,8 +150,14 @@ func (c *Controller) PostReact(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
-	if err := c.svc.React(ctx.Request.Context(), pid, middleware.UserIDFrom(ctx), req.Emoji, false); err != nil {
-		writeErr(ctx, err)
+	var reactErr error
+	if req.Reactions != nil {
+		reactErr = c.svc.ReactSet(ctx.Request.Context(), pid, middleware.UserIDFrom(ctx), *req.Reactions)
+	} else {
+		reactErr = c.svc.React(ctx.Request.Context(), pid, middleware.UserIDFrom(ctx), req.Emoji, false)
+	}
+	if reactErr != nil {
+		writeErr(ctx, reactErr)
 		return
 	}
 	ctx.Status(http.StatusNoContent)
@@ -185,6 +191,42 @@ func (c *Controller) GetComments(ctx *gin.Context) {
 		list = []Comment{}
 	}
 	ctx.JSON(http.StatusOK, list)
+}
+
+func (c *Controller) PostCommentReact(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Param("commentId"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	var req ReactRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
+	if req.Reactions != nil {
+		err = c.svc.ReactCommentSet(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), *req.Reactions)
+	} else {
+		err = c.svc.ReactComment(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), req.Emoji, false)
+	}
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
+func (c *Controller) DeleteCommentReact(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Param("commentId"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	if err := c.svc.ReactComment(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), "", true); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
 }
 
 func (c *Controller) PostComment(ctx *gin.Context) {
@@ -230,6 +272,7 @@ func writeErr(ctx *gin.Context, err error) {
 		errors.Is(err, ErrInvalidVisibility), errors.Is(err, ErrInvalidPostPolicy), errors.Is(err, ErrInvalidJoinMode),
 		errors.Is(err, ErrCommentsOff), errors.Is(err, ErrReactionsOff),
 		errors.Is(err, ErrInvalidGame),
+		errors.Is(err, ErrInvalidEmoji), errors.Is(err, ErrTooManyReactions),
 		errors.Is(err, ErrInvalidRole), errors.Is(err, ErrCannotDemote),
 		errors.Is(err, ErrSelfRole):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

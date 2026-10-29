@@ -8,11 +8,23 @@ import {
   toggleReaction,
   type StoryReactionCount,
 } from '../data/story-reactions';
+import { EMOJI_CATALOGUE } from '../data/emoji-catalogue';
 
 test('tocar num emoji adiciona-o, tocar outra vez retira-o', () => {
   expect(toggleReaction([], '🔥')).toEqual(['🔥']);
   expect(toggleReaction(['🔥'], '❤️')).toEqual(['🔥', '❤️']);
   expect(toggleReaction(['🔥', '❤️'], '🔥')).toEqual(['❤️']);
+});
+
+test('o terceiro emoji nao altera a seleccao', () => {
+  expect(toggleReaction(['🔥', '❤️'], '🎉')).toEqual(['🔥', '❤️']);
+});
+
+test('o catalogo inclui sequencias actuais e tons de pele', () => {
+  const emojis = new Set(EMOJI_CATALOGUE.map((item) => item.emoji));
+  expect(emojis.has('👍🏽')).toBe(true);
+  expect(emojis.has('🧑🏿‍🚀')).toBe(true);
+  expect(emojis.has('🏳️‍⚧️')).toBe(true);
 });
 
 test('as contagens sobem e descem so na parte que e minha', () => {

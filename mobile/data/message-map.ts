@@ -71,6 +71,8 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
     forwardCount: m.forward_count ?? 0,
     sourceChannelId: m.source_channel_id,
     sourcePostId: m.source_post_id,
+    sourceChatId: m.source_chat_id,
+    sourceMessageId: m.source_message_id,
   };
   if (deleted) return base;
 
