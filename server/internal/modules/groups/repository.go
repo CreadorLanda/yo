@@ -66,7 +66,7 @@ func (r *Repository) Create(
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO messages (chat_id, sender_id, content, message_type)
 		VALUES ($1, $2, $3, 'system')
-	`, id, creator, "group_created"); err != nil {
+	`, id, creator, "group:created:"+creator.String()); err != nil {
 		return uuid.Nil, err
 	}
 
@@ -74,21 +74,29 @@ func (r *Repository) Create(
 }
 
 type groupRow struct {
-	ID             uuid.UUID
-	Title          *string
-	Description    *string
-	AvatarURL      *string
-	CreatedBy      uuid.UUID
-	CreatedAt      time.Time
-	HistoryEnabled bool
-	HistoryMode    string
-	HistoryLimit   int
+	ID                 uuid.UUID
+	Title              *string
+	Description        *string
+	AvatarURL          *string
+	CreatedBy          uuid.UUID
+	CreatedAt          time.Time
+	HistoryEnabled     bool
+	HistoryMode        string
+	HistoryLimit       int
+	TextPermission     string
+	StickersPermission string
+	AudioPermission    string
+	MediaPermission    string
+	PostingPermission  string
+	PostingUntil       *time.Time
 }
 
 func (r *Repository) Get(ctx context.Context, id uuid.UUID) (groupRow, error) {
 	const q = `
 		SELECT id, title, description, avatar_url, created_by, created_at,
-		       history_enabled, history_mode, history_limit
+		       history_enabled, history_mode, history_limit,
+		       text_permission, stickers_permission, audio_permission,
+		       media_permission, posting_permission, posting_permission_until
 		FROM chats
 		WHERE id = $1 AND type = 'group'
 	`
@@ -96,6 +104,8 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (groupRow, error) {
 	err := r.db.QueryRow(ctx, q, id).Scan(
 		&g.ID, &g.Title, &g.Description, &g.AvatarURL, &g.CreatedBy, &g.CreatedAt,
 		&g.HistoryEnabled, &g.HistoryMode, &g.HistoryLimit,
+		&g.TextPermission, &g.StickersPermission, &g.AudioPermission,
+		&g.MediaPermission, &g.PostingPermission, &g.PostingUntil,
 	)
 	return g, err
 }
@@ -103,7 +113,9 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (groupRow, error) {
 func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID) ([]groupRow, error) {
 	const q = `
 		SELECT c.id, c.title, c.description, c.avatar_url, c.created_by, c.created_at,
-		       c.history_enabled, c.history_mode, c.history_limit
+		       c.history_enabled, c.history_mode, c.history_limit,
+		       c.text_permission, c.stickers_permission, c.audio_permission,
+		       c.media_permission, c.posting_permission, c.posting_permission_until
 		FROM chats c
 		JOIN chat_participants cp ON cp.chat_id = c.id
 		WHERE c.type = 'group' AND cp.user_id = $1
@@ -120,6 +132,8 @@ func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID) ([]group
 		if err := rows.Scan(
 			&g.ID, &g.Title, &g.Description, &g.AvatarURL, &g.CreatedBy, &g.CreatedAt,
 			&g.HistoryEnabled, &g.HistoryMode, &g.HistoryLimit,
+			&g.TextPermission, &g.StickersPermission, &g.AudioPermission,
+			&g.MediaPermission, &g.PostingPermission, &g.PostingUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -182,6 +196,7 @@ func (r *Repository) Patch(
 	histEnabled *bool,
 	histMode *HistoryMode,
 	histLimit *int,
+	permissions *GroupPermissions,
 ) error {
 	// Single UPDATE with COALESCE for optional fields.
 	_, err := r.db.Exec(ctx, `
@@ -191,10 +206,36 @@ func (r *Repository) Patch(
 			avatar_url = COALESCE($4, avatar_url),
 			history_enabled = COALESCE($5, history_enabled),
 			history_mode = COALESCE($6, history_mode),
-			history_limit = COALESCE($7, history_limit)
+			history_limit = COALESCE($7, history_limit),
+			text_permission = COALESCE($8, text_permission),
+			stickers_permission = COALESCE($9, stickers_permission),
+			audio_permission = COALESCE($10, audio_permission),
+			media_permission = COALESCE($11, media_permission),
+			posting_permission = COALESCE($12, posting_permission),
+			posting_permission_until = CASE WHEN $13::boolean THEN $14 ELSE posting_permission_until END
 		WHERE id = $1 AND type = 'group'
-	`, id, title, description, avatar, histEnabled, histMode, histLimit)
+	`, id, title, description, avatar, histEnabled, histMode, histLimit,
+		permissionValue(permissions, func(p GroupPermissions) PermissionLevel { return p.Text }),
+		permissionValue(permissions, func(p GroupPermissions) PermissionLevel { return p.Stickers }),
+		permissionValue(permissions, func(p GroupPermissions) PermissionLevel { return p.Audio }),
+		permissionValue(permissions, func(p GroupPermissions) PermissionLevel { return p.Media }),
+		permissionValue(permissions, func(p GroupPermissions) PermissionLevel { return p.Posting }),
+		permissions != nil, permissionUntil(permissions))
 	return err
+}
+
+func permissionValue(p *GroupPermissions, pick func(GroupPermissions) PermissionLevel) any {
+	if p == nil {
+		return nil
+	}
+	return pick(*p)
+}
+
+func permissionUntil(p *GroupPermissions) any {
+	if p == nil {
+		return nil
+	}
+	return p.PostingUntil
 }
 
 // AddMemberWithHistory adds someone and decides, once, how far back they can

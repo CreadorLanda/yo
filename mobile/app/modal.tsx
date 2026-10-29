@@ -9,6 +9,7 @@ import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { updateGroup, useGroup } from '@/data/group-store';
 import { HISTORY_LIMITS, type GroupMember } from '@/data/mock';
+import { getCurrentUser } from '@/data/auth-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -16,6 +17,7 @@ export default function GroupSettingsModal() {
   const { groupId } = useLocalSearchParams<{ groupId?: string }>();
   const group = useGroup(groupId);
   const { colors } = useTheme();
+  const me = getCurrentUser()?.id;
 
   if (!group) {
     return (
@@ -138,6 +140,10 @@ export default function GroupSettingsModal() {
           </>
         ) : null}
 
+        {group.members.some((member) => member.id === me && member.role === 'admin') ? (
+          <PermissionSection group={group} />
+        ) : null}
+
         <Section title={t('group.members_section')}>
           <View style={[styles.card, styles.cardFlush, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {group.members.map((member, i) => (
@@ -177,13 +183,57 @@ function MemberRow({ member, divider }: { member: GroupMember; divider: boolean 
           {member.username}
         </Text>
       </View>
-      {member.role === 'admin' ? (
+      {member.role !== 'member' ? (
         <View style={[styles.adminBadge, { backgroundColor: colors.surfaceMuted }]}>
           <Ionicons name="shield-checkmark" size={12} color={colors.primary} />
-          <Text style={[styles.adminBadgeText, { color: colors.primary }]}>{t('group.admin')}</Text>
+          <Text style={[styles.adminBadgeText, { color: colors.primary }]}>
+            {member.role === 'admin' ? t('group.admin') : t('chat_info.moderator')}
+          </Text>
         </View>
       ) : null}
     </View>
+  );
+}
+
+function PermissionSection({ group }: { group: NonNullable<ReturnType<typeof useGroup>> }) {
+  const { colors } = useTheme();
+  const fallback = { text: 'member', stickers: 'member', audio: 'member', media: 'member', posting: 'member' } as const;
+  const permissions = group.permissions ?? fallback;
+  const fields = [
+    ['text', t('group.permission_text')],
+    ['stickers', t('group.permission_stickers')],
+    ['audio', t('group.permission_audio')],
+    ['media', t('group.permission_media')],
+    ['posting', t('group.permission_posting')],
+  ] as const;
+  const levels = ['member', 'moderator', 'admin'] as const;
+  return (
+    <Section title={t('group.permissions_section')}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {fields.map(([field, label]) => (
+          <View key={field} style={styles.permissionRow}>
+            <Text style={[styles.toggleLabel, { color: colors.text }]}>{label}</Text>
+            <View style={styles.permissionChoices}>
+              {levels.map((level) => {
+                const active = permissions[field] === level;
+                return (
+                  <Pressable
+                    key={level}
+                    onPress={() => updateGroup(group.id, { permissions: { ...permissions, [field]: level } })}
+                    style={[styles.permissionChoice, { borderColor: colors.border }, active && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                  >
+                    <Text style={[styles.permissionChoiceText, { color: active ? colors.onPrimary : colors.textSecondary }]}>
+                      {level === 'member' ? t('group.role_member') : level === 'moderator' ? t('group.role_moderator') : t('group.role_admin')}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+        <Text style={[styles.hint, { color: colors.textSecondary }]}>{t('group.permissions_hint')}</Text>
+      </View>
+    </Section>
   );
 }
 
@@ -278,6 +328,10 @@ const styles = StyleSheet.create({
   memberInfo: { flex: 1 },
   memberName: { ...Typography.bodyStrong },
   memberUsername: { ...Typography.caption, marginTop: 1 },
+  permissionRow: { gap: Spacing.sm, paddingVertical: Spacing.sm },
+  permissionChoices: { flexDirection: 'row', gap: Spacing.xs },
+  permissionChoice: { borderWidth: 1, borderRadius: Radii.pill, paddingHorizontal: Spacing.sm, paddingVertical: 5 },
+  permissionChoiceText: { ...Typography.micro, fontWeight: '700' },
   adminBadge: {
     flexDirection: 'row',
     alignItems: 'center',

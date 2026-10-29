@@ -250,7 +250,16 @@ export type Message = {
    */
   systemEvent?:
     | { kind: 'joined' }
-    | { kind: 'disappearing'; seconds: number; actorId: string };
+    | { kind: 'disappearing'; seconds: number; actorId: string }
+    | {
+        kind: 'group';
+        event: 'created' | 'members_added' | 'member_removed' | 'role_changed' | 'admin_handoff' | 'achievement_created' | 'achievement_awarded';
+        actorId: string;
+        targetIds?: string[];
+        targetId?: string;
+        role?: string;
+        achievementId?: string;
+      };
   replyTo?: { id: string; text: string; fromMe: boolean; senderName?: string; icon?: string };
   /**
    * The message this one answers, as the server knows it.
@@ -294,7 +303,7 @@ export type GroupMember = {
   name: string;
   username: string;
   avatarUri: string;
-  role: 'admin' | 'member';
+  role: 'admin' | 'moderator' | 'member';
 };
 
 /** Number of past messages a new member can see. `Infinity` means all. */
@@ -312,6 +321,14 @@ export type GroupInfo = {
   historyMode: 'view-only' | 'full';
   /** How many past messages new members can see (see HISTORY_LIMITS). */
   historyLimit: number;
+  permissions?: {
+    text: GroupMember['role'];
+    stickers: GroupMember['role'];
+    audio: GroupMember['role'];
+    media: GroupMember['role'];
+    posting: GroupMember['role'];
+    posting_until?: string;
+  };
 };
 
 export const MESSAGES: Record<string, Message[]> = {

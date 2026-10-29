@@ -424,7 +424,7 @@ func writeErr(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrChatNotFound), errors.Is(err, users.ErrNotFound), errors.Is(err, ErrMessageNotFound):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case errors.Is(err, ErrNotParticipant), errors.Is(err, ErrCannotAcceptOwn), errors.Is(err, ErrNotSender):
+	case errors.Is(err, ErrNotParticipant), errors.Is(err, ErrCannotAcceptOwn), errors.Is(err, ErrNotSender), errors.Is(err, ErrGroupPermission):
 		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrChatBlocked):
 		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})

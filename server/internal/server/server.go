@@ -120,6 +120,8 @@ func New(cfg config.Config) (*Server, error) {
 
 	// Native E2E-encrypted messaging (push for offline peers via notifSvc).
 	msgRepo := messages.NewRepository(pg, cfg.Crypto.MessageKey)
+	groupsRepo := groups.NewRepository(pg)
+	groupsSvc := groups.NewService(groupsRepo)
 	// Blocking, which both messages and calls consult through a narrow
 	// interface rather than importing this module.
 	blocksRepo := blocks.NewRepo(pg)
@@ -129,7 +131,8 @@ func New(cfg config.Config) (*Server, error) {
 
 	msgSvc := messages.NewService(msgRepo, usersRepo, hub, notifSvc).
 		WithBlocks(blocksRepo).
-		WithMediaAccess(mediaSvc)
+		WithMediaAccess(mediaSvc).
+		WithGroupPolicy(groupsSvc)
 	msgCtl := messages.NewController(msgSvc, hub, []byte(cfg.JWT.Secret))
 	messages.Register(authed, msgCtl)
 	// WS lives on the public /api group — token is validated inside the handler.
@@ -144,8 +147,7 @@ func New(cfg config.Config) (*Server, error) {
 	mediaSweeper := media.NewSweeper(mediaRepo, cfg.Media.Dir, cfg.Media.SweepEvery)
 
 	// Group chats (roles + history settings on chats type=group).
-	groupsRepo := groups.NewRepository(pg)
-	groupsCtl := groups.NewController(groups.NewService(groupsRepo))
+	groupsCtl := groups.NewController(groupsSvc)
 	groups.Register(authed, groupsCtl)
 
 	// Ephemeral stories (24h feed + views).
