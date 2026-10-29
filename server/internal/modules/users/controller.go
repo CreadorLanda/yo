@@ -138,7 +138,6 @@ func writeErr(ctx *gin.Context, err error) {
 	}
 }
 
-
 // DeleteMe erases the caller's account.
 //
 // No confirmation token: the client already asks, twice, and a server-side
