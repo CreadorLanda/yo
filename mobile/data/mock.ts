@@ -206,10 +206,11 @@ export type MessageAttachment =
       icon: string;
       /** Truth or Dare engine payload — present on real game messages. */
       game?: 'truth-or-dare';
-      action?: 'start' | 'choose' | 'challenge' | 'done' | 'end';
+      action?: 'start' | 'join' | 'choose' | 'challenge' | 'done' | 'end';
       seed?: string;
       maxRounds?: number;
       playerId?: string;
+      playerIds?: string[];
       choice?: 'truth' | 'dare';
       text?: string;
       winnerId?: string;
@@ -556,6 +557,8 @@ export type ChannelPost = {
   text: string;
   mediaUri?: string;
   timestamp: string;
+  /** Server timestamp used as the first key when replaying channel events. */
+  createdAt?: string;
   views: number;
   reactions?: ChannelReaction[];
   myReaction?: string | null;
@@ -564,6 +567,8 @@ export type ChannelPost = {
   /** Post kind — defaults to text/image based on mediaUri when omitted. */
   type?: ChannelPostType;
   gameKind?: ChannelGameKind;
+  /** Persisted event for the deterministic game stream. */
+  gamePayload?: import('@/data/game').GameMessagePayload;
   /** Live / voice hangout is currently active. */
 };
 

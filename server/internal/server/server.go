@@ -199,7 +199,7 @@ func New(cfg config.Config) (*Server, error) {
 
 	// Discover channels + posts.
 	channelsRepo := channels.NewRepository(pg)
-	channelsCtl := channels.NewController(channels.NewService(channelsRepo))
+	channelsCtl := channels.NewController(channels.NewService(channelsRepo).WithBroadcaster(hub))
 	channels.Register(authed, channelsCtl)
 
 	// Live broadcasts. One person publishing to an audience that cannot

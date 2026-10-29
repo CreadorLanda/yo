@@ -14,6 +14,7 @@ import type {
   ManagedChannel,
   PostPermission,
 } from '@/data/channel-store';
+import type { GameMessagePayload } from '@/data/game';
 
 export interface ChannelDTO {
   id: string;
@@ -50,6 +51,7 @@ export interface ChannelPostDTO {
   my_emoji?: string;
   my_emojis?: string[];
   reactions?: { emoji: string; count: number }[];
+  game_payload?: GameMessagePayload;
 }
 
 export interface ChannelCommentDTO {
@@ -107,7 +109,7 @@ export function unfollowChannel(id: string) {
 
 export function createChannelPost(
   channelId: string,
-  body: { text?: string; post_type?: string; media_url?: string },
+  body: { text?: string; post_type?: string; media_url?: string; game_payload?: GameMessagePayload },
 ) {
   return api.post<ChannelPostDTO>(`/api/channels/${channelId}/posts`, body);
 }
@@ -159,6 +161,7 @@ export function mapPostDTO(p: ChannelPostDTO): ChannelPost {
     text: p.text,
     mediaUri: p.media_url ? mediaFileURL(p.media_url) : undefined,
     timestamp: relative(p.created_at),
+    createdAt: p.created_at,
     views: p.views,
     reactions,
     myReaction: (p.my_emojis ?? (p.my_emoji ? [p.my_emoji] : []))[0] || null,
@@ -167,6 +170,7 @@ export function mapPostDTO(p: ChannelPostDTO): ChannelPost {
     // Needed to decide who may edit or delete it. Dropping it here meant the
     // screen had no way to tell your own post from anyone else's.
     authorId: p.author_id,
+    gamePayload: p.game_payload,
     comments: [],
   };
 }

@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -203,7 +204,7 @@ func (r *Repository) Patch(
 func (r *Repository) InsertPost(
 	ctx context.Context,
 	channelID, author uuid.UUID,
-	text string, ptype PostType, media string,
+	text string, ptype PostType, media string, payload json.RawMessage,
 ) (uuid.UUID, error) {
 	var mediaPtr *string
 	if media != "" {
@@ -211,9 +212,9 @@ func (r *Repository) InsertPost(
 	}
 	var id uuid.UUID
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO channel_posts (channel_id, author_id, text, post_type, media_url)
-		VALUES ($1,$2,$3,$4,$5) RETURNING id
-	`, channelID, author, text, string(ptype), mediaPtr).Scan(&id)
+		INSERT INTO channel_posts (channel_id, author_id, text, post_type, media_url, game_payload)
+		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
+	`, channelID, author, text, string(ptype), mediaPtr, payloadOrNil(payload)).Scan(&id)
 	return id, err
 }
 
@@ -222,10 +223,10 @@ func (r *Repository) ListPosts(ctx context.Context, channelID, viewer uuid.UUID,
 		limit = 30
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT p.id, p.channel_id, p.author_id, p.text, p.post_type, p.media_url, p.views, p.created_at
+		SELECT p.id, p.channel_id, p.author_id, p.text, p.post_type, p.media_url, p.views, p.created_at, p.game_payload
 		FROM channel_posts p
 		WHERE p.channel_id = $1
-		ORDER BY p.created_at DESC
+		ORDER BY p.created_at DESC, p.id DESC
 		LIMIT $2
 	`, channelID, limit)
 	if err != nil {
@@ -237,13 +238,15 @@ func (r *Repository) ListPosts(ctx context.Context, channelID, viewer uuid.UUID,
 		var p Post
 		var media *string
 		var ptype string
-		if err := rows.Scan(&p.ID, &p.ChannelID, &p.AuthorID, &p.Text, &ptype, &media, &p.Views, &p.CreatedAt); err != nil {
+		var payload []byte
+		if err := rows.Scan(&p.ID, &p.ChannelID, &p.AuthorID, &p.Text, &ptype, &media, &p.Views, &p.CreatedAt, &payload); err != nil {
 			return nil, err
 		}
 		p.PostType = PostType(ptype)
 		if media != nil {
 			p.MediaURL = *media
 		}
+		p.GamePayload = payload
 		reacts, _ := r.ListReactions(ctx, p.ID)
 		p.Reactions = reacts
 		p.MyEmojis, _ = r.MyReactions(ctx, p.ID, viewer)
@@ -259,10 +262,11 @@ func (r *Repository) GetPost(ctx context.Context, postID uuid.UUID) (Post, error
 	var p Post
 	var media *string
 	var ptype string
+	var payload []byte
 	err := r.db.QueryRow(ctx, `
-		SELECT id, channel_id, author_id, text, post_type, media_url, views, created_at
+		SELECT id, channel_id, author_id, text, post_type, media_url, views, created_at, game_payload
 		FROM channel_posts WHERE id = $1
-	`, postID).Scan(&p.ID, &p.ChannelID, &p.AuthorID, &p.Text, &ptype, &media, &p.Views, &p.CreatedAt)
+	`, postID).Scan(&p.ID, &p.ChannelID, &p.AuthorID, &p.Text, &ptype, &media, &p.Views, &p.CreatedAt, &payload)
 	if err != nil {
 		return p, err
 	}
@@ -270,7 +274,15 @@ func (r *Repository) GetPost(ctx context.Context, postID uuid.UUID) (Post, error
 	if media != nil {
 		p.MediaURL = *media
 	}
+	p.GamePayload = payload
 	return p, nil
+}
+
+func payloadOrNil(payload json.RawMessage) any {
+	if len(payload) == 0 {
+		return nil
+	}
+	return payload
 }
 
 func (r *Repository) IncViews(ctx context.Context, postID uuid.UUID) error {

@@ -266,9 +266,12 @@ func writeErr(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrHandleTaken):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrImmutableGame):
+		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrInvalidHandle), errors.Is(err, ErrInvalidName),
 		errors.Is(err, ErrInvalidVisibility), errors.Is(err, ErrInvalidPostPolicy), errors.Is(err, ErrInvalidJoinMode),
 		errors.Is(err, ErrCommentsOff), errors.Is(err, ErrReactionsOff),
+		errors.Is(err, ErrInvalidGame),
 		errors.Is(err, ErrInvalidEmoji), errors.Is(err, ErrTooManyReactions),
 		errors.Is(err, ErrInvalidRole), errors.Is(err, ErrCannotDemote),
 		errors.Is(err, ErrSelfRole):
