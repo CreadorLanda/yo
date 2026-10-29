@@ -61,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed (Corrigido)
 
+#### Lives
+- Iniciar uma Live num chat ou canal onde já há uma a decorrer entra nessa Live em vez de dizer que alguém já está em direto. Quem a iniciou volta como emissor (útil quando a app fechou a meio), os outros entram como espectadores
+
 #### Câmara
 - Abrir a câmara dos stories já não passa pelo pipeline de fotogramas (worklets + Skia), a causa provável do crash ao abrir: só é criado quando há um filtro escolhido. Uma falha na árvore da câmara passa a mostrar "sem câmara" (o obturador abre a galeria) em vez de derrubar o ecrã
 - O pinch-to-zoom funciona: o zoom é convertido de 0–1 para o intervalo da lente (`minZoom`–`maxZoom`); antes a câmara abria em zoom 0 e cada gesto era rejeitado
