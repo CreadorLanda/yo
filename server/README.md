@@ -71,6 +71,35 @@ curl -s -X POST localhost:8080/api/auth/verify \
 # → { "user": { ... }, "tokens": { ... } }
 ```
 
+Credential verification:
+
+```text
+POST /api/auth/reauth/start          protected; verifies the current phone
+POST /api/auth/email/request         protected; consumes re-authentication
+POST /api/auth/email/verify          protected; verifies the latest email code
+DELETE /api/auth/email               protected; removes email after re-authentication
+POST /api/auth/phone/change/start    protected; verifies destination ownership
+POST /api/auth/phone/change/confirm  protected; changes phone and revokes sessions
+```
+
+Signup accepts an optional email in `POST /api/auth/verify`. It is stored as
+unverified until the email code is confirmed. Existing verified email and phone
+credentials return the same generic `credential_unavailable` conflict without
+revealing account ownership. Email and destination-phone challenges are
+single-use, expire after ten minutes, and stop after five invalid attempts.
+
+Changing the phone revokes every persisted refresh session and the mobile client
+clears its local session. Access JWTs are stateless and remain valid until their
+configured access TTL (15 minutes by default); a future token-introspection or
+user-session-version check is required for immediate access-token revocation.
+
+In `APP_ENV=dev`, verification codes are returned as `dev_code` for local
+testing. In production email requires the SMTP variables above and phone
+verification requires `SMS_WEBHOOK_URL` (HTTPS) plus its optional bearer token.
+The relay receives only the destination, the short-lived code and `channel`;
+the API never returns OTPs in production. If the relay is absent or fails, the
+API returns `503` and does not silently accept the credential change.
+
 ---
 
 ## Implemented vs skeleton

@@ -82,6 +82,16 @@ func New(cfg config.Config) (*Server, error) {
 	// Public routes (no auth required).
 	authRepo := auth.NewRepository(pg)
 	authSvc := auth.NewService(authRepo, rdb, cfg.JWT)
+	authSvc.WithDevVerificationCodes(cfg.Env == "dev")
+	if cfg.Email.SMTPHost != "" && cfg.Email.From != "" {
+		authSvc.WithEmailSender(auth.NewSMTPSender(auth.SMTPConfig{
+			Host: cfg.Email.SMTPHost, Port: cfg.Email.SMTPPort,
+			Username: cfg.Email.SMTPUser, Password: cfg.Email.SMTPPass, From: cfg.Email.From,
+		}))
+	}
+	if cfg.SMS.WebhookURL != "" {
+		authSvc.WithPhoneSender(auth.NewHTTPPhoneSender(cfg.SMS.WebhookURL, cfg.SMS.WebhookToken))
+	}
 	authCtl := auth.NewController(authSvc, cfg)
 	auth.Register(api, authCtl)
 
@@ -89,6 +99,7 @@ func New(cfg config.Config) (*Server, error) {
 	// access token. Mounted as a sub-group so /auth/* stays open.
 	authed := api.Group("")
 	authed.Use(middleware.Auth([]byte(cfg.JWT.Secret)))
+	auth.RegisterAuthed(authed, authCtl)
 
 	usersRepo := users.NewRepository(pg)
 	usersCtl := users.NewController(users.NewService(usersRepo))
@@ -107,6 +118,7 @@ func New(cfg config.Config) (*Server, error) {
 	// Notifications — device tokens, prefs, Redis push queue + worker.
 	notifRepo := notifications.NewRepository(pg)
 	notifSvc := notifications.NewService(notifRepo, rdb)
+	authSvc.WithCredentialNotifier(notifSvc)
 	notifCtl := notifications.NewController(notifSvc)
 	notifications.Register(authed, notifCtl)
 	pushWorker := notifications.NewWorker(notifRepo, rdb, notifications.WorkerOpts{

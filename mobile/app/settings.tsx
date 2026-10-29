@@ -9,7 +9,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
 import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
-import { appAlert, appPrompt } from '@/data/dialog-store';
+import { appAlert, appPrompt, type DialogButton } from '@/data/dialog-store';
+import {
+  authEmailRemove,
+  authEmailRequest,
+  authEmailVerify,
+  authPhoneChangeConfirm,
+  authPhoneChangeStart,
+  authReauthStart,
+} from '@/data/api/auth';
+import { ApiError } from '@/data/api/client';
 import { deleteMe, me, patchMe, type UserPatch } from '@/data/api/users';
 import {
   biometricsAvailable,
@@ -19,7 +28,7 @@ import {
   useAppLockPrefs,
 } from '@/data/app-lock';
 import { LOCK_TIMEOUTS_MS, type LockTimeoutMs } from '@/data/app-lock-policy';
-import { clearSession, getSessionPhone } from '@/data/auth-store';
+import { clearSession, getSessionPhone, setUser } from '@/data/auth-store';
 import { hasLockCode, isValidCode, setLockCode } from '@/data/chat-lock';
 import { resetAllStores } from '@/data/reset';
 
@@ -58,6 +67,8 @@ export default function SettingsScreen() {
   const [readReceipts, setReadReceipts] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [emailVerified, setEmailVerified] = useState(false);
   const [privacyLoaded, setPrivacyLoaded] = useState(false);
 
   useEffect(() => {
@@ -69,6 +80,8 @@ export default function SettingsScreen() {
         setProfilePhoto(u.photo_visibility ?? 'everyone');
         setReadReceipts(u.read_receipts !== false);
         setGhostMode(u.ghost_mode === true);
+        setEmail(u.email ?? '');
+        setEmailVerified(u.email_verified === true);
         // Not from the server: it holds a hash of the number, never the
         // number. The device is the only place that can answer this.
         void getSessionPhone().then(setPhone);
@@ -98,6 +111,170 @@ export default function SettingsScreen() {
     },
     [privacyLoaded],
   );
+
+  const refreshCredentialState = async () => {
+    const u = await me();
+    setEmail(u.email ?? '');
+    setEmailVerified(u.email_verified === true);
+    await setUser(u);
+  };
+
+  const showCredentialError = (err: unknown) => {
+    const code = err instanceof ApiError ? err.code : '';
+    if (code === 'credential_unavailable') {
+      appAlert(t('settings.credential_failed_title'), t('settings.credential_conflict'));
+      return;
+    }
+    if (code === 'reauthentication_required') {
+      appAlert(t('settings.credential_failed_title'), t('settings.reauth_failed'));
+      return;
+    }
+    if (code === 'verification_delivery_unavailable') {
+      appAlert(t('settings.credential_failed_title'), t('settings.delivery_unavailable'));
+      return;
+    }
+    appAlert(t('settings.credential_failed_title'), t('settings.credential_failed_body'));
+  };
+
+  const promptCredentialCode = (
+    title: string,
+    message: string,
+    onCode: (code: string) => Promise<void>,
+  ) =>
+    appPrompt(title, {
+      message,
+      placeholder: t('settings.credential_code_placeholder'),
+      secure: true,
+      keyboard: 'number-pad',
+      cancelLabel: t('common.cancel'),
+      submitLabel: t('common.confirm'),
+      onSubmit: async (value) => {
+        const code = value.trim();
+        if (!/^\d{6}$/.test(code)) return false;
+        try {
+          await onCode(code);
+          return true;
+        } catch (err) {
+          showCredentialError(err);
+          return false;
+        }
+      },
+    });
+
+  const withReauthentication = (onCode: (code: string) => Promise<void>) => {
+    if (!phone) {
+      appAlert(t('settings.credential_failed_title'), t('settings.phone_unavailable'));
+      return;
+    }
+    void authReauthStart(phone)
+      .then((res) => {
+        if (res.dev_code) {
+          return onCode(res.dev_code);
+        }
+        promptCredentialCode(t('settings.reauth_code_title'), t('settings.reauth_code_hint'), onCode);
+      })
+      .catch(showCredentialError);
+  };
+
+  const verifyPendingEmail = async (code: string) => {
+    await authEmailVerify(code);
+    await refreshCredentialState();
+    appAlert(t('settings.email_verified_title'), t('settings.email_verified_body'));
+  };
+
+  const requestEmailChange = () => {
+    appPrompt(t('settings.email_prompt_title'), {
+      message: t('settings.email_prompt_body'),
+      placeholder: t('settings.email_placeholder'),
+      keyboard: 'default',
+      cancelLabel: t('common.cancel'),
+      submitLabel: t('common.continue'),
+      onSubmit: async (value) => {
+        const next = value.trim().toLowerCase();
+        if (!next || !next.includes('@') || next.includes(' ')) return false;
+        withReauthentication(async (reauthCode) => {
+          const res = await authEmailRequest(next, reauthCode);
+          setEmail(next);
+          setEmailVerified(false);
+          if (res.dev_code) {
+            await verifyPendingEmail(res.dev_code);
+          } else {
+            promptCredentialCode(t('settings.email_code_title'), t('settings.email_code_hint'), verifyPendingEmail);
+          }
+        });
+        return true;
+      },
+    });
+  };
+
+  const requestEmailVerification = () => {
+    if (!email) return;
+    withReauthentication(async (reauthCode) => {
+      const res = await authEmailRequest(email, reauthCode);
+      if (res.dev_code) {
+        await verifyPendingEmail(res.dev_code);
+      } else {
+        promptCredentialCode(t('settings.email_code_title'), t('settings.email_code_hint'), verifyPendingEmail);
+      }
+    });
+  };
+
+  const removeEmail = () => {
+    appAlert(t('settings.email_remove_title'), t('settings.email_remove_body'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('settings.email_remove'),
+        style: 'destructive',
+        onPress: () =>
+          withReauthentication(async (reauthCode) => {
+            await authEmailRemove(reauthCode);
+            await refreshCredentialState();
+          }),
+      },
+    ]);
+  };
+
+  const manageEmail = () => {
+    if (!email) {
+      requestEmailChange();
+      return;
+    }
+    const actions: DialogButton[] = [
+      ...(emailVerified ? [] : [{ text: t('settings.email_verify'), onPress: requestEmailVerification }]),
+      { text: t('settings.email_change'), onPress: requestEmailChange },
+      { text: t('settings.email_remove'), style: 'destructive', onPress: removeEmail },
+      { text: t('common.cancel'), style: 'cancel' },
+    ];
+    appAlert(t('settings.email'), email, actions);
+  };
+
+  const requestPhoneChange = () => {
+    appPrompt(t('settings.phone_change_title'), {
+      message: t('settings.phone_change_body'),
+      placeholder: t('settings.phone_placeholder'),
+      keyboard: 'default',
+      cancelLabel: t('common.cancel'),
+      submitLabel: t('common.continue'),
+      onSubmit: async (value) => {
+        const next = value.trim();
+        if (!/^\+[1-9]\d{7,14}$/.test(next) || next === phone) return false;
+        withReauthentication(async (reauthCode) => {
+          const res = await authPhoneChangeStart(next, reauthCode);
+          const confirm = async (code: string) => {
+            await authPhoneChangeConfirm(code);
+            await clearSession();
+            router.replace('/onboarding');
+          };
+          if (res.dev_code) {
+            await confirm(res.dev_code);
+          } else {
+            promptCredentialCode(t('settings.phone_code_title'), t('settings.phone_code_hint'), confirm);
+          }
+        });
+        return true;
+      },
+    });
+  };
   const [notifMessages, setNotifMessages] = useState(true);
   const [notifGroups, setNotifGroups] = useState(true);
   const [notifCalls, setNotifCalls] = useState(false);
@@ -372,11 +549,14 @@ export default function SettingsScreen() {
             icon="call-outline"
             label={t('settings.phone')}
             value={phone || t('settings.phone_hidden')}
+            onPress={requestPhoneChange}
           />
-          {/* No onPress: there is no email on an account yet, and a row that
-              responds to a tap by doing nothing is worse than one that does
-              not respond at all. */}
-          <Row icon="mail-outline" label={t('settings.email')} value={t('settings.email_empty')} />
+          <Row
+            icon="mail-outline"
+            label={t('settings.email')}
+            value={email ? `${email}${emailVerified ? '' : ` · ${t('settings.email_unverified')}`}` : t('settings.email_empty')}
+            onPress={manageEmail}
+          />
           <Row icon="trash-outline" label={t('settings.delete_account')} danger onPress={confirmDelete} last />
         </Group>
 
