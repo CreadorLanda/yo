@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -71,6 +72,9 @@ type CryptoConfig struct {
 
 type HTTPConfig struct {
 	Addr string
+	// CORSOrigins lists the browser origins allowed to call the API. Empty
+	// means none: native apps do not need CORS, only the web client does.
+	CORSOrigins []string
 }
 
 type PostgresConfig struct {
@@ -111,7 +115,8 @@ func Load() (Config, error) {
 		// responses in a deployed process.
 		Env: getenv("APP_ENV", "prod"),
 		HTTP: HTTPConfig{
-			Addr: getenv("HTTP_ADDR", ":8080"),
+			Addr:        getenv("HTTP_ADDR", ":8080"),
+			CORSOrigins: splitList(os.Getenv("CORS_ALLOWED_ORIGINS")),
 		},
 		Postgres: PostgresConfig{
 			URL: os.Getenv("POSTGRES_URL"),
@@ -200,6 +205,17 @@ func Load() (Config, error) {
 		return cfg, errors.New("OTP_PEPPER must be at least 32 bytes in prod")
 	}
 	return cfg, nil
+}
+
+// splitList turns "a, b,,c" into ["a" "b" "c"]; empty input gives nil.
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getenv(key, fallback string) string {

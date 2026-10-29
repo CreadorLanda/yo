@@ -48,3 +48,6 @@ app-example
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Copied from livekit-client by scripts/copy-livekit-worker.js
+/public/livekit-e2ee-worker.js

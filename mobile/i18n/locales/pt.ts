@@ -829,6 +829,7 @@ export default {
     role_member: 'Membro',
   },
   live: {
+    web_unavailable: 'As Lives ainda não estão disponíveis no browser. Abre a app no telemóvel.',
     watching: '{count} a ver',
     ended_already: 'Esta emissão terminou',
     badge: 'AO VIVO',

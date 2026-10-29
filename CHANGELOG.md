@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Registo aceita email opcional com verificação por código; definições permitem alterar/remover email e alterar telefone com reautenticação, OTP de destino, conflitos genéricos, limite de tentativas e revogação de sessões após troca do telefone
 - Os desafios de email e telefone guardam apenas hashes dos códigos, expiram, são de uso único e enviam notificações de segurança após alterações concluídas
 
+#### Web
+- O app corre no browser (`bun run web`): entrar, ver conversas e fazer ou atender chamadas de voz e vídeo, com a mesma cifragem de ponta a ponta das chamadas no telemóvel. Câmara, base de dados local e Lives ainda não existem na web; o tema Liquid mostra só a cor de fundo
+- A API aceita pedidos de browsers só das origens listadas em `CORS_ALLOWED_ORIGINS`; vazio por omissão, as apps nativas não precisam dela
+
 #### Stories
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista
