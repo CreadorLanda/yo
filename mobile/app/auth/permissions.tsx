@@ -11,6 +11,8 @@ import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
+import { apiSaveOnboardingChoices, patchNotifPrefs } from '@/data/api/notifications';
+import { registerPushWithServer, unregisterPushWithServer } from '@/data/push';
 import { useRegistration } from '@/store/registration';
 
 type Toggle = {
@@ -39,14 +41,39 @@ export default function PermissionsScreen() {
   const { data, set, reset } = useRegistration();
   const [contacts, setContacts] = useState(data.contactsGranted);
   const [notifications, setNotifications] = useState(data.notificationsGranted);
+  const [busy, setBusy] = useState(false);
   const { colors } = useTheme();
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    if (busy) return;
+    setBusy(true);
     set('contactsGranted', contacts);
     set('notificationsGranted', notifications);
-    // Last step of onboarding — clear the wizard state before entering the app.
-    reset();
-    router.replace('/(tabs)');
+    try {
+      let finalNotifications = notifications;
+      if (notifications) {
+        const token = await registerPushWithServer();
+        if (!token) finalNotifications = false;
+      } else {
+        await unregisterPushWithServer().catch(() => {});
+      }
+      await apiSaveOnboardingChoices({
+        notifications: finalNotifications,
+        contacts_visible: contacts,
+      }).catch(() => {});
+      await patchNotifPrefs({
+        messages: finalNotifications,
+        groups: finalNotifications,
+        calls: finalNotifications,
+        stories: finalNotifications,
+      }).catch(() => {});
+      set('notificationsGranted', finalNotifications);
+    } finally {
+      // Last step of onboarding — clear the wizard state before entering the app.
+      reset();
+      setBusy(false);
+      router.replace('/(tabs)');
+    }
   };
 
   return (
@@ -101,7 +128,7 @@ export default function PermissionsScreen() {
       </View>
 
       <View style={styles.footer}>
-        <PrimaryButton label={t('auth.permissions.cta')} onPress={handleFinish} />
+        <PrimaryButton label={busy ? t('auth.saving') : t('auth.permissions.cta')} onPress={handleFinish} disabled={busy} />
       </View>
     </SafeAreaView>
   );
