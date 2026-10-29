@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -11,9 +12,10 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-import { Text } from '@/components/ui/text';
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { searchEmojiCatalogue } from '@/data/reactions';
 
 const DEFAULT_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍', '🔥', '👏'] as const;
 
@@ -48,6 +50,8 @@ export function ReactionTray({
   forwardLabel = 'Forward',
 }: Props) {
   const { colors, isDark } = useTheme();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState('');
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
@@ -81,6 +85,13 @@ export function ReactionTray({
                 }}
               />
             ))}
+            <EmojiBtn
+              emoji="＋"
+              index={emojis.length}
+              active={false}
+              activeColor={colors.primary}
+              onPress={() => setPickerOpen(true)}
+            />
           </View>
 
           {onComment ? (
@@ -132,6 +143,33 @@ export function ReactionTray({
             </Pressable>
           ) : null}
         </Animated.View>
+        <Modal transparent visible={pickerOpen} animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+          <Pressable style={styles.pickerScrim} onPress={() => setPickerOpen(false)}>
+            <Pressable style={[styles.picker, { backgroundColor: isDark ? '#1C1E26' : '#FFF' }]} onPress={() => {}}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>Reactions</Text>
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search emoji"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.pickerSearch, { color: colors.text, borderColor: colors.border }]}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <ScrollView contentContainerStyle={styles.pickerGrid}>
+                {searchEmojiCatalogue(query).map(({ emoji }) => (
+                  <Pressable
+                    key={emoji}
+                    onPress={() => onSelect(emoji)}
+                    style={styles.pickerCell}
+                  >
+                    <Text style={styles.pickerEmoji}>{emoji}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     </Modal>
   );
@@ -225,4 +263,11 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   commentText: { ...Typography.caption, fontWeight: '700', flex: 1 },
+  pickerScrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+  picker: { maxHeight: '70%', borderTopLeftRadius: Radii.xl, borderTopRightRadius: Radii.xl, padding: Spacing.lg },
+  pickerTitle: { ...Typography.h3, marginBottom: Spacing.sm },
+  pickerSearch: { height: 42, borderWidth: 1, borderRadius: Radii.md, paddingHorizontal: Spacing.md, marginBottom: Spacing.md },
+  pickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, paddingBottom: Spacing.xl },
+  pickerCell: { width: 44, height: 44, borderRadius: Radii.sm, alignItems: 'center', justifyContent: 'center' },
+  pickerEmoji: { fontSize: 25 },
 });

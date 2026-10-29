@@ -55,3 +55,20 @@ test('wallpaper-image só aceita armazenamento local', () => {
   expect(local.valid).toBe(true);
   expect(local.chat.wallpaperImage).toBe('file:///themes/a.jpg');
 });
+
+test('a gramática exige um único bloco :root fechado', () => {
+  const outside = parseThemeCss('--primary: #fff;');
+  const unclosed = parseThemeCss(':root { --primary: #fff;');
+  const selector = parseThemeCss(':root { --primary: #fff; } .message { color: red; }');
+
+  expect(outside.valid).toBe(false);
+  expect(unclosed.valid).toBe(false);
+  expect(selector.valid).toBe(false);
+});
+
+test('canais RGB fora do intervalo não são aceites como cores', () => {
+  const result = parseThemeCss(':root { --primary: rgb(256, 0, 0); }');
+
+  expect(result.valid).toBe(false);
+  expect(result.tokens.primary).toBeUndefined();
+});

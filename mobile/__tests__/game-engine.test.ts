@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 import {
   MAX_ROUNDS,
   newSeed,
+  parseGamePayload,
   pickPlayer,
   replayGame,
   sortedMemberIds,
@@ -123,4 +124,29 @@ test('replay: explicit end wins even before rounds finish', () => {
   const state = replayGame(events, MEMBERS);
   expect(state.ended).toBe(true);
   expect(state.winnerId).toBe('ana');
+});
+
+test('replay: a channel can persist a lobby and a late joiner closes it', () => {
+  const starter = '00000000-0000-0000-0000-000000000001';
+  const joiner = '00000000-0000-0000-0000-000000000002';
+  const stream: GameMessagePayload[] = [
+    {
+      kind: 'game', game: 'truth-or-dare', action: 'start', seed: 'channel-seed',
+      maxRounds: MAX_ROUNDS, playerId: starter, playerIds: [starter],
+    },
+    { kind: 'game', game: 'truth-or-dare', action: 'join', playerId: joiner },
+  ];
+  const state = replayGame(stream, [starter, joiner]);
+  expect(state.playerIds).toEqual([starter, joiner]);
+  expect(state.currentPlayerId).not.toBeNull();
+
+  const otherDevice = replayGame(stream, [joiner, starter]);
+  expect(otherDevice.currentPlayerId).toBe(state.currentPlayerId);
+});
+
+test('channel payload parser drops malformed persisted data', () => {
+  expect(parseGamePayload({ kind: 'game', game: 'truth-or-dare', action: 'choose' })).toBeNull();
+  expect(parseGamePayload({ kind: 'game', game: 'truth-or-dare', action: 'join', playerId: 'u1' })).toEqual({
+    kind: 'game', game: 'truth-or-dare', action: 'join', playerId: 'u1',
+  });
 });

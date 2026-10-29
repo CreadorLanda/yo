@@ -37,7 +37,7 @@ import { Text, TextInput } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
 import { bakeFilter } from '@/data/bake-filter';
 import { appAlert } from '@/data/dialog-store';
-import type { FilterId } from '@/data/photo-filters';
+import { FILTERS, type FilterId } from '@/data/photo-filters';
 import { FilteredPhoto } from '@/components/media/filtered-photo';
 import { FilterStrip } from '@/components/media/filter-strip';
 import { FilteredCamera, type FilteredCameraHandle } from '@/components/media/filtered-camera';
@@ -72,7 +72,7 @@ const { width: W, height: H } = Dimensions.get('window');
 // The brand violet leads; the rest are the user's own choices, so blue
 // stays available as one of them rather than as the product's colour.
 const ACCENTS = ['#4F46E5', '#111827', '#10B981', '#FF6FB5', '#F59E0B', '#2D5BFF', '#EF4444', '#FFFFFF'];
-/** All creatable modes — live is listed but blocked until hangout ships. */
+/** All creatable modes. Live opens its own setup screen. */
 const CAPTURE_MODES: CaptureMode[] = ['type', 'normal', 'boomerang', 'handsfree', 'audio', 'live'];
 
 /**
@@ -151,6 +151,7 @@ export default function CreateStoryScreen() {
    * opposite things: one resolves on its own, the other does not.
    */
   const [noCamera, setNoCamera] = useState(false);
+  const noCameraRef = useRef(false);
   const [zoom, setZoom] = useState(0);
 
   const shutterScale = useSharedValue(1);
@@ -194,12 +195,18 @@ export default function CreateStoryScreen() {
   }, [captureMode, phase]);
 
   const selectCaptureMode = (mode: CaptureMode) => {
+    // Going live has its own screen, where the audience is chosen. It is a
+    // mode in the carousel because that is where people look for it.
     if (mode === 'live') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      appAlert(t('stories.go_live'), t('stories.live_coming_soon') || 'Live is coming soon.');
+      router.push(caption.trim() ? `/live/setup?title=${encodeURIComponent(caption.trim())}` : '/live/setup');
       return;
     }
     setCaptureMode(mode);
+    setActiveTool(null);
+    // The live preview can apply a matrix, but the current recorder writes the
+    // native video stream without that Skia overlay. Never let a photo filter
+    // survive into a video capture whose published bytes would be unfiltered.
+    if (mode === 'boomerang' || mode === 'handsfree') setFilter('none');
   };
 
   const lastGalleryThumb = mediaUri && !isAudio ? mediaUri : null;
@@ -291,6 +298,20 @@ export default function CreateStoryScreen() {
     stopTimer.current = null;
   };
 
+  const waitForCameraHandle = async (
+    previousHandle?: FilteredCameraHandle | null,
+  ): Promise<FilteredCameraHandle | null> => {
+    // Granting permission schedules the native camera tree for the next
+    // render. Give that render a bounded chance to publish its ref instead of
+    // treating the first shutter tap as a capture failure.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const handle = cameraRef.current;
+      if (handle && (!previousHandle || handle !== previousHandle)) return handle;
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    }
+    return cameraRef.current;
+  };
+
   const takePhoto = async () => {
     shutterScale.value = withSequence(
       withSpring(0.86, { damping: 12, stiffness: 280 }),
@@ -313,30 +334,43 @@ export default function CreateStoryScreen() {
 
     // Permission is asked here rather than on mount: someone who opens the
     // composer to type a text story should not be met with a camera prompt.
-    if (!hasCam) {
-      const granted = await askCam();
-      if (!granted) {
+    let cameraGranted = hasCam;
+    const handleBeforeMicRequest = cameraRef.current;
+    if (!cameraGranted) {
+      cameraGranted = await askCam();
+      if (!cameraGranted) {
         await pickFromLibrary();
         return;
       }
     }
-    if (wantsVideo && !hasMic) {
+    let microphoneGranted = hasMic;
+    if (wantsVideo && !microphoneGranted) {
       // A silent video is worth more than no video, so a refused microphone
       // does not stop the recording — it just records without sound.
-      await askMic();
+      microphoneGranted = await askMic();
     }
 
     // No camera on this hardware: the shutter opens the library instead of
     // reporting a capture failure. There is nothing to retry, and the gallery
     // is the way a story actually gets made on a device like this — the same
     // fall-back a refused permission already takes.
-    if (noCamera) {
+    if (noCameraRef.current || noCamera) {
       await pickFromLibrary();
       return;
     }
 
-    const cam = cameraRef.current;
-    if (!cam) return;
+    let cam = cameraRef.current ?? (cameraGranted ? await waitForCameraHandle() : null);
+    if (!cam) {
+      appAlert(t('stories.capture_failed_title'), t('stories.camera_not_ready'));
+      return;
+    }
+
+    // Permission hooks update on the next render. If the first video capture
+    // granted microphone access, wait for the camera ref backed by the new
+    // audio-enabled output before starting the recorder.
+    if (wantsVideo && microphoneGranted && !hasMic) {
+      cam = (await waitForCameraHandle(handleBeforeMicRequest)) ?? cam;
+    }
 
     if (wantsVideo) {
       // Tap to start, tap to stop. That is what "handsfree" always meant, and
@@ -371,6 +405,8 @@ export default function CreateStoryScreen() {
     try {
       const path = await cam.takePhoto();
       if (path) enterEdit({ uri: path });
+      else if (noCameraRef.current || noCamera) await pickFromLibrary();
+      else appAlert(t('stories.capture_failed_title'), t('stories.camera_not_ready'));
     } catch {
       appAlert(t('stories.capture_failed_title'), t('stories.capture_failed_body'));
     }
@@ -510,7 +546,10 @@ export default function CreateStoryScreen() {
               zoom={zoom}
               isActive={phase === 'capture'}
               onReady={() => setCamReady(true)}
-              onDeviceAvailability={(available) => setNoCamera(!available)}
+              onDeviceAvailability={(available) => {
+                noCameraRef.current = !available;
+                setNoCamera(!available);
+              }}
             />
           ) : null}
           <View style={styles.viewfinderGrain} pointerEvents="none" />
@@ -582,19 +621,23 @@ export default function CreateStoryScreen() {
             </View>
           </View>
 
-          {/* Both side tools were drawn with no onPress at all — two buttons
-              that did nothing at any point. Filters land in the next change;
-              until they do, saying so beats a tap into silence. */}
-          {captureMode !== 'audio' ? (
+          {/* Filters are available for still capture only. Video keeps the
+              native recording clean because the Skia overlay is preview-only. */}
+          {captureMode !== 'audio' && !isVideoMode ? (
             <View style={[styles.sideRail, { top: insets.top + 72 }]}>
               <SideTool
                 icon="color-filter-outline"
                 label={t('stories.filters')}
-                onPress={() => appAlert(t('stories.filters'), t('stories.filters_soon'))}
+                active={activeTool === 'filter'}
+                onPress={() => setActiveTool((cur) => (cur === 'filter' ? null : 'filter'))}
               />
             </View>
           ) : null}
         </SafeAreaView>
+
+        {activeTool === 'filter' && !isVideoMode ? (
+          <LiveFilterStrip value={filter} onChange={setFilter} />
+        ) : null}
 
         <View style={[styles.captureBottom, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           {captureMode !== 'audio' ? (
@@ -1075,6 +1118,41 @@ function SideTool({
       <Ionicons name={icon} size={22} color="#FFF" />
       <Text style={styles.sideToolLabel}>{label}</Text>
     </Pressable>
+  );
+}
+
+function LiveFilterStrip({
+  value,
+  onChange,
+}: {
+  value: FilterId;
+  onChange: (id: FilterId) => void;
+}) {
+  return (
+    <View style={styles.filterTray}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.liveFilterRow}
+      >
+        {FILTERS.map((item) => {
+          const active = item.id === value;
+          return (
+            <Pressable
+              key={item.id}
+              onPress={() => onChange(item.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              style={[styles.liveFilterChip, active && styles.liveFilterChipActive]}
+            >
+              <Text style={[styles.liveFilterText, active && styles.liveFilterTextActive]}>
+                {t(`filters.${item.nameKey}`)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -1601,6 +1679,17 @@ const styles = StyleSheet.create({
     bottom: 92,
     backgroundColor: 'rgba(10,11,15,0.82)',
   },
+  liveFilterRow: { gap: Spacing.sm, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
+  liveFilterChip: {
+    borderRadius: Radii.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  liveFilterChipActive: { borderColor: '#FFF', backgroundColor: 'rgba(255,255,255,0.16)' },
+  liveFilterText: { ...Typography.micro, color: 'rgba(255,255,255,0.72)' },
+  liveFilterTextActive: { color: '#FFF', fontWeight: '700' },
   shareBtn: {
     minHeight: 52,
     borderRadius: Radii.pill,
@@ -1645,59 +1734,4 @@ const styles = StyleSheet.create({
   },
   privacyRowText: { ...Typography.bodyStrong, color: '#FFF' },
   privacyRowHint: { ...Typography.micro, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
-  liveSetupBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0A0B0F',
-  },
-  livePulseRing: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '28%',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    borderWidth: 2,
-    borderColor: 'rgba(239,68,68,0.35)',
-  },
-  liveSetupCard: {
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-  },
-  liveBadgeBig: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: Radii.pill,
-    backgroundColor: '#EF4444',
-  },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FFF' },
-  liveBadgeBigText: { ...Typography.caption, color: '#FFF', fontWeight: '800', letterSpacing: 1 },
-  liveAvatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 3,
-    borderColor: '#EF4444',
-  },
-  liveTitle: { ...Typography.h3, color: '#FFF', textAlign: 'center' },
-  liveHint: {
-    ...Typography.caption,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-  },
-  liveTitleInput: {
-    width: '100%',
-    marginTop: Spacing.sm,
-    ...Typography.bodyStrong,
-    color: '#FFF',
-    textAlign: 'center',
-    paddingVertical: Spacing.md,
-    borderRadius: Radii.xl,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
 });

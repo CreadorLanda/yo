@@ -46,6 +46,14 @@ func (f fakeUsers) DisplayName(context.Context, uuid.UUID) (string, error) {
 	return f.name, nil
 }
 
+type fakePrivacy struct {
+	allowed bool
+}
+
+func (f fakePrivacy) CanCall(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return f.allowed, nil
+}
+
 const (
 	testKey    = "devkey"
 	testSecret = "a-secret-long-enough-to-sign-with"
@@ -87,6 +95,26 @@ func TestOnlyParticipantsGetTokens(t *testing.T) {
 
 	if _, err := svc.TokenFor(context.Background(), chat, eve, false, "voice"); !errors.Is(err, ErrNotAllowed) {
 		t.Fatalf("TokenFor(outsider) = %v, want ErrNotAllowed", err)
+	}
+}
+
+func TestPrivacyBlocksCallTokenBeforeRing(t *testing.T) {
+	alice := uuid.New()
+	ringer := &fakeRinger{}
+	svc := NewService(
+		Config{URL: "wss://calls.example", APIKey: testKey, APISecret: testSecret},
+		fakeChats{members: map[uuid.UUID]bool{alice: true}},
+		fakeUsers{name: "Alice"},
+		ringer,
+		nil,
+		nil,
+	).WithPrivacy(fakePrivacy{allowed: false})
+
+	if _, err := svc.TokenFor(context.Background(), uuid.New(), alice, true, "voice"); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("restricted call token = %v, want ErrNotAllowed", err)
+	}
+	if ringer.rang != 0 {
+		t.Fatalf("restricted call rang %d times, want 0", ringer.rang)
 	}
 }
 

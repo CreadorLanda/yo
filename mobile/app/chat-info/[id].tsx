@@ -20,6 +20,8 @@ import {
   createChat,
   reportChat,
   type ChatDTO,
+  type ChatPermission,
+  type ChatPrivacy,
   type ReportReason,
 } from '@/data/api/messages';
 import { appAlert, appPrompt } from '@/data/dialog-store';
@@ -44,7 +46,14 @@ import {
   setChatWallpaper,
   useChatPrefs,
 } from '@/data/chat-prefs';
-import { clearChat, refreshChats, removeChat, setChatSettings, useChats } from '@/data/chat-store';
+import {
+  clearChat,
+  refreshChats,
+  removeChat,
+  setChatPrivacy,
+  setChatSettings,
+  useChats,
+} from '@/data/chat-store';
 import {
   ensureKeysPublished,
   getIdentityPublic,
@@ -58,12 +67,17 @@ import { refreshGroup, useGroup } from '@/data/group-store';
 import { clearMediaCache, formatBytes, mediaCacheSize } from '@/data/media-cache';
 import { mapApiMessage } from '@/data/message-map';
 import { type ChatPreview, type Message } from '@/data/mock';
+import { displayChatName } from '@/data/chat-identity';
 import { block, blockedAmong, refreshBlocks, useBlocked } from '@/data/block-store';
 import { persistThemeImage } from '@/data/theme-assets';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
 const MAX_MEDIA_PREVIEW = 6;
+const DEFAULT_PRIVACY_TYPES = [
+  'text', 'image', 'video', 'audio', 'document', 'sticker',
+  'location', 'contact', 'poll', 'event', 'reply', 'game',
+];
 
 export default function ChatInfoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -82,6 +96,7 @@ export default function ChatInfoScreen() {
   }, [chats.length]);
 
   const isGroup = apiChat?.type === 'group';
+  const isSelf = !!apiChat?.is_self;
   const group = useGroup(isGroup ? id : undefined);
   const allBlocked = useBlocked();
   // Recomputed as the roster or the block list changes — someone can be added
@@ -100,7 +115,7 @@ export default function ChatInfoScreen() {
   const chat: ChatPreview | undefined = apiChat
     ? {
           id: apiChat.id,
-          name: apiChat.title ?? group?.name ?? 'Chat',
+          name: displayChatName(apiChat, t('chats.saved_messages'), group?.name ?? 'Chat'),
           username: apiChat.peer_username ? `@${apiChat.peer_username.replace(/^@/, '')}` : '',
           avatarUri: apiChat.avatar_url ?? group?.avatarUri ?? '',
           lastMessage: '',
@@ -108,6 +123,7 @@ export default function ChatInfoScreen() {
           unreadCount: apiChat.unread_count,
           online: false,
           isGroup: apiChat.type === 'group',
+          isSelf: apiChat.is_self,
           memberCount: group?.members.length,
         }
     : group
@@ -129,6 +145,11 @@ export default function ChatInfoScreen() {
   // read straight off the chat so they survive leaving the screen.
   const muted = !!apiChat?.muted_until;
   const favorite = !!apiChat?.pinned_at;
+  const currentUserId = getCurrentUser()?.id;
+  const isPrivacyAdmin = !!apiChat &&
+    (apiChat.created_by === currentUserId || !!group?.members.some(
+      (member) => member.id === currentUserId && member.role === 'admin',
+    ));
 
   const applySetting = async (settings: Parameters<typeof setChatSettings>[1]) => {
     if (!id) return;
@@ -137,6 +158,58 @@ export default function ChatInfoScreen() {
     } catch {
       appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
     }
+  };
+
+  const privacy: ChatPrivacy = {
+    forwarding_disabled: apiChat?.privacy?.forwarding_disabled ?? false,
+    screenshot_protection_enabled: apiChat?.privacy?.screenshot_protection_enabled ?? false,
+    links_require_confirmation: apiChat?.privacy?.links_require_confirmation ?? false,
+    who_can_message: apiChat?.privacy?.who_can_message ?? 'everyone',
+    who_can_call: apiChat?.privacy?.who_can_call ?? 'everyone',
+    allowed_message_types: apiChat?.privacy?.allowed_message_types?.length
+      ? apiChat.privacy.allowed_message_types
+      : DEFAULT_PRIVACY_TYPES,
+  };
+  const [advancedPrivacyOpen, setAdvancedPrivacyOpen] = useState(false);
+  const applyPrivacy = async (patch: Parameters<typeof setChatPrivacy>[1]) => {
+    if (!id || !isPrivacyAdmin) return;
+    try {
+      await setChatPrivacy(id, patch);
+    } catch {
+      appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+    }
+  };
+
+  const togglePrivacyType = (messageType: string, enabled: boolean) => {
+    const current = privacy.allowed_message_types?.length
+      ? privacy.allowed_message_types
+      : DEFAULT_PRIVACY_TYPES;
+    const next = enabled
+      ? Array.from(new Set([...current, messageType]))
+      : current.filter((type) => type !== messageType);
+    if (next.length === 0) {
+      appAlert(t('chat_info.advanced_privacy'), t('chat_info.privacy_keep_one_type'));
+      return;
+    }
+    void applyPrivacy({ allowed_message_types: next });
+  };
+
+  const pickPrivacyPermission = (key: 'who_can_message' | 'who_can_call') => {
+    if (!isGroup || !isPrivacyAdmin) return;
+    const choices: { value: ChatPermission; label: string }[] = [
+      { value: 'everyone', label: t('chat_info.privacy_everyone') },
+      { value: 'admins', label: t('chat_info.privacy_admins') },
+    ];
+    appAlert(
+      key === 'who_can_message'
+        ? t('chat_info.privacy_who_can_message')
+        : t('chat_info.privacy_who_can_call'),
+      t('chat_info.privacy_admin_hint'),
+      choices.map((choice) => ({
+        text: choice.label + (privacy[key] === choice.value ? '  ✓' : ''),
+        onPress: () => void applyPrivacy({ [key]: choice.value }),
+      })).concat([{ text: t('common.cancel'), onPress: () => {} }]),
+    );
   };
 
   // Device-local prefs: they describe this phone, not the account, so they
@@ -710,7 +783,7 @@ export default function ChatInfoScreen() {
             label={t('hangout.mode_live')}
             subtitle={t('hangout.live_hint')}
             colors={colors}
-            onPress={() => router.push(`/live/new?chat=${chat.id}`)}
+            onPress={() => router.push(`/live/setup?chat=${chat.id}`)}
           />
         </Section>
 
@@ -847,9 +920,81 @@ export default function ChatInfoScreen() {
           <Row
             icon="shield-checkmark-outline"
             label={t('chat_info.advanced_privacy')}
-            value={t('chat_info.off')}
+            value={advancedPrivacyOpen ? t('chat_info.on') : t('chat_info.off')}
+            subtitle={
+              isPrivacyAdmin
+                ? t('chat_info.privacy_control_hint')
+                : t('chat_info.privacy_read_only_hint')
+            }
             colors={colors}
+            onPress={() => setAdvancedPrivacyOpen((open) => !open)}
           />
+          {advancedPrivacyOpen ? (
+            <View style={{ backgroundColor: colors.surfaceMuted }}>
+              <RowToggle
+                icon="arrow-redo-outline"
+                label={t('chat_info.privacy_forwarding')}
+                subtitle={t('chat_info.privacy_forwarding_hint')}
+                value={!privacy.forwarding_disabled}
+                onValueChange={(enabled) => void applyPrivacy({ forwarding_disabled: !enabled })}
+                colors={colors}
+              />
+              <Divider colors={colors} />
+              <RowToggle
+                icon="phone-portrait-outline"
+                label={t('chat_info.privacy_screenshot')}
+                subtitle={t('chat_info.privacy_screenshot_hint')}
+                value={privacy.screenshot_protection_enabled}
+                onValueChange={(enabled) => void applyPrivacy({ screenshot_protection_enabled: enabled })}
+                colors={colors}
+              />
+              <Divider colors={colors} />
+              <RowToggle
+                icon="link-outline"
+                label={t('chat_info.privacy_links')}
+                subtitle={t('chat_info.privacy_links_hint')}
+                value={privacy.links_require_confirmation}
+                onValueChange={(enabled) => void applyPrivacy({ links_require_confirmation: enabled })}
+                colors={colors}
+              />
+              {isGroup ? (
+                <>
+                  <Divider colors={colors} />
+                  <Row
+                    icon="chatbubble-ellipses-outline"
+                    label={t('chat_info.privacy_who_can_message')}
+                    value={privacyPermissionLabel(privacy.who_can_message)}
+                    colors={colors}
+                    onPress={() => pickPrivacyPermission('who_can_message')}
+                  />
+                  <Divider colors={colors} />
+                  <Row
+                    icon="call-outline"
+                    label={t('chat_info.privacy_who_can_call')}
+                    value={privacyPermissionLabel(privacy.who_can_call)}
+                    colors={colors}
+                    onPress={() => pickPrivacyPermission('who_can_call')}
+                  />
+                </>
+              ) : null}
+              <Divider colors={colors} />
+              <Text style={[styles.privacyTypesTitle, { color: colors.textSecondary }]}>
+                {t('chat_info.privacy_message_types')}
+              </Text>
+              {DEFAULT_PRIVACY_TYPES.map((messageType, index) => (
+                <View key={messageType}>
+                  {index > 0 ? <Divider colors={colors} /> : null}
+                  <RowToggle
+                    icon="ellipse-outline"
+                    label={privacyMessageTypeLabel(messageType)}
+                    value={privacy.allowed_message_types.includes(messageType)}
+                    onValueChange={(enabled) => togglePrivacyType(messageType, enabled)}
+                    colors={colors}
+                  />
+                </View>
+              ))}
+            </View>
+          ) : null}
         </Section>
 
         {/* 1:1 — common groups */}
@@ -1076,7 +1221,7 @@ export default function ChatInfoScreen() {
               destructive
               onPress={confirmLeaveGroup}
             />
-          ) : (
+          ) : isSelf ? null : (
             <>
               <Row
                 icon="ban-outline"
@@ -1300,6 +1445,28 @@ function RowToggle({
   );
 }
 
+function privacyPermissionLabel(permission: ChatPermission): string {
+  return permission === 'admins' ? t('chat_info.privacy_admins') : t('chat_info.privacy_everyone');
+}
+
+function privacyMessageTypeLabel(messageType: string): string {
+  const labels: Record<string, string> = {
+    text: t('chat_info.privacy_type_text'),
+    image: t('chat_info.privacy_type_image'),
+    video: t('chat_info.privacy_type_video'),
+    audio: t('chat_info.privacy_type_audio'),
+    document: t('chat_info.privacy_type_document'),
+    sticker: t('chat_info.privacy_type_sticker'),
+    location: t('chat_info.privacy_type_location'),
+    contact: t('chat_info.privacy_type_contact'),
+    poll: t('chat_info.privacy_type_poll'),
+    event: t('chat_info.privacy_type_event'),
+    reply: t('chat_info.privacy_type_reply'),
+    game: t('chat_info.privacy_type_game'),
+  };
+  return labels[messageType] ?? messageType;
+}
+
 function MediaTile({ msg, colors }: { msg: Message; colors: Colors }) {
   const uri =
     (msg.attachment?.kind === 'sticker' ? msg.attachment.uri : undefined) ?? msg.media?.uri;
@@ -1442,6 +1609,14 @@ const styles = StyleSheet.create({
   mediaImg: { width: '100%', height: '100%' },
   emptyText: { ...Typography.caption, padding: Spacing.md },
   blockNotice: { ...Typography.caption, flex: 1 },
+  privacyTypesTitle: {
+    ...Typography.micro,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
 });
 
 /** First non-empty line, trimmed for a one-line subtitle. */

@@ -10,6 +10,7 @@ import 'react-native-reanimated';
 import { AppToast } from '@/components/ui/app-toast';
 import { DialogHost } from '@/components/ui/dialog-host';
 import { IncomingCallHost } from '@/components/ui/incoming-call';
+import { LiveInviteHost } from '@/components/ui/live-invite';
 import { AppLockGate } from '@/components/ui/app-lock-gate';
 import { ScreenPrivacy } from '@/components/ui/screen-privacy';
 import { AnimatedSplash } from '@/components/ui/splash';
@@ -244,6 +245,7 @@ export default function RootLayout() {
             host: a call arrives while whatever screen happens to be on top.
           */}
           <IncomingCallHost />
+          <LiveInviteHost />
         </View>
         <StatusBar style="auto" />
       </ThemeProvider>
