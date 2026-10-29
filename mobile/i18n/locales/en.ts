@@ -870,6 +870,7 @@ export default {
     role_member: 'Member',
   },
   live: {
+    web_unavailable: 'Live broadcasts are not available in the browser yet. Open the app on your phone.',
     accept: 'Accept',
     action_failed: 'That did not work. Try again.',
     ask_to_speak: 'Ask to speak',

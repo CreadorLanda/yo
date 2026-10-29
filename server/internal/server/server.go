@@ -73,7 +73,7 @@ func New(cfg config.Config) (*Server, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(middleware.RequestID(), middleware.Recovery(), gin.Logger())
+	r.Use(middleware.RequestID(), middleware.Recovery(), gin.Logger(), middleware.CORS(cfg.HTTP.CORSOrigins))
 
 	api := r.Group("/api")
 
