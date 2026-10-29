@@ -25,6 +25,7 @@ import {
   startLive,
   type LiveGrant,
 } from '@/data/api/lives';
+import { availableMedia, type AvailableMedia } from '@/data/media-devices';
 import { appAlert } from '@/data/dialog-store';
 import { useLiveViewers } from '@/data/live-store';
 import { t } from '@/i18n';
@@ -57,6 +58,7 @@ export default function LiveScreen() {
 
   const [grant, setGrant] = useState<LiveGrant | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [media, setMedia] = useState<AvailableMedia>({ camera: false, microphone: true });
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +68,15 @@ export default function LiveScreen() {
           id === 'new'
             ? await startLive({ chatId: chat, channelId: channel, title })
             : await joinLive(id!);
-        if (!cancelled) setGrant(g);
+        // Publish only what exists: an emulator has no camera, and asking
+        // WebRTC for one there took the screen down.
+        const devices = await availableMedia();
+        if (cancelled) return;
+        setMedia(devices);
+        if (g.host && !devices.camera) {
+          appAlert(t('call.camera_failed_title'), t('call.no_camera_body'));
+        }
+        setGrant(g);
       } catch (err) {
         if (cancelled) return;
         // "Already live" is not a failure the person can do anything about by
@@ -126,8 +136,8 @@ export default function LiveScreen() {
       // The host publishes; the audience does not ask for a microphone it is
       // not allowed to use. Asking anyway would put a permission prompt in
       // front of someone who only wants to watch.
-      audio={grant.host}
-      video={grant.host}
+      audio={grant.host && media.microphone}
+      video={grant.host && media.camera}
       options={{ adaptiveStream: true, dynacast: true }}
       onError={() => setFailure(t('live.failed'))}
     >
