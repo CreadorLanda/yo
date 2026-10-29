@@ -843,6 +843,7 @@ export default {
     end_title: 'End the broadcast?',
     end_body: 'Everyone watching will be dropped.',
     end_confirm: 'End',
+    end_failed: 'The broadcast is still live. Check your connection and try again.',
     mic_failed: 'Microphone unavailable',
     not_e2ee: 'A broadcast is not end-to-end encrypted — the server relays it.',
     go_live: 'Go live',

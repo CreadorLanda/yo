@@ -217,6 +217,7 @@ function Stage({
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const participants = useParticipants();
   const liveId = grant.live.id;
+  const [ending, setEnding] = useState(false);
 
   // The count comes from the server, which counts rows. Counting the
   // participants in the room would drift the moment someone's connection
@@ -266,11 +267,17 @@ function Stage({
       {
         text: t('live.end_confirm'),
         style: 'destructive',
-        onPress: () => {
-          void endLive(liveId)
-            .then(() => refreshRunningLives())
-            .catch(() => {});
-          router.back();
+        onPress: async () => {
+          if (ending) return;
+          setEnding(true);
+          try {
+            await endLive(liveId);
+            await refreshRunningLives();
+            router.back();
+          } catch {
+            setEnding(false);
+            appAlert(t('live.end_title'), t('live.end_failed'));
+          }
         },
       },
     ]);
