@@ -73,7 +73,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StateTransition } from '@/components/ui/state-transition';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { dandaraReply, dandaraSuggestions } from '@/data/dandara';
-import { markChatRead, refreshChats, useChats } from '@/data/chat-store';
+import { markChatRead, refreshChats, useArchivedChats, useChats } from '@/data/chat-store';
 import type { StickerDTO } from '@/data/api/stickers';
 import { noteStickerUsed, refreshStickerPacks, useStickerPacks } from '@/data/sticker-store';
 import { removeSticker, saveSticker } from '@/data/api/stickers';
@@ -276,14 +276,20 @@ const FORWARD_MANY = 5;
 export default function ChatScreen() {
   const { id, game: openGame } = useLocalSearchParams<{ id: string; game?: string }>();
   const { chats: storeChats } = useChats();
+const archivedChats = useArchivedChats();
+
   const apiChatInfo: ChatDTO | null = useMemo(
-    () => storeChats.find((c) => c.id === id) ?? null,
-    [storeChats, id],
+    () => storeChats.find((c) => c.id === id) ?? archivedChats.find((c) => c.id === id) ?? null,
+    [storeChats, archivedChats, id],
   );
   // Undefined while the chat is still unknown — the distinction the load
   // effect depends on. A group has no single peer and must not wait for one
   // that never arrives.
   const chatType = apiChatInfo?.type;
+useEffect(() => {
+  void refreshChats({ archived: true });
+}, []);
+
 
   // Dandara is a local assistant surface, not a server chat — it is the one
   // entry that legitimately comes from the bundled fixtures.

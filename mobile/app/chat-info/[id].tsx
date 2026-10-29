@@ -52,6 +52,7 @@ import {
   removeChat,
   setChatPrivacy,
   setChatSettings,
+  useArchivedChats,
   useChats,
 } from '@/data/chat-store';
 import {
@@ -86,10 +87,14 @@ export default function ChatInfoScreen() {
   // Single source of truth: the same store the list renders from, so a
   // toggle here is reflected there without either screen refetching.
   const { chats } = useChats();
+const archivedChats = useArchivedChats();
+
   const apiChat: ChatDTO | null = useMemo(
-    () => chats.find((c) => c.id === id) ?? null,
-    [chats, id],
+    () => chats.find((c) => c.id === id) ?? archivedChats.find((c) => c.id === id) ?? null,
+    [chats, archivedChats, id],
   );
+useEffect(() => { void refreshChats({ archived: true }); }, []);
+
 
   useEffect(() => {
     if (!chats.length) void refreshChats();
