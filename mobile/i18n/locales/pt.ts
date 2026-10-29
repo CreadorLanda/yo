@@ -870,7 +870,6 @@ export default {
     role_member: 'Membro',
   },
   live: {
-    web_unavailable: 'As Lives ainda não estão disponíveis no browser. Abre a app no telemóvel.',
     accept: 'Aceitar',
     action_failed: 'Não foi possível. Tenta outra vez.',
     ask_to_speak: 'Pedir para falar',
