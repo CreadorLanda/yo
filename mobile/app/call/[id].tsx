@@ -79,14 +79,13 @@ export default function CallScreen() {
         const g = await callToken(id, { ring: incoming !== '1', mode: callMode });
         if (cancelled) return;
 
-        // Join with the devices that exist. An emulator has no camera, and
-        // asking WebRTC to publish one there crashed the call screen.
+        // Join with the microphone that exists. The camera is never started
+        // here: an emulator may advertise one that fails when WebRTC opens it,
+        // which crashed the call screen. Video calls begin with the camera off
+        // and the person turns it on, where a failure is caught and explained.
         const devices = await availableMedia();
         if (cancelled) return;
         setMedia(devices);
-        if (callMode === 'video' && !devices.camera) {
-          appAlert(t('call.camera_failed_title'), t('call.no_camera_body'));
-        }
 
         // The media key is derived from the pairwise session, so both sides
         // arrive at the same bytes without anything being transmitted. A
@@ -171,7 +170,7 @@ export default function CallScreen() {
       token={grant.token}
       connect
       audio={media.microphone}
-      video={callMode === 'video' && media.camera}
+      video={false}
       options={{ adaptiveStream: true, dynacast: true }}
       {...(e2eeKey
         ? { e2ee: { keyProviderOptions: { sharedKey: e2eeKey } } as never }
