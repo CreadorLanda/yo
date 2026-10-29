@@ -13,8 +13,8 @@ import (
 // Live is one broadcast.
 type Live struct {
 	ID uuid.UUID `json:"id"`
-	// Exactly one of these is set — where the broadcast lives and who its
-	// audience is.
+	// At most one of these is set: where the broadcast lives. Neither means it
+	// was started from Stories and its audience is whoever the host picked.
 	ChannelID *uuid.UUID `json:"channel_id,omitempty"`
 	ChatID    *uuid.UUID `json:"chat_id,omitempty"`
 	HostID    uuid.UUID  `json:"host_id"`
@@ -26,6 +26,34 @@ type Live struct {
 	// broadcast ends this is zero and PeakViewers is what is left.
 	Viewers     int `json:"viewers"`
 	PeakViewers int `json:"peak_viewers"`
+	// Audience is who may watch: place, contacts, selected or public.
+	Audience AudienceKind `json:"audience"`
+	// Joint means started in a direct chat, so both people host it.
+	Joint           bool  `json:"joint"`
+	CommentsEnabled bool  `json:"comments_enabled"`
+	Hearts          int64 `json:"hearts"`
+}
+
+// AudienceKind is who may watch a live.
+type AudienceKind string
+
+const (
+	// AudiencePlace is the members of the chat, group or channel.
+	AudiencePlace AudienceKind = "place"
+	// AudienceContacts is everyone a host has a conversation with.
+	AudienceContacts AudienceKind = "contacts"
+	// AudienceSelected is the people the host picked, plus anyone invited.
+	AudienceSelected AudienceKind = "selected"
+	// AudiencePublic is anyone who has the link.
+	AudiencePublic AudienceKind = "public"
+)
+
+func (a AudienceKind) valid() bool {
+	switch a {
+	case AudiencePlace, AudienceContacts, AudienceSelected, AudiencePublic:
+		return true
+	}
+	return false
 }
 
 // Running reports whether it is still on.
@@ -35,6 +63,14 @@ type StartInput struct {
 	ChannelID *uuid.UUID
 	ChatID    *uuid.UUID
 	Title     string
+	// Audience defaults to the place when there is one, and to contacts for a
+	// live from Stories.
+	Audience AudienceKind
+	// Viewers is the guest list for a 'selected' audience.
+	Viewers []uuid.UUID
+	// Cohost is the other person in a direct chat. Set by the service, never
+	// taken from the request.
+	Cohost *uuid.UUID
 }
 
 type Repo struct{ db *pgxpool.Pool }
@@ -44,13 +80,15 @@ func NewRepo(db *pgxpool.Pool) *Repo { return &Repo{db: db} }
 const liveColumns = `
 	l.id, l.channel_id, l.chat_id, l.host_id, COALESCE(u.display_name, ''),
 	l.title, l.started_at, l.ended_at, l.peak_viewers,
-	(SELECT count(*) FROM live_viewers v WHERE v.live_id = l.id AND v.left_at IS NULL)
+	(SELECT count(*) FROM live_viewers v WHERE v.live_id = l.id AND v.left_at IS NULL),
+	l.audience, l.joint, l.comments_enabled, l.hearts
 `
 
 func scanLive(row pgx.Row) (Live, error) {
 	var l Live
 	err := row.Scan(&l.ID, &l.ChannelID, &l.ChatID, &l.HostID, &l.HostName,
-		&l.Title, &l.StartedAt, &l.EndedAt, &l.PeakViewers, &l.Viewers)
+		&l.Title, &l.StartedAt, &l.EndedAt, &l.PeakViewers, &l.Viewers,
+		&l.Audience, &l.Joint, &l.CommentsEnabled, &l.Hearts)
 	return l, err
 }
 
@@ -60,15 +98,54 @@ func scanLive(row pgx.Row) (Live, error) {
 // indexes make that the database's answer rather than a check-then-insert,
 // which two people pressing "go live" at the same moment would both pass.
 func (r *Repo) Start(ctx context.Context, in StartInput, host uuid.UUID) (Live, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return Live{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if in.Audience == "" {
+		in.Audience = AudienceContacts
+		if in.ChannelID != nil || in.ChatID != nil {
+			in.Audience = AudiencePlace
+		}
+	}
+
 	var id uuid.UUID
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO lives (channel_id, chat_id, host_id, title)
-		VALUES ($1, $2, $3, $4) RETURNING id
-	`, in.ChannelID, in.ChatID, host, in.Title).Scan(&id)
+	err = tx.QueryRow(ctx, `
+		INSERT INTO lives (channel_id, chat_id, host_id, title, audience, joint)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
+	`, in.ChannelID, in.ChatID, host, in.Title, in.Audience, in.Cohost != nil).Scan(&id)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return Live{}, ErrAlreadyLive
 		}
+		return Live{}, err
+	}
+
+	// The other person in a joint live is a co-host and a moderator from the
+	// start, waiting to answer like a ringing call.
+	if in.Cohost != nil {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO live_members (live_id, user_id, cohost, cohost_answer, moderator, invited_by)
+			VALUES ($1, $2, TRUE, 'pending', TRUE, $3)
+		`, id, *in.Cohost, host); err != nil {
+			return Live{}, err
+		}
+	}
+	for _, v := range in.Viewers {
+		if v == host {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO live_members (live_id, user_id, allowed, invited_by)
+			VALUES ($1, $2, TRUE, $3)
+			ON CONFLICT (live_id, user_id) DO UPDATE SET allowed = TRUE
+		`, id, v, host); err != nil {
+			return Live{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return Live{}, err
 	}
 	return r.Get(ctx, id)
@@ -84,9 +161,10 @@ func (r *Repo) Get(ctx context.Context, id uuid.UUID) (Live, error) {
 
 // RunningFor lists the broadcasts this user may watch right now.
 //
-// A channel's live is visible to its followers, and to anyone at all when the
-// channel is public — that is what public means. A group's live is visible to
-// the group.
+// The same rules as Join, in one query: a place audience follows the chat or
+// channel (a public channel admits anyone); contacts and public lives show to
+// the hosts' contacts; a selected live shows to its guest list. Anyone with a
+// part in a live sees it, and a ban hides it.
 func (r *Repo) RunningFor(ctx context.Context, userID uuid.UUID) ([]Live, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT `+liveColumns+`
@@ -94,16 +172,32 @@ func (r *Repo) RunningFor(ctx context.Context, userID uuid.UUID) ([]Live, error)
 		LEFT JOIN users u ON u.id = l.host_id
 		LEFT JOIN channels c ON c.id = l.channel_id
 		WHERE l.ended_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM live_bans b WHERE b.live_id = l.id AND b.user_id = $1)
 		  AND (
-		    (l.channel_id IS NOT NULL AND (
-		        c.visibility = 'public'
-		        OR EXISTS (SELECT 1 FROM channel_members m
-		                   WHERE m.channel_id = l.channel_id AND m.user_id = $1)
+		    l.host_id = $1
+		    OR EXISTS (SELECT 1 FROM live_members m
+		               WHERE m.live_id = l.id AND m.user_id = $1
+		                 AND (m.cohost OR m.moderator OR m.allowed OR m.stage IS NOT NULL))
+		    OR (l.audience = 'place' AND (
+		        (l.channel_id IS NOT NULL AND (
+		            c.visibility = 'public'
+		            OR EXISTS (SELECT 1 FROM channel_members m
+		                       WHERE m.channel_id = l.channel_id AND m.user_id = $1)
+		        ))
+		        OR
+		        (l.chat_id IS NOT NULL AND EXISTS (
+		            SELECT 1 FROM chat_participants p
+		            WHERE p.chat_id = l.chat_id AND p.user_id = $1))
 		    ))
-		    OR
-		    (l.chat_id IS NOT NULL AND EXISTS (
-		        SELECT 1 FROM chat_participants p
-		        WHERE p.chat_id = l.chat_id AND p.user_id = $1))
+		    OR (l.audience IN ('contacts', 'public') AND EXISTS (
+		        SELECT 1
+		        FROM chat_participants me
+		        JOIN chats dc ON dc.id = me.chat_id AND dc.type = 'direct' AND dc.status = 'active'
+		        JOIN chat_participants them ON them.chat_id = dc.id AND them.user_id <> me.user_id
+		        WHERE me.user_id = $1
+		          AND (them.user_id = l.host_id OR them.user_id IN (
+		              SELECT h.user_id FROM live_members h WHERE h.live_id = l.id AND h.cohost))
+		    ))
 		  )
 		ORDER BY l.started_at DESC
 		LIMIT 50

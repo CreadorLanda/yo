@@ -939,6 +939,32 @@ func (r *Repository) ParticipantIDs(ctx context.Context, chatID uuid.UUID) ([]uu
 	return out, rows.Err()
 }
 
+// DirectPeerIDs is everyone this user has an accepted one-to-one
+// conversation with: their contacts, as far as the server knows. A pending
+// message request is not a contact yet, and a blocked one is not any more.
+func (r *Repository) DirectPeerIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT other.user_id
+		FROM chat_participants me
+		JOIN chats c ON c.id = me.chat_id AND c.type = 'direct' AND c.status = 'active'
+		JOIN chat_participants other ON other.chat_id = c.id AND other.user_id <> me.user_id
+		WHERE me.user_id = $1
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // GetMessage fetches a single message (including soft-deleted for tombstones).
 func (r *Repository) GetMessage(ctx context.Context, chatID uuid.UUID, msgID int64) (*Message, error) {
 	const q = `
