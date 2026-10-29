@@ -22,6 +22,7 @@ func TestAdvancedPrivacyHTTPContract(t *testing.T) {
 
 	alice := createTestUser(t, pool, "privacy_http_alice_"+uuid.NewString()[:8])
 	bob := createTestUser(t, pool, "privacy_http_bob_"+uuid.NewString()[:8])
+	carol := createTestUser(t, pool, "privacy_http_carol_"+uuid.NewString()[:8])
 	chat, err := svc.CreateDirectChat(ctx, alice, bob)
 	if err != nil {
 		t.Fatalf("CreateDirectChat: %v", err)
@@ -93,6 +94,26 @@ func TestAdvancedPrivacyHTTPContract(t *testing.T) {
 	})
 	if allowedMessage.Code != http.StatusCreated {
 		t.Fatalf("allowed message HTTP status = %d, body = %s; want %d", allowedMessage.Code, allowedMessage.Body.String(), http.StatusCreated)
+	}
+	var source Message
+	if err := json.Unmarshal(allowedMessage.Body.Bytes(), &source); err != nil {
+		t.Fatalf("decode allowed message: %v", err)
+	}
+
+	destination, err := svc.CreateDirectChat(ctx, alice, carol)
+	if err != nil {
+		t.Fatalf("CreateDirectChat(destination): %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, destination.ID, carol); err != nil {
+		t.Fatalf("AcceptChat(destination): %v", err)
+	}
+	blockedForward := request(alice, http.MethodPost, "/api/chats/"+destination.ID.String()+"/messages", SendMessageRequest{
+		Content:         testDirectEnvelope("forwarded"),
+		SourceChatID:    &chat.ID,
+		SourceMessageID: &source.ID,
+	})
+	if blockedForward.Code != http.StatusForbidden {
+		t.Fatalf("forward from protected source status = %d, body = %s; want %d", blockedForward.Code, blockedForward.Body.String(), http.StatusForbidden)
 	}
 
 	denied := request(bob, http.MethodPatch, "/api/chats/"+chat.ID.String()+"/privacy", ChatPrivacySettingsRequest{
