@@ -783,7 +783,7 @@ export default function ChatInfoScreen() {
             label={t('hangout.mode_live')}
             subtitle={t('hangout.live_hint')}
             colors={colors}
-            onPress={() => router.push(`/live/new?chat=${chat.id}`)}
+            onPress={() => router.push(`/live/setup?chat=${chat.id}`)}
           />
         </Section>
 

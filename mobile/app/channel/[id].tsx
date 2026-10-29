@@ -996,7 +996,7 @@ export default function ChannelScreen() {
                 <Pressable
                   onPress={() => {
                     setComposerOpen(false);
-                    router.push(`/live/new?channel=${channel.id}`);
+                    router.push(`/live/setup?channel=${channel.id}`);
                   }}
                   style={[styles.hangoutLaunch, { backgroundColor: `${colors.primary}14`, borderColor: colors.primary }]}
                 >
@@ -1113,7 +1113,7 @@ export default function ChannelScreen() {
                       // nowhere else — the server never saw them and the
                       // server's own reply wiped them a round trip later.
                       router.push(
-                        `/live/new?channel=${channel.id}&title=${encodeURIComponent(postDraft.trim())}`,
+                        `/live/setup?channel=${channel.id}&title=${encodeURIComponent(postDraft.trim())}`,
                       );
                     }
                   }
