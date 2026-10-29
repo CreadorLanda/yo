@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista
 
+#### Reacções
+- Catálogo Unicode pesquisável para mensagens, stories, posts e comentários, com tons de pele e sequências actuais
+- Limite uniforme de duas reacções por pessoa e item, aplicado no servidor e no cliente; formatos antigos de uma reacção continuam válidos
+- Reacções persistentes adicionadas a comentários de stories e canais
+#### Privacidade das conversas
+- Controlos de privacidade avançada por conversa: bloquear reencaminhamento, proteger capturas de ecrã quando a plataforma suporta, confirmar abertura de links, restringir mensagens/chamadas a administradores em grupos e limitar tipos de mensagem. As regras são persistidas e aplicadas no servidor; a proteção de captura é explicitamente best-effort no Android e não é prometida no iOS/web.
+#### Privacidade
+- O Modo Ghost passa a ser uma sessão controlada pelo servidor: dura duas horas, pode ser ativado uma vez por dia UTC e expira de forma consistente em todos os dispositivos.
+
 #### Temas
 - Novo tema oficial **ZwoSocial Liquid**: fundo de cor líquida animado na GPU (Skia) por trás do ecrã inicial e das conversas, cabeçalho transparente com ações numa cápsula de vidro, barra inferior de vidro flutuante cujo indicador estica ao passar de um separador para outro, e bolhas translúcidas. Claro e escuro. Pára quando o ecrã fica tapado e respeita o "reduzir movimento"
 - "Líquido" passa a ser uma opção de movimento do fundo no criador de temas
@@ -59,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Mensagens
 - A pesquisa dentro da conversa permite filtrar por não lidas, favoritas, multimédia, documentos, links e áudio, além de combinar cada filtro com texto de pesquisa
 - Mensagens podem ser adicionadas/removidas das favoritas no menu de pressão longa; esta escolha é privada por utilizador e sincronizada entre dispositivos
+- Self-chat de mensagens guardadas: cada conta pode abrir uma conversa activa e idempotente consigo própria, sem pedidos de amizade ou limite de mensagens pendentes
 
 #### iOS
 - Push notifications usam tokens Expo encaminhados pelo APNs, em vez de enviarem tokens APNs diretamente ao FCM
@@ -74,6 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Iniciar uma Live num chat ou canal onde já há uma a decorrer entra nessa Live em vez de dizer que alguém já está em direto. Quem a iniciou volta como emissor (útil quando a app fechou a meio), os outros entram como espectadores
 
 #### Câmara
+- O botão de filtros do visor das Stories agora abre os filtros reais para fotos; os filtros ficam fora do vídeo porque a gravação ainda não incorpora a sobreposição do preview
+- A primeira captura após conceder a permissão espera a montagem da câmara, e dispositivos sem câmara retornam uma falha explícita em vez de capturar silenciosamente
+- Recusar a câmara num chat abre a galeria como fallback, mantendo o envio no caminho de multimédia cifrada
 - Em dispositivos sem câmara (emulador, Waydroid) as chamadas de vídeo e as Lives começam com a câmara desligada e só a ligam quando a pessoa toca no botão, em vez de falhar à entrada; o botão de câmara do chat abre a galeria
 - Abrir a câmara dos stories já não passa pelo pipeline de fotogramas (worklets + Skia), a causa provável do crash ao abrir: só é criado quando há um filtro escolhido. Uma falha na árvore da câmara passa a mostrar "sem câmara" (o obturador abre a galeria) em vez de derrubar o ecrã
 - O pinch-to-zoom funciona: o zoom é convertido de 0–1 para o intervalo da lente (`minZoom`–`maxZoom`); antes a câmara abria em zoom 0 e cada gesto era rejeitado

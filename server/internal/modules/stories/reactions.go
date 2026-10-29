@@ -1,13 +1,18 @@
 package stories
 
-import "strings"
+import (
+	"strings"
 
-// The emoji a story reaction may be.
-//
-// A closed set rather than free text: `emoji` is a TEXT column, so a client
-// allowed to write anything into it can put anything in front of the author.
-// The split into two groups is presentation only — the server treats every
-// entry alike.
+	platformreactions "github.com/CreadorLanda/zwosocial/server/internal/platform/reactions"
+)
+
+var (
+	ErrInvalidEmoji     = platformreactions.ErrInvalidEmoji
+	ErrTooManyReactions = platformreactions.ErrTooMany
+)
+
+// These remain presentation hints for older clients. Validation is performed
+// against the complete Unicode catalogue in platform/reactions.
 var (
 	StandardReactions = []string{
 		"❤️", "😂", "😮", "😢", "😡", "👍", "👎", "🔥", "🎉", "😍", "👏",
@@ -18,76 +23,30 @@ var (
 	}
 )
 
-const (
-	variationSelector16 = '\uFE0F'
-	skinToneFirst       = '\U0001F3FB'
-	skinToneLast        = '\U0001F3FF'
-)
-
-// reactionKeys maps a loosely written emoji to the form that gets stored.
-var reactionKeys = buildReactionKeys()
-
-func buildReactionKeys() map[string]string {
-	m := make(map[string]string, len(StandardReactions)+len(ExtendedReactions))
-	for _, group := range [][]string{StandardReactions, ExtendedReactions} {
-		for _, e := range group {
-			m[reactionKey(e)] = e
-		}
-	}
-	return m
+// CanonicalReaction validates one Unicode emoji sequence and preserves its
+// skin tone and other sequence components.
+func CanonicalReaction(emoji string) (string, bool) {
+	c, err := platformreactions.Normalize(strings.TrimSpace(emoji))
+	return c, err == nil
 }
 
-// reactionKey drops the parts of an emoji that do not change which one was
-// meant: the variation selector asking for the colour glyph (❤ vs ❤️), and a
-// skin tone on the hands (👍🏽 vs 👍).
-//
-// Both are folded away because keyboards disagree about them and the sender
-// cannot see the difference. Folding also keeps the counts honest: 👍 and
-// 👍🏽 are one tally, not two that each look small.
+// reactionKey remains available to catalogue tests and older package users;
+// it is not used for persistence validation, which must preserve variants.
 func reactionKey(emoji string) string {
 	return strings.Map(func(r rune) rune {
-		if r == variationSelector16 || (r >= skinToneFirst && r <= skinToneLast) {
+		if r == '\uFE0F' || (r >= '\U0001F3FB' && r <= '\U0001F3FF') {
 			return -1
 		}
 		return r
 	}, emoji)
 }
 
-// CanonicalReaction resolves one written emoji to the stored form, or
-// reports that this server does not accept it as a reaction.
-func CanonicalReaction(emoji string) (string, bool) {
-	c, ok := reactionKeys[reactionKey(strings.TrimSpace(emoji))]
-	return c, ok
-}
-
-// normalizeReactions turns what a client sent into the exact set to store:
-// canonical, deduplicated, in the order it was listed.
-//
-// The order is the order the person tapped, and it is read straight back.
 func normalizeReactions(in []string) ([]string, error) {
-	out := make([]string, 0, len(in))
-	seen := make(map[string]struct{}, len(in))
-	for _, raw := range in {
-		e, ok := CanonicalReaction(raw)
-		if !ok {
-			return nil, ErrInvalidEmoji
-		}
-		if _, dup := seen[e]; dup {
-			continue
-		}
-		seen[e] = struct{}{}
-		out = append(out, e)
-	}
-	return out, nil
+	return platformreactions.NormalizeSet(in)
 }
 
-// requestedReactions reads the set a react call is asking for.
-//
-// Two shapes because the single-emoji form shipped first: `{"emoji":"🔥"}`
-// is what older clients send, `{"reactions":[…]}` is the one that can carry
-// more than one, and the array wins when both arrive. An explicit empty
-// array clears; a request carrying neither field is refused rather than read
-// as a clear, so a client bug cannot wipe someone's reactions.
+// requestedReactions reads both the original single-emoji request and the
+// replacement-set request used by newer clients.
 func requestedReactions(req ReactRequest) ([]string, error) {
 	if req.Reactions != nil {
 		return normalizeReactions(*req.Reactions)
