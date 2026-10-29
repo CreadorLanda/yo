@@ -55,7 +55,7 @@ export const CSS_THEME_TEMPLATE = `/* Yo theme CSS — safe custom properties on
 `;
 
 const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
-const RGB_COLOR = /^rgba?\(\s*(?:\d{1,3})\s*,\s*(?:\d{1,3})\s*,\s*(?:\d{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i;
+const RGB_COLOR = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(0|1|0?\.\d+))?\s*\)$/i;
 
 const TOKEN_PROPERTIES: Record<string, keyof ThemeTokens> = {
   primary: 'primary',
@@ -110,9 +110,11 @@ function lineOf(source: string, offset: number): number {
   return source.slice(0, offset).split('\n').length;
 }
 
-function color(value: string): boolean {
-  if (HEX_COLOR.test(value) || RGB_COLOR.test(value)) return true;
-  return false;
+export function isSafeThemeColor(value: string): boolean {
+  if (HEX_COLOR.test(value)) return true;
+  const match = RGB_COLOR.exec(value);
+  if (!match) return false;
+  return [match[1], match[2], match[3]].every((channel) => Number(channel) <= 255);
 }
 
 function localImage(value: string): boolean {
@@ -170,15 +172,55 @@ export function parseThemeCss(css: string): ParsedThemeCss {
     addError(errors, css, withoutComments.indexOf('/*'), 'Unclosed comment.');
   }
 
+  const root = /:root\s*\{/i.exec(withoutComments);
+  if (!root) {
+    addError(errors, css, 0, 'A single :root block is required.');
+    return { tokens, chat, layout, errors, appliedProperties, valid: false };
+  }
+
+  if (withoutComments.slice(0, root.index).trim()) {
+    addError(errors, css, 0, 'Only a :root block with allowlisted custom properties is supported.');
+  }
+
+  const open = withoutComments.indexOf('{', root.index);
+  let depth = 1;
+  let close = -1;
+  for (let index = open + 1; index < withoutComments.length; index += 1) {
+    if (withoutComments[index] === '{') depth += 1;
+    if (withoutComments[index] === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        close = index;
+        break;
+      }
+    }
+  }
+  if (close < 0) {
+    addError(errors, css, open, 'Unclosed :root block.');
+    return { tokens, chat, layout, errors, appliedProperties, valid: false };
+  }
+
+  const afterRoot = withoutComments.slice(close + 1);
+  if (afterRoot.trim()) {
+    addError(
+      errors,
+      css,
+      close + 1,
+      'Only a :root block with allowlisted custom properties is supported.',
+    );
+  }
+
+  const rootContent = withoutComments.slice(open + 1, close);
+
   const declaration = /--([a-z0-9-]+)\s*:\s*([^;{}]+);/gi;
   let match: RegExpExecArray | null;
-  while ((match = declaration.exec(withoutComments)) !== null) {
+  while ((match = declaration.exec(rootContent)) !== null) {
     const property = match[1].toLowerCase();
     const raw = match[2].trim().replace(/^['"]|['"]$/g, '');
-    const offset = match.index;
+    const offset = open + 1 + match.index;
 
     if (property in TOKEN_PROPERTIES) {
-      if (!color(raw)) {
+      if (!isSafeThemeColor(raw)) {
         addError(errors, css, offset, 'Expected a hex or rgb/rgba color.', property);
         continue;
       }
@@ -194,7 +236,7 @@ export function parseThemeCss(css: string): ParsedThemeCss {
           addError(errors, css, offset, 'Wallpaper images must be local file or content URIs.', property);
           continue;
         }
-      } else if (!color(raw)) {
+      } else if (!isSafeThemeColor(raw)) {
         addError(errors, css, offset, 'Expected a hex or rgb/rgba color.', property);
         continue;
       }
@@ -220,7 +262,7 @@ export function parseThemeCss(css: string): ParsedThemeCss {
       if (parsed === null) {
         addError(errors, css, offset, `Expected a number between ${min} and ${max}.`, property);
       } else {
-        if (String(parsed) !== raw) {
+        if (parsed !== Number(raw)) {
           addError(errors, css, offset, `Value is outside the safe range ${min}..${max}.`, property);
         }
         (layout as Record<string, unknown>)[target] = parsed;
@@ -268,10 +310,7 @@ export function parseThemeCss(css: string): ParsedThemeCss {
     addError(errors, css, offset, 'Property is not allowlisted.', property);
   }
 
-  const residue = withoutComments
-    .replace(declaration, '')
-    .replace(/:root|[{}]/gi, '')
-    .trim();
+  const residue = rootContent.replace(declaration, '').trim();
   if (residue) {
     addError(errors, css, 0, 'Only a :root block with allowlisted custom properties is supported.');
   }

@@ -257,10 +257,14 @@ func (s *Service) Join(ctx context.Context, liveID, userID uuid.UUID) (Grant, er
 	// broadcast, which is the number they are watching most closely.
 	if !broadcaster {
 		n, err := s.repo.Watch(ctx, live.ID, userID)
-		if err == nil {
-			live.Viewers = n
-			s.announceViewers(ctx, live, n)
+		if err != nil {
+			// Do not hand out a LiveKit grant when the durable audience row was
+			// not written. The token would let a viewer enter the room while
+			// counts, cleanup and later authorization disagree with reality.
+			return Grant{}, err
 		}
+		live.Viewers = n
+		s.announceViewers(ctx, live, n)
 	} else {
 		live.Viewers, _ = s.repo.ViewerCount(ctx, live.ID)
 	}

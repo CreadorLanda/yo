@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/CreadorLanda/zwosocial/server/internal/crypto"
+	platformreactions "github.com/CreadorLanda/zwosocial/server/internal/platform/reactions"
 )
 
 type Repository struct {
@@ -81,17 +83,87 @@ func (r *Repository) CreateChat(ctx context.Context, chatType ChatType, createdB
 	return chatID, tx.Commit(ctx)
 }
 
-func (r *Repository) FindDirectChat(ctx context.Context, userID, peerID uuid.UUID) (*Chat, error) {
-	const q = `
-		SELECT c.id, c.type, c.title, c.avatar_url, c.created_by, c.status, c.created_at
+// CreateSelfChat creates or reopens the caller's saved-messages chat.
+// Uniqueness is enforced by the partial database index, so concurrent
+// requests cannot create two self-chats for the same account.
+func (r *Repository) CreateSelfChat(ctx context.Context, userID uuid.UUID) (uuid.UUID, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var chatID uuid.UUID
+	var isSelf bool
+	err = tx.QueryRow(ctx, `
+		SELECT c.id, c.is_self
 		FROM chats c
 		WHERE c.type = 'direct'
+		  AND c.created_by = $1
+		  AND EXISTS (
+			  SELECT 1 FROM chat_participants cp
+			  WHERE cp.chat_id = c.id AND cp.user_id = $1
+		  )
+		  AND (
+			  c.is_self
+			  OR NOT EXISTS (
+				  SELECT 1 FROM chat_participants cp
+				  WHERE cp.chat_id = c.id AND cp.user_id <> $1
+			  )
+		  )
+		ORDER BY c.is_self DESC, c.created_at ASC
+		LIMIT 1
+		FOR UPDATE
+	`, userID).Scan(&chatID, &isSelf)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = tx.QueryRow(ctx, `
+			INSERT INTO chats (type, created_by, status, is_self)
+			VALUES ('direct', $1, 'active', TRUE)
+			ON CONFLICT (created_by) WHERE is_self DO NOTHING
+			RETURNING id
+		`, userID).Scan(&chatID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = tx.QueryRow(ctx, `
+				SELECT id FROM chats WHERE created_by = $1 AND is_self
+			`, userID).Scan(&chatID)
+			isSelf = true
+		}
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if !isSelf {
+		if _, err := tx.Exec(ctx, `UPDATE chats SET is_self = TRUE WHERE id = $1`, chatID); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE chats SET status = 'active' WHERE id = $1`, chatID); err != nil {
+		return uuid.Nil, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO chat_participants (chat_id, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (chat_id, user_id) DO UPDATE SET hidden_at = NULL, archived_at = NULL
+	`, chatID, userID); err != nil {
+		return uuid.Nil, err
+	}
+
+	return chatID, tx.Commit(ctx)
+}
+
+func (r *Repository) FindDirectChat(ctx context.Context, userID, peerID uuid.UUID) (*Chat, error) {
+	const q = `
+		SELECT c.id, c.type, c.is_self, c.title, c.avatar_url, c.created_by, c.status, c.created_at
+		FROM chats c
+		WHERE c.type = 'direct'
+		  AND c.is_self = ($1::uuid = $2::uuid)
 		  AND EXISTS (SELECT 1 FROM chat_participants WHERE chat_id = c.id AND user_id = $1)
 		  AND EXISTS (SELECT 1 FROM chat_participants WHERE chat_id = c.id AND user_id = $2)
 		LIMIT 1
 	`
 	var c Chat
-	err := r.db.QueryRow(ctx, q, userID, peerID).Scan(&c.ID, &c.Type, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt)
+	err := r.db.QueryRow(ctx, q, userID, peerID).Scan(&c.ID, &c.Type, &c.IsSelf, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +176,11 @@ func (r *Repository) FindDirectChat(ctx context.Context, userID, peerID uuid.UUI
 // Both ListChats and ChatForUser build on it so the two can never drift.
 const chatSelectBase = `
 		SELECT
-		    c.id, c.type, c.title, c.avatar_url, c.created_by, c.status, c.created_at,
+		    c.id, c.type, c.is_self, c.title, c.avatar_url, c.created_by, c.status, c.created_at,
 		    c.disappear_seconds,
+		    c.forwarding_disabled, c.screenshot_protection_enabled,
+		    c.links_require_confirmation, c.who_can_message, c.who_can_call,
+		    c.allowed_message_types,
 		    cp.pinned_at, cp.muted_until, cp.archived_at,
 		    lm.content, lm.message_type, lm.sender_id, lm.created_at,
 		    COALESCE(uc.n, 0),
@@ -137,7 +212,7 @@ const chatSelectBase = `
 		    SELECT u.id, u.username, u.display_name, COALESCE(u.avatar_uri, '') AS avatar_uri
 		    FROM chat_participants cp2
 		    JOIN users u ON u.id = cp2.user_id
-		    WHERE cp2.chat_id = c.id AND cp2.user_id <> $1
+		    WHERE cp2.chat_id = c.id AND (cp2.user_id <> $1 OR c.is_self)
 		    LIMIT 1
 		) pu ON c.type = 'direct'
 `
@@ -205,8 +280,11 @@ func (r *Repository) scanChatRows(rows pgx.Rows) ([]Chat, error) {
 			peerAva   *string
 		)
 		if err := rows.Scan(
-			&c.ID, &c.Type, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
+			&c.ID, &c.Type, &c.IsSelf, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
 			&c.DisappearSeconds,
+			&c.Privacy.ForwardingDisabled, &c.Privacy.ScreenshotProtection,
+			&c.Privacy.LinksRequireConfirmation, &c.Privacy.WhoCanMessage,
+			&c.Privacy.WhoCanCall, &c.Privacy.AllowedMessageTypes,
 			&c.PinnedAt, &c.MutedUntil, &c.ArchivedAt,
 			&lmContent, &lmType, &lmSender, &lmAt,
 			&c.UnreadCount,
@@ -285,6 +363,108 @@ func (r *Repository) UpdateChatSettings(ctx context.Context, chatID, userID uuid
 	return nil
 }
 
+// UpdateChatPrivacy changes the conversation policy after the service has
+// checked that the caller is its creator or a group administrator.
+func (r *Repository) UpdateChatPrivacy(ctx context.Context, chatID uuid.UUID, req ChatPrivacySettingsRequest) error {
+	const q = `
+		UPDATE chats SET
+		    forwarding_disabled = COALESCE($2, forwarding_disabled),
+		    screenshot_protection_enabled = COALESCE($3, screenshot_protection_enabled),
+		    links_require_confirmation = COALESCE($4, links_require_confirmation),
+		    who_can_message = COALESCE($5, who_can_message),
+		    who_can_call = COALESCE($6, who_can_call),
+		    allowed_message_types = COALESCE($7::text[], allowed_message_types)
+		WHERE id = $1
+	`
+	var messageTypes []string
+	if req.AllowedMessageTypes != nil {
+		messageTypes = make([]string, len(*req.AllowedMessageTypes))
+		for i, typ := range *req.AllowedMessageTypes {
+			messageTypes[i] = string(typ)
+		}
+	}
+	args := []any{chatID, req.ForwardingDisabled, req.ScreenshotProtection,
+		req.LinksRequireConfirmation, req.WhoCanMessage, req.WhoCanCall, messageTypes}
+	tag, err := r.db.Exec(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *Repository) CanManageChatPrivacy(ctx context.Context, chatID, userID uuid.UUID) (bool, error) {
+	var allowed bool
+	err := r.db.QueryRow(ctx, `
+		SELECT c.created_by = $2
+		       OR (c.type = 'group' AND COALESCE(cp.role, 'member') = 'admin')
+		FROM chats c
+		JOIN chat_participants cp ON cp.chat_id = c.id AND cp.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&allowed)
+	return allowed, err
+}
+
+// CanSendMessage applies the policy to the sender, rather than trusting a
+// client-side disabled composer. Direct chats remain everyone-only.
+func (r *Repository) CanSendMessage(ctx context.Context, chatID, userID uuid.UUID) (bool, error) {
+	var allowed bool
+	err := r.db.QueryRow(ctx, `
+		SELECT c.who_can_message = 'everyone'
+		       OR (c.type = 'group' AND cp.role = 'admin')
+		FROM chats c
+		JOIN chat_participants cp ON cp.chat_id = c.id AND cp.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&allowed)
+	return allowed, err
+}
+
+func (r *Repository) CanCall(ctx context.Context, chatID, userID uuid.UUID) (bool, error) {
+	var allowed bool
+	err := r.db.QueryRow(ctx, `
+		SELECT c.who_can_call = 'everyone'
+		       OR (c.type = 'group' AND cp.role = 'admin')
+		FROM chats c
+		JOIN chat_participants cp ON cp.chat_id = c.id AND cp.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&allowed)
+	return allowed, err
+}
+
+func (r *Repository) IsMessageTypeAllowed(ctx context.Context, chatID uuid.UUID, typ MessageType) (bool, error) {
+	var allowed bool
+	err := r.db.QueryRow(ctx, `
+		SELECT $2 = ANY(allowed_message_types)
+		FROM chats WHERE id = $1
+	`, chatID, string(typ)).Scan(&allowed)
+	return allowed, err
+}
+
+func (r *Repository) ForwardingAllowed(ctx context.Context, sourceChatID, userID uuid.UUID, sourceMessageID *int64) (bool, error) {
+	query := `
+		SELECT NOT c.forwarding_disabled
+		FROM chats c
+		JOIN chat_participants cp ON cp.chat_id = c.id AND cp.user_id = $2
+		WHERE c.id = $1
+	`
+	args := []any{sourceChatID, userID}
+	if sourceMessageID != nil {
+		query = `
+			SELECT NOT c.forwarding_disabled
+			FROM chats c
+			JOIN chat_participants cp ON cp.chat_id = c.id AND cp.user_id = $2
+			WHERE c.id = $1
+			  AND EXISTS (SELECT 1 FROM messages m WHERE m.id = $3 AND m.chat_id = c.id)
+		`
+		args = append(args, *sourceMessageID)
+	}
+	var allowed bool
+	err := r.db.QueryRow(ctx, query, args...).Scan(&allowed)
+	return allowed, err
+}
+
 // ClearHistory hides every existing message from this user only. The rows
 // stay put for the other participants.
 func (r *Repository) ClearHistory(ctx context.Context, chatID, userID uuid.UUID) error {
@@ -360,12 +540,18 @@ func (r *Repository) PeerUser(ctx context.Context, chatID, userID uuid.UUID) (*P
 
 func (r *Repository) GetChat(ctx context.Context, chatID uuid.UUID) (*Chat, error) {
 	const q = `
-		SELECT id, type, title, avatar_url, created_by, status, created_at
+		SELECT id, type, is_self, title, avatar_url, created_by, status, created_at,
+		       forwarding_disabled, screenshot_protection_enabled,
+		       links_require_confirmation, who_can_message, who_can_call,
+		       allowed_message_types
 		FROM chats WHERE id = $1
 	`
 	var c Chat
 	err := r.db.QueryRow(ctx, q, chatID).Scan(
-		&c.ID, &c.Type, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
+		&c.ID, &c.Type, &c.IsSelf, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
+		&c.Privacy.ForwardingDisabled, &c.Privacy.ScreenshotProtection,
+		&c.Privacy.LinksRequireConfirmation, &c.Privacy.WhoCanMessage,
+		&c.Privacy.WhoCanCall, &c.Privacy.AllowedMessageTypes,
 	)
 	if err != nil {
 		return nil, err
@@ -410,13 +596,16 @@ type Origin struct {
 	ForwardCount int
 	ChannelID    *string
 	PostID       *string
+	ChatID       *uuid.UUID
+	MessageID    *int64
 }
 
 func (r *Repository) InsertMessage(ctx context.Context, chatID, senderID uuid.UUID, content string, msgType MessageType, replyToID *int64, viewLimit *int, origin Origin, mediaIDs []uuid.UUID) (int64, error) {
 	const q = `
 		INSERT INTO messages (chat_id, sender_id, content, message_type, reply_to_id, view_limit,
-		                      forward_count, source_channel_id, source_post_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		                      forward_count, source_channel_id, source_post_id, source_chat_id,
+		                      source_message_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id
 	`
 	tx, err := r.db.Begin(ctx)
@@ -437,7 +626,7 @@ func (r *Repository) InsertMessage(ctx context.Context, chatID, senderID uuid.UU
 	encrypted := r.encrypt(content)
 	var id int64
 	err = tx.QueryRow(ctx, q, chatID, senderID, encrypted, string(msgType), replyToID, viewLimit,
-		origin.ForwardCount, origin.ChannelID, origin.PostID).Scan(&id)
+		origin.ForwardCount, origin.ChannelID, origin.PostID, origin.ChatID, origin.MessageID).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -534,6 +723,7 @@ const messageSelectBase = `
 	       COALESCE(m.sender_id <> $1 AND (cpv.last_read_message_id IS NULL OR m.id > cpv.last_read_message_id), FALSE) AS is_unread,
 	       (ms.message_id IS NOT NULL) AS is_starred,
 	       m.forward_count, m.source_channel_id::text, m.source_post_id::text,
+	       m.source_chat_id, m.source_message_id,
 	       m.expires_at,
 	       m.view_limit, COALESCE(mv.views, 0),
 	       COALESCE(rx.list, '[]')
@@ -584,7 +774,8 @@ func (r *Repository) NonGhostParticipantIDs(ctx context.Context, chatID uuid.UUI
 		SELECT cp.user_id
 		FROM chat_participants cp
 		JOIN users u ON u.id = cp.user_id
-		WHERE cp.chat_id = $1 AND NOT u.ghost_mode
+		WHERE cp.chat_id = $1
+		  AND NOT (u.ghost_mode AND u.ghost_mode_expires_at > NOW())
 	`, chatID)
 	if err != nil {
 		return nil, err
@@ -648,6 +839,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 		var deliveredTo, readBy, forwardCount int
 		var isUnread, isStarred bool
 		var srcChannel, srcPost *string
+		var srcChat *uuid.UUID
 		var expiresAt *time.Time
 		var viewLimit *int
 		var viewsUsed int
@@ -655,7 +847,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 		if err := rows.Scan(&m.ID, &m.ChatID, &m.SenderID, &m.Content,
 			&m.MessageType, &m.ReplyToID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt,
 			&senderName, &senderAvatar, &deliveredTo, &readBy, &isUnread, &isStarred,
-			&forwardCount, &srcChannel, &srcPost, &expiresAt,
+			&forwardCount, &srcChannel, &srcPost, &srcChat, &m.SourceMessageID, &expiresAt,
 			&viewLimit, &viewsUsed, &reactionsJSON); err != nil {
 			return nil, err
 		}
@@ -697,6 +889,8 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 			Reactions:       reactions,
 			SourceChannelID: srcChannel,
 			SourcePostID:    srcPost,
+			SourceChatID:    srcChat,
+			SourceMessageID: m.SourceMessageID,
 			ExpiresAt:       expiresAt,
 		})
 	}
@@ -776,7 +970,8 @@ func (r *Repository) GetMessage(ctx context.Context, chatID uuid.UUID, msgID int
 	const q = `
 		SELECT m.id, m.chat_id, m.sender_id, m.content, m.message_type, m.reply_to_id,
 		       m.created_at, m.edited_at, m.deleted_at,
-		       COALESCE(u.display_name, ''), COALESCE(u.avatar_uri, '')
+		       COALESCE(u.display_name, ''), COALESCE(u.avatar_uri, ''),
+		       m.source_chat_id, m.source_message_id
 		FROM messages m
 		LEFT JOIN users u ON u.id = m.sender_id
 		WHERE m.chat_id = $1 AND m.id = $2
@@ -786,6 +981,7 @@ func (r *Repository) GetMessage(ctx context.Context, chatID uuid.UUID, msgID int
 	err := r.db.QueryRow(ctx, q, chatID, msgID).Scan(
 		&m.ID, &m.ChatID, &m.SenderID, &m.Content, &m.MessageType, &m.ReplyToID,
 		&m.CreatedAt, &m.EditedAt, &m.DeletedAt, &senderName, &senderAvatar,
+		&m.SourceChatID, &m.SourceMessageID,
 	)
 	if err != nil {
 		return nil, err
@@ -795,17 +991,19 @@ func (r *Repository) GetMessage(ctx context.Context, chatID uuid.UUID, msgID int
 		content = r.decrypt(m.Content)
 	}
 	return &Message{
-		ID:           m.ID,
-		ChatID:       m.ChatID,
-		SenderID:     m.SenderID,
-		Content:      content,
-		MessageType:  MessageType(m.MessageType),
-		ReplyToID:    m.ReplyToID,
-		CreatedAt:    m.CreatedAt,
-		EditedAt:     m.EditedAt,
-		DeletedAt:    m.DeletedAt,
-		SenderName:   senderName,
-		SenderAvatar: senderAvatar,
+		ID:              m.ID,
+		ChatID:          m.ChatID,
+		SenderID:        m.SenderID,
+		Content:         content,
+		MessageType:     MessageType(m.MessageType),
+		ReplyToID:       m.ReplyToID,
+		CreatedAt:       m.CreatedAt,
+		EditedAt:        m.EditedAt,
+		DeletedAt:       m.DeletedAt,
+		SenderName:      senderName,
+		SenderAvatar:    senderAvatar,
+		SourceChatID:    m.SourceChatID,
+		SourceMessageID: m.SourceMessageID,
 	}, nil
 }
 
@@ -918,12 +1116,35 @@ func (r *Repository) MessageIDsInChat(ctx context.Context, chatID uuid.UUID, ids
 }
 
 func (r *Repository) AddReaction(ctx context.Context, messageID int64, userID uuid.UUID, emoji string) error {
-	_, err := r.db.Exec(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, fmt.Sprintf("message-reaction:%d:%s", messageID, userID)); err != nil {
+		return err
+	}
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM message_reactions WHERE message_id = $1 AND user_id = $2`, messageID, userID).Scan(&count); err != nil {
+		return err
+	}
+	if count >= platformreactions.MaxPerUser {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3)`, messageID, userID, emoji).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return platformreactions.ErrTooMany
+		}
+	}
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO message_reactions (message_id, user_id, emoji)
 		VALUES ($1, $2, $3)
 		ON CONFLICT DO NOTHING
-	`, messageID, userID, emoji)
-	return err
+	`, messageID, userID, emoji); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) RemoveReaction(ctx context.Context, messageID int64, userID uuid.UUID, emoji string) error {

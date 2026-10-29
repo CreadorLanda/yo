@@ -2,10 +2,12 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
 
+	platformreactions "github.com/CreadorLanda/zwosocial/server/internal/platform/reactions"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -24,15 +26,31 @@ var (
 	ErrCannotPost        = errors.New("cannot_post")
 	ErrCommentsOff       = errors.New("comments_disabled")
 	ErrReactionsOff      = errors.New("reactions_disabled")
+	ErrInvalidGame       = errors.New("invalid_game_payload")
+	ErrImmutableGame     = errors.New("game_post_immutable")
+	ErrInvalidEmoji      = platformreactions.ErrInvalidEmoji
+	ErrTooManyReactions  = platformreactions.ErrTooMany
 )
 
 var handleRe = regexp.MustCompile(`^[a-z0-9_]{2,24}$`)
 
 type Service struct {
-	repo *Repository
+	repo        *Repository
+	broadcaster Broadcaster
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
+
+// Broadcaster is deliberately small so channels does not depend on the
+// websocket implementation. The server wires its realtime hub here.
+type Broadcaster interface {
+	PublishJSON(userIDs []uuid.UUID, typ, chatID string, payload any)
+}
+
+func (s *Service) WithBroadcaster(b Broadcaster) *Service {
+	s.broadcaster = b
+	return s
+}
 
 func (s *Service) toChannel(c channelRow) Channel {
 	avatar, cover := "", ""
@@ -290,8 +308,15 @@ func (s *Service) CreatePost(ctx context.Context, channelID, user uuid.UUID, req
 			ptype = PostText
 		}
 	}
+	if ptype == PostGame {
+		if err := validateGamePayload(req.GamePayload, user); err != nil {
+			return Post{}, err
+		}
+	} else if len(req.GamePayload) != 0 {
+		return Post{}, ErrInvalidGame
+	}
 	text := strings.TrimSpace(req.Text)
-	id, err := s.repo.InsertPost(ctx, channelID, user, text, ptype, strings.TrimSpace(req.MediaURL))
+	id, err := s.repo.InsertPost(ctx, channelID, user, text, ptype, strings.TrimSpace(req.MediaURL), req.GamePayload)
 	if err != nil {
 		return Post{}, err
 	}
@@ -301,10 +326,80 @@ func (s *Service) CreatePost(ctx context.Context, channelID, user uuid.UUID, req
 	}
 	for _, p := range posts {
 		if p.ID == id {
+			s.announcePost(ctx, channelID, p)
 			return p, nil
 		}
 	}
-	return Post{ID: id, ChannelID: channelID, AuthorID: user, Text: text, PostType: ptype, MediaURL: req.MediaURL}, nil
+	p := Post{ID: id, ChannelID: channelID, AuthorID: user, Text: text, PostType: ptype, MediaURL: req.MediaURL, GamePayload: req.GamePayload}
+	s.announcePost(ctx, channelID, p)
+	return p, nil
+}
+
+func (s *Service) announcePost(ctx context.Context, channelID uuid.UUID, post Post) {
+	if s.broadcaster == nil {
+		return
+	}
+	users, err := s.repo.MemberIDs(ctx, channelID)
+	if err != nil || len(users) == 0 {
+		return
+	}
+	s.broadcaster.PublishJSON(users, "channel.post.new", channelID.String(), post)
+}
+
+// validateGamePayload keeps channel events append-only and attributable. The
+// client still replays the stream, but it cannot submit another user's turn
+// or an arbitrary JSON object as a game event.
+func validateGamePayload(raw json.RawMessage, user uuid.UUID) error {
+	if len(raw) == 0 || !json.Valid(raw) {
+		return ErrInvalidGame
+	}
+	var p struct {
+		Kind      string   `json:"kind"`
+		Game      string   `json:"game"`
+		Action    string   `json:"action"`
+		Seed      string   `json:"seed"`
+		MaxRounds int      `json:"maxRounds"`
+		PlayerID  string   `json:"playerId"`
+		PlayerIDs []string `json:"playerIds"`
+		Choice    string   `json:"choice"`
+		Text      string   `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil || p.Kind != "game" || p.Game != "truth-or-dare" {
+		return ErrInvalidGame
+	}
+	if p.Action == "start" {
+		if p.Seed == "" || len(p.Seed) > 128 || p.MaxRounds < 1 || p.MaxRounds > 5 || p.PlayerID != user.String() {
+			return ErrInvalidGame
+		}
+		if len(p.PlayerIDs) > 12 {
+			return ErrInvalidGame
+		}
+		for _, id := range p.PlayerIDs {
+			if _, err := uuid.Parse(id); err != nil {
+				return ErrInvalidGame
+			}
+		}
+		return nil
+	}
+	if p.Action == "end" {
+		return nil
+	}
+	if p.PlayerID == "" || p.PlayerID != user.String() {
+		return ErrInvalidGame
+	}
+	switch p.Action {
+	case "join", "done":
+		return nil
+	case "choose":
+		if p.Choice == "truth" || p.Choice == "dare" {
+			return nil
+		}
+	case "challenge":
+		if n := len(strings.TrimSpace(p.Text)); n >= 1 && n <= 2000 {
+			return nil
+		}
+	}
+	return ErrInvalidGame
 }
 
 func (s *Service) ListPosts(ctx context.Context, channelID, user uuid.UUID) ([]Post, error) {
@@ -336,7 +431,29 @@ func (s *Service) React(ctx context.Context, postID, user uuid.UUID, emoji strin
 	if emoji == "" {
 		return ErrNotFound
 	}
-	return s.repo.SetReaction(ctx, postID, user, emoji)
+	return s.ReactSet(ctx, postID, user, []string{emoji})
+}
+
+func (s *Service) ReactSet(ctx context.Context, postID, user uuid.UUID, emojis []string) error {
+	post, err := s.repo.GetPost(ctx, postID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	ch, err := s.Get(ctx, post.ChannelID, user)
+	if err != nil {
+		return err
+	}
+	if !ch.ReactionsEnabled {
+		return ErrReactionsOff
+	}
+	normalized, err := platformreactions.NormalizeSet(emojis)
+	if err != nil {
+		return err
+	}
+	return s.repo.SetReactions(ctx, postID, user, normalized)
 }
 
 func (s *Service) Comment(ctx context.Context, postID, user uuid.UUID, req CommentRequest) (Comment, error) {
@@ -381,7 +498,58 @@ func (s *Service) ListComments(ctx context.Context, postID, user uuid.UUID) ([]C
 	if _, err := s.Get(ctx, post.ChannelID, user); err != nil {
 		return nil, err
 	}
-	return s.repo.ListComments(ctx, postID)
+	return s.repo.ListComments(ctx, postID, user)
+}
+
+func (s *Service) ReactComment(ctx context.Context, commentID, user uuid.UUID, emoji string, clear bool) error {
+	postID, err := s.repo.CommentPost(ctx, commentID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	post, err := s.repo.GetPost(ctx, postID)
+	if err != nil {
+		return err
+	}
+	ch, err := s.Get(ctx, post.ChannelID, user)
+	if err != nil {
+		return err
+	}
+	if !ch.ReactionsEnabled {
+		return ErrReactionsOff
+	}
+	if clear {
+		return s.repo.ClearCommentReactions(ctx, commentID, user)
+	}
+	return s.ReactCommentSet(ctx, commentID, user, []string{emoji})
+}
+
+func (s *Service) ReactCommentSet(ctx context.Context, commentID, user uuid.UUID, emojis []string) error {
+	postID, err := s.repo.CommentPost(ctx, commentID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	post, err := s.repo.GetPost(ctx, postID)
+	if err != nil {
+		return err
+	}
+	ch, err := s.Get(ctx, post.ChannelID, user)
+	if err != nil {
+		return err
+	}
+	if !ch.ReactionsEnabled {
+		return ErrReactionsOff
+	}
+	normalized, err := platformreactions.NormalizeSet(emojis)
+	if err != nil {
+		return err
+	}
+	return s.repo.SetCommentReactions(ctx, commentID, user, normalized)
 }
 
 func (s *Service) CheckHandle(ctx context.Context, handle string) (bool, error) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,36 +13,58 @@ import (
 )
 
 type Repository struct {
-	db *pgxpool.Pool
+	db  *pgxpool.Pool
+	now func() time.Time
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
+// WithClock is intended for deterministic integration tests. Production calls
+// use PostgreSQL's CURRENT_TIMESTAMP as the session time authority.
+func (r *Repository) WithClock(now func() time.Time) *Repository {
+	r.now = now
+	return r
+}
+
 const userColumns = `id, username, display_name,
 	COALESCE(bio, '') AS bio,
 	COALESCE(avatar_uri, '') AS avatar_uri,
 	username_public, created_at, email, (email_verified_at IS NOT NULL) AS email_verified,
-	last_seen_visibility, photo_visibility, read_receipts, ghost_mode`
+	last_seen_visibility, photo_visibility, read_receipts,
+	ghost_mode, ghost_mode_started_at, ghost_mode_expires_at,
+	ghost_mode_last_activated_at`
 
 func scanUser(row pgx.Row) (*User, error) {
+	return scanUserAt(row, time.Now().UTC())
+}
+
+func scanUserAt(row pgx.Row, now time.Time) (*User, error) {
 	var u User
 	if err := row.Scan(
 		&u.ID, &u.Username, &u.DisplayName,
 		&u.Bio, &u.AvatarURI,
 		&u.UsernamePublic, &u.CreatedAt,
 		&u.Email, &u.EmailVerified,
-		&u.LastSeenVisibility, &u.PhotoVisibility, &u.ReadReceipts, &u.GhostMode,
+		&u.LastSeenVisibility, &u.PhotoVisibility, &u.ReadReceipts,
+		&u.GhostMode, &u.GhostModeStartedAt, &u.GhostModeExpiresAt,
+		&u.GhostModeLastActivatedAt,
 	); err != nil {
 		return nil, err
 	}
+	u.applyGhostModeState(now)
 	return &u, nil
 }
 
 func (r *Repository) ByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	return scanUser(r.db.QueryRow(ctx,
 		`SELECT `+userColumns+` FROM users WHERE id = $1`, id))
+}
+
+func (r *Repository) ByIDAt(ctx context.Context, id uuid.UUID, now time.Time) (*User, error) {
+	return scanUserAt(r.db.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE id = $1`, id), now)
 }
 
 func (r *Repository) ByUsername(ctx context.Context, username string) (*User, error) {
@@ -107,6 +130,111 @@ func (r *Repository) Patch(ctx context.Context, id uuid.UUID, p PatchRequest) (*
 		strings.Join(setters, ", "), len(args), userColumns,
 	)
 	return scanUser(r.db.QueryRow(ctx, q, args...))
+}
+
+func (r *Repository) ActivateGhostMode(ctx context.Context, id uuid.UUID) (*User, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var active bool
+	var expiresAt, lastActivatedAt *time.Time
+	err = tx.QueryRow(ctx, `
+		SELECT ghost_mode, ghost_mode_expires_at, ghost_mode_last_activated_at
+		FROM users WHERE id = $1 FOR UPDATE
+	`, id).Scan(&active, &expiresAt, &lastActivatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var databaseNow time.Time
+	if err := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&databaseNow); err != nil {
+		return nil, err
+	}
+	now := databaseNow.UTC()
+	if r.now != nil {
+		now = r.now().UTC()
+	}
+	if active && expiresAt != nil && now.Before(expiresAt.UTC()) {
+		return nil, ErrGhostAlreadyActive
+	}
+	if lastActivatedAt != nil && sameUTCDate(lastActivatedAt.UTC(), now) {
+		return nil, ErrGhostDailyLimit
+	}
+
+	startedAt := now
+	expires := startedAt.Add(GhostModeDuration)
+	expiresAt = &expires
+	if _, err := tx.Exec(ctx, `
+		UPDATE users
+		SET ghost_mode = TRUE,
+		    ghost_mode_started_at = $2,
+		    ghost_mode_expires_at = $3,
+		    ghost_mode_last_activated_at = $2,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, id, startedAt, expiresAt); err != nil {
+		return nil, err
+	}
+	u, err := scanUserAt(tx.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE id = $1`, id), now)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+func (r *Repository) DeactivateGhostMode(ctx context.Context, id uuid.UUID) (*User, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var lockedID uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&lockedID); errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	var now time.Time
+	if err := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		return nil, err
+	}
+	now = now.UTC()
+	if r.now != nil {
+		now = r.now().UTC()
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE users
+		SET ghost_mode = FALSE,
+		    ghost_mode_started_at = NULL,
+		    ghost_mode_expires_at = NULL,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, id); err != nil {
+		return nil, err
+	}
+	u, err := scanUserAt(tx.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE id = $1`, id), now)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+func sameUTCDate(a, b time.Time) bool {
+	a, b = a.UTC(), b.UTC()
+	return a.Year() == b.Year() && a.YearDay() == b.YearDay()
 }
 
 // Search finds users whose username or display_name matches the query.

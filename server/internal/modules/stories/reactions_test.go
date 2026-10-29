@@ -29,11 +29,11 @@ func TestCanonicalReactionFolds(t *testing.T) {
 		{"missing variation selector", "❤", "❤️", true},
 		{"with variation selector", "❤️", "❤️", true},
 		{"multi-codepoint", "❤️‍🔥", "❤️‍🔥", true},
-		{"skin tone folded to base", "👍🏽", "👍", true},
-		{"darkest skin tone", "👏🏿", "👏", true},
+		{"skin tone preserved", "👍🏽", "👍🏽", true},
+		{"darkest skin tone preserved", "👏🏿", "👏🏿", true},
 		{"surrounding space", "  🎉  ", "🎉", true},
 		{"extended set", "🥳", "🥳", true},
-		{"emoji outside the set", "🤡", "", false},
+		{"current catalogue emoji", "🤡", "🤡", true},
 		{"plain text", "not an emoji", "", false},
 		{"empty", "", "", false},
 	}
@@ -51,11 +51,11 @@ func TestCanonicalReactionFolds(t *testing.T) {
 }
 
 func TestNormalizeReactionsKeepsOrderAndDropsDuplicates(t *testing.T) {
-	got, err := normalizeReactions([]string{"🎉", "❤", "🎉", "👍🏽", "👍"})
+	got, err := normalizeReactions([]string{"🎉", "❤", "🎉"})
 	if err != nil {
 		t.Fatalf("normalizeReactions: %v", err)
 	}
-	want := []string{"🎉", "❤️", "👍"}
+	want := []string{"🎉", "❤️"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -70,7 +70,7 @@ func TestNormalizeReactionsRefusesUnknown(t *testing.T) {
 	// One bad entry fails the whole call rather than being dropped quietly:
 	// silently storing four of the five emoji someone tapped is worse than
 	// telling the client its set is wrong.
-	if _, err := normalizeReactions([]string{"🔥", "🤡"}); !errors.Is(err, ErrInvalidEmoji) {
+	if _, err := normalizeReactions([]string{"🔥", "not an emoji"}); !errors.Is(err, ErrInvalidEmoji) {
 		t.Fatalf("got %v, want ErrInvalidEmoji", err)
 	}
 }
@@ -79,9 +79,9 @@ func TestRequestedReactions(t *testing.T) {
 	empty := []string{}
 
 	t.Run("array form", func(t *testing.T) {
-		got, err := requestedReactions(many("🔥", "❤️", "🎉"))
-		if err != nil || len(got) != 3 {
-			t.Fatalf("got %v, %v; want three emoji", got, err)
+		got, err := requestedReactions(many("🔥", "❤️"))
+		if err != nil || len(got) != 2 {
+			t.Fatalf("got %v, %v; want two emoji", got, err)
 		}
 	})
 
@@ -165,17 +165,16 @@ func TestReactionCountsAndReplacement(t *testing.T) {
 		t.Fatalf("a fresh story has reactions: %+v", story)
 	}
 
-	// One person, three emoji at once — the thing the old single-emoji key
-	// could not hold.
-	st, err := svc.React(ctx, story.ID, alice, many("🔥", "❤️", "🎉"))
+	// One person, two emoji at once — the uniform per-item limit.
+	st, err := svc.React(ctx, story.ID, alice, many("🔥", "❤️"))
 	if err != nil {
 		t.Fatalf("React (alice): %v", err)
 	}
-	if len(st.MyReactions) != 3 {
-		t.Fatalf("alice's own reactions: got %v, want three", st.MyReactions)
+	if len(st.MyReactions) != 2 {
+		t.Fatalf("alice's own reactions: got %v, want two", st.MyReactions)
 	}
-	if total := countOf(st.Reactions); total != 3 {
-		t.Fatalf("counts total %d, want 3: %+v", total, st.Reactions)
+	if total := countOf(st.Reactions); total != 2 {
+		t.Fatalf("counts total %d, want 2: %+v", total, st.Reactions)
 	}
 
 	// A second person overlapping on one emoji: 🔥 is now two, the rest one.
@@ -221,8 +220,8 @@ func TestReactionCountsAndReplacement(t *testing.T) {
 	}
 
 	// An emoji outside the catalogue is refused, and changes nothing.
-	if _, err := svc.React(ctx, story.ID, bob, many("🔥", "🤡")); !errors.Is(err, ErrInvalidEmoji) {
-		t.Fatalf("react with an unlisted emoji: got %v, want ErrInvalidEmoji", err)
+	if _, err := svc.React(ctx, story.ID, bob, many("🔥", "🤡", "🎉")); !errors.Is(err, ErrTooManyReactions) {
+		t.Fatalf("react with a third emoji: got %v, want ErrTooManyReactions", err)
 	}
 	st, err = svc.Get(ctx, story.ID, bob)
 	if err != nil {

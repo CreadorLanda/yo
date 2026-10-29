@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
+import { displayChatName } from '@/data/chat-identity';
 import { useChats } from '@/data/chat-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -57,7 +58,7 @@ export function ForwardPicker({
     .filter((c) => c.id !== excludeChatId)
     .map((c) => ({
       id: c.id,
-      name: c.title ?? 'Chat',
+      name: displayChatName(c, t('chats.saved_messages'), 'Chat'),
       username: c.peer_username ? `@${c.peer_username.replace(/^@/, '')}` : '',
       avatarUri: c.avatar_url ?? '',
       isGroup: c.type === 'group',

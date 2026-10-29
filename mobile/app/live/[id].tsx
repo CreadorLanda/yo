@@ -23,7 +23,7 @@ import {
   endLive,
   joinLive,
   leaveLive,
-  startLive,
+  startOrJoinLive,
   type LiveGrant,
 } from '@/data/api/lives';
 import { appAlert } from '@/data/dialog-store';
@@ -96,7 +96,7 @@ export default function LiveScreen() {
 
         const g =
           id === 'new'
-            ? await startLive({ chatId: chat, channelId: channel, title })
+            ? await startOrJoinLive({ chatId: chat, channelId: channel, title })
             : await joinLive(id!);
 
         // A host returning to an existing room still needs the same honest
@@ -181,7 +181,10 @@ export default function LiveScreen() {
       // not allowed to use. Asking anyway would put a permission prompt in
       // front of someone who only wants to watch.
       audio={grant.host && hostMedia.microphone}
-      video={grant.host && hostMedia.camera}
+      // The camera starts off and the host turns it on with the button: an
+      // emulator may advertise a camera that fails when WebRTC opens it, and
+      // opening it here took the whole screen down.
+      video={false}
       options={{ adaptiveStream: true, dynacast: true }}
       onConnected={() => setConnectionNotice(null)}
       onDisconnected={() => setConnectionNotice(t('live.reconnecting'))}
@@ -217,6 +220,7 @@ function Stage({
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const participants = useParticipants();
   const liveId = grant.live.id;
+  const [ending, setEnding] = useState(false);
 
   // The count comes from the server, which counts rows. Counting the
   // participants in the room would drift the moment someone's connection
@@ -266,11 +270,17 @@ function Stage({
       {
         text: t('live.end_confirm'),
         style: 'destructive',
-        onPress: () => {
-          void endLive(liveId)
-            .then(() => refreshRunningLives())
-            .catch(() => {});
-          router.back();
+        onPress: async () => {
+          if (ending) return;
+          setEnding(true);
+          try {
+            await endLive(liveId);
+            await refreshRunningLives();
+            router.back();
+          } catch {
+            setEnding(false);
+            appAlert(t('live.end_title'), t('live.end_failed'));
+          }
         },
       },
     ]);

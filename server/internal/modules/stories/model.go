@@ -68,6 +68,7 @@ type Reaction struct {
 type ReactionCatalogue struct {
 	Standard []string `json:"standard"`
 	Extended []string `json:"extended"`
+	All      []string `json:"all"`
 }
 
 type CreateRequest struct {

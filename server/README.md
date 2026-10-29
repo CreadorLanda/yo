@@ -114,6 +114,8 @@ API returns `503` and does not silently accept the credential change.
 | `POST /api/auth/logout`                  | public   | ✅ revokes the refresh-token family |
 | `GET  /api/users/me`                     | required | ✅                                  |
 | `PATCH /api/users/me`                    | required | ✅ partial updates (username, name, bio, avatar, privacy) |
+| `POST /api/users/me/ghost-mode`          | required | ✅ two-hour session; 409 if active or already used that UTC day |
+| `DELETE /api/users/me/ghost-mode`        | required | ✅ ends the session; daily quota remains consumed |
 | `GET  /api/users/availability?username=` | required | ✅ validates + checks uniqueness    |
 | `GET  /api/users/by-username/:username`  | required | ✅ honours username_public          |
 | `PUT  /api/users/me/keys`                | required | ✅ identity + signed + OTK upload   |
@@ -165,6 +167,12 @@ API returns `503` and does not silently accept the credential change.
 | `POST   /api/channels/:id/posts`         | required | ✅ publish post                     |
 | `POST   /api/channel-posts/:id/react`    | required | ✅ react to post                    |
 | `POST   /api/channel-posts/:id/comments` | required | ✅ comment                          |
+
+Ghost Mode is intentionally updated through its dedicated endpoints. The
+legacy `ghost_mode` field remains accepted by `PATCH /api/users/me` only when
+it is the sole field in the request; mixed profile/privacy patches return
+`422 ghost_mode_must_be_updated_alone` so a failed Ghost activation cannot
+partially persist unrelated profile changes.
 
 Token shape: HS256 JWT with `sub` (user id), `dev` (device id), `typ`
 (`access` or `refresh`), `iat`, `exp`. Verify with `cfg.JWT.Secret`.

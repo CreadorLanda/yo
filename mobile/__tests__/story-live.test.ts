@@ -24,11 +24,19 @@ test('o rail lê lives autorizadas e abre o id real', () => {
   expect(storiesRail).toContain('router.push(`/live/${live.id}`)');
 });
 
+test('terminar uma live só sai depois da confirmação HTTP', () => {
+  expect(liveScreen).toContain('await endLive(liveId)');
+  expect(liveScreen).toContain('await refreshRunningLives()');
+  expect(liveScreen).toContain("t('live.end_failed')");
+  expect(liveScreen).not.toContain('void endLive(liveId)');
+});
+
 test('a recusa de media e a reconexão ficam visíveis sem fingir que a emissão acabou', () => {
   expect(liveScreen).toContain('requestCamera');
   expect(liveScreen).toContain('requestMicrophone');
   expect(liveScreen).toContain('audio={grant.host && hostMedia.microphone}');
-  expect(liveScreen).toContain('video={grant.host && hostMedia.camera}');
+  // The camera starts off and is turned on with the button (#236).
+  expect(liveScreen).toContain('video={false}');
   expect(liveScreen).toContain("t('live.backgrounded')");
   expect(liveScreen).toContain("t('live.reconnecting')");
 });

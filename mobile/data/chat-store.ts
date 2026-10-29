@@ -5,8 +5,10 @@ import {
   deleteChat as apiDeleteChat,
   listChats,
   updateChatSettings as apiUpdateSettings,
+  updateChatPrivacy as apiUpdatePrivacy,
   type ChatDTO,
   type ChatSettings,
+  type ChatPrivacySettings,
 } from './api/messages';
 
 /**
@@ -135,6 +137,23 @@ export async function setChatSettings(chatId: string, settings: ChatSettings): P
   }
 }
 
+export async function setChatPrivacy(chatId: string, settings: ChatPrivacySettings): Promise<void> {
+  const before = chats;
+  chats = chats.map((c) =>
+    c.id === chatId ? { ...c, privacy: { ...c.privacy, ...settings } } : c,
+  );
+  emit();
+  try {
+    const updated = await apiUpdatePrivacy(chatId, settings);
+    chats = chats.map((c) => (c.id === chatId ? updated : c));
+    emit();
+  } catch {
+    chats = before;
+    emit();
+    throw new Error('chat_privacy_failed');
+  }
+}
+
 export async function clearChat(chatId: string): Promise<void> {
   await apiClearHistory(chatId);
   await refreshChats();
@@ -165,6 +184,20 @@ export async function removeChat(chatId: string): Promise<void> {
  */
 export function getCachedChat(chatId: string): ChatDTO | undefined {
   return chats.find((c) => c.id === chatId);
+}
+
+/** Make a newly opened chat available before the next list refresh. */
+export function upsertChat(chat: ChatDTO): void {
+  const index = chats.findIndex((c) => c.id === chat.id);
+  if (index === -1) {
+    chats = [chat, ...chats];
+  } else {
+    chats[index] = chat;
+  }
+  if (!chat.archived_at) {
+    archived = archived.filter((c) => c.id !== chat.id);
+  }
+  emit();
 }
 
 export function useChats(): { chats: ChatDTO[]; loaded: boolean } {
