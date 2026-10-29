@@ -148,6 +148,7 @@ import { callHistory, type CallLogEntry } from '@/data/api/calls';
 import { setOpenChat } from '@/data/notification-builder';
 import { describeE2EEBlocked, reportE2EEBlocked } from '@/data/e2ee-blocked';
 import { getGroup, type GroupMemberDTO } from '@/data/api/groups';
+import { useChatPrefs } from '@/data/chat-prefs';
 import { bubbleRadii } from '@/data/theme-store';
 import { useTheme } from '@/hooks/use-theme';
 import { useCurrentUser } from '@/data/auth-store';
@@ -360,7 +361,27 @@ export default function ChatScreen() {
   const typingSentRef = useRef(false);
   const currentUser = useCurrentUser();
   const meId = currentUser?.id;
-  const { colors, isDark, chat: chrome, layout, metrics } = useTheme();
+  const { colors, isDark, chat: themeChrome, layout: themeLayout, metrics } = useTheme();
+  const chatPrefs = useChatPrefs(id);
+  const chrome = useMemo(() => {
+    const wallpaper = chatPrefs.wallpaper;
+    if (!wallpaper) return themeChrome;
+    return {
+      ...themeChrome,
+      wallpaper: wallpaper.color ?? themeChrome.wallpaper,
+      wallpaperImage: wallpaper.imageUri ?? '',
+    };
+  }, [chatPrefs.wallpaper, themeChrome]);
+  const layout = useMemo(() => {
+    const wallpaper = chatPrefs.wallpaper;
+    if (!wallpaper) return themeLayout;
+    return {
+      ...themeLayout,
+      wallpaperDim: wallpaper.dim,
+      wallpaperBlur: wallpaper.blur,
+      wallpaperAnimation: wallpaper.animation,
+    };
+  }, [chatPrefs.wallpaper, themeLayout]);
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recordPhase, setRecordPhase] = useState<'idle' | 'recording' | 'locked'>('idle');

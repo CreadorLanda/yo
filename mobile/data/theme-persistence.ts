@@ -1,5 +1,6 @@
 import { APP_ICON_IDS, type AppIconId } from './theme-app-icons';
 import type { ThemeIcons } from './theme-icons';
+import { parseThemeCss } from './theme-css';
 import type {
   ChatChrome,
   SchemePreference,
@@ -139,10 +140,15 @@ export function hydratePack(
     // existed must still resolve to a full layout, or every screen reading
     // that knob renders undefined.
     layout: { ...defaults.layout, ...sanitizeAgainst(p.layout, defaults.layout) },
-    customCss: typeof p.customCss === 'string' ? p.customCss : undefined,
+    customCss:
+      typeof p.customCss === 'string' && parseThemeCss(p.customCss).valid
+        ? p.customCss
+        : undefined,
     aiPrompt: typeof p.aiPrompt === 'string' ? p.aiPrompt : undefined,
     icons: sanitizeAgainst(p.icons, defaults.icons),
     isOwned: true,
+    isPublished: p.isPublished === true,
+    formatVersion: p.formatVersion === 1 ? 1 : undefined,
     forkedFrom: typeof p.forkedFrom === 'string' ? p.forkedFrom : undefined,
   };
 }

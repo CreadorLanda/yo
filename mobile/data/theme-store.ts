@@ -6,6 +6,7 @@ import {
 import { useSyncExternalStore } from 'react';
 
 import { Colors, Palette } from '@/constants/theme';
+import { bootstrapChatPrefs, listChatWallpaperUris } from './chat-prefs';
 
 import {
   deleteStoredPack,
@@ -46,6 +47,37 @@ import {
   hydrateThemeState,
   serializeThemePrefs,
 } from './theme-persistence';
+import {
+  CSS_THEME_TEMPLATE,
+  parseThemeCss as parseSafeThemeCss,
+  type ParsedThemeCss,
+} from './theme-css';
+import {
+  createThemeDesign,
+  parseThemeDesign,
+  previewThemeDesign,
+  serializeThemeDesign,
+  type ThemeDesignDocument,
+} from './theme-sdk';
+
+export { CSS_THEME_TEMPLATE } from './theme-css';
+export type { ParsedThemeCss } from './theme-css';
+export {
+  createThemeDesign,
+  parseThemeDesign,
+  previewThemeDesign,
+  serializeThemeDesign,
+} from './theme-sdk';
+export type { ThemeDesignDocument } from './theme-sdk';
+
+const EMPTY_CSS_LAYER: ParsedThemeCss = {
+  tokens: {},
+  chat: {},
+  layout: {},
+  errors: [],
+  appliedProperties: [],
+  valid: true,
+};
 
 /**
  * Theme marketplace + GB-style creator.
@@ -1577,6 +1609,10 @@ export async function bootstrapThemes(): Promise<void> {
   if (booting) return booting;
   booting = (async () => {
     try {
+      // Chat wallpapers are part of the asset reachability set. Load them
+      // before pruning theme files or a valid per-chat image could look orphaned
+      // during the parallel app bootstrap.
+      await bootstrapChatPrefs();
       const [prefs, packs] = await Promise.all([readThemePrefs(), listStoredPacks()]);
       const state = hydrateThemeState(
         { prefs, packs },
@@ -1630,7 +1666,7 @@ export async function bootstrapThemes(): Promise<void> {
 
 /** Every image any theme currently points at: wallpapers and custom icons. */
 function referencedImages(): string[] {
-  const uris: string[] = [];
+  const uris: string[] = listChatWallpaperUris();
   const schemes: ThemeMode[] = ['light', 'dark'];
   for (const theme of catalog) {
     for (const scheme of schemes) {
@@ -1753,7 +1789,7 @@ function packChrome(scheme: ThemeMode): ChatChrome {
   // CSS overrides win over pack (but personal still on top).
   const cssLayer: ParsedThemeCss = packActive?.customCss
     ? parseThemeCss(packActive.customCss)
-    : { tokens: {}, chat: {}, layout: {} };
+    : EMPTY_CSS_LAYER;
   return {
     ...base,
     ...fromTokens,
@@ -1797,7 +1833,7 @@ export function getResolvedLayout(): ThemeLayout {
   const packActive = getActivePack();
   const cssLayer: ParsedThemeCss = packActive?.customCss
     ? parseThemeCss(packActive.customCss)
-    : { tokens: {}, chat: {}, layout: {} };
+    : EMPTY_CSS_LAYER;
   return {
     ...DEFAULT_LAYOUT,
     ...packActive?.layout,
@@ -2043,7 +2079,7 @@ export function createThemePack(input: CreateThemeInput): ThemePack {
   // CSS layer merges into layout/chat if provided.
   const cssParsed: ParsedThemeCss = input.customCss
     ? parseThemeCss(input.customCss)
-    : { tokens: {}, chat: {}, layout: {} };
+    : EMPTY_CSS_LAYER;
   const finalLayout: ThemeLayout = {
     ...layout,
     ...cssParsed.layout,
@@ -2074,6 +2110,8 @@ export function createThemePack(input: CreateThemeInput): ThemePack {
         input.text,
       ];
       existing.icons = input.icons ?? existing.icons;
+      existing.isPublished = false;
+      existing.formatVersion = 1;
       catalog = [...catalog];
       activeThemeId = existing.id;
       installed = new Set(installed).add(existing.id);
@@ -2094,6 +2132,7 @@ export function createThemePack(input: CreateThemeInput): ThemePack {
     likes: 0,
     price: 0,
     isOwned: true,
+    formatVersion: 1,
     forkedFrom: input.forkFromId,
     tokens: {
       light: { ...tokens.light, ...cssParsed.tokens },
@@ -2129,6 +2168,8 @@ export function forkTheme(id: string, nameSuffix = ' (edit)'): ThemePack | null 
     likes: 0,
     price: 0,
     isOwned: true,
+    isPublished: false,
+    formatVersion: 1,
     forkedFrom: source.id,
     tokens: {
       light: source.tokens.light ? { ...source.tokens.light } : undefined,
@@ -2141,6 +2182,9 @@ export function forkTheme(id: string, nameSuffix = ' (edit)'): ThemePack | null 
         }
       : undefined,
     layout: { ...DEFAULT_LAYOUT, ...source.layout },
+    icons: source.icons ? { ...source.icons } : undefined,
+    customCss: source.customCss,
+    aiPrompt: source.aiPrompt,
     swatches: [...source.swatches],
   });
   catalog = [forked, ...catalog];
@@ -2163,6 +2207,7 @@ export function updateOwnedTheme(
     layout?: Partial<ThemeLayout>;
     icons?: ThemeIcons;
     swatches?: string[];
+    customCss?: string;
   },
 ) {
   const p = catalog.find((c) => c.id === id);
@@ -2175,18 +2220,56 @@ export function updateOwnedTheme(
   if (patch.layout) p.layout = { ...DEFAULT_LAYOUT, ...p.layout, ...patch.layout };
   if (patch.swatches) p.swatches = patch.swatches;
   if (patch.icons) p.icons = { ...p.icons, ...patch.icons };
+  if (patch.customCss !== undefined) p.customCss = patch.customCss;
+  p.isPublished = false;
   catalog = [...catalog];
   persistPack(p);
   emit();
 }
 
-export function publishThemeToMarketplace(id: string) {
+export function publishThemeToMarketplace(id: string): boolean {
   const p = catalog.find((c) => c.id === id);
-  if (!p || !p.isOwned) return;
+  if (!p || !p.isOwned) return false;
+  if (!serializeThemeDesign(p).ok) return false;
   p.downloads = Math.max(p.downloads, 1);
+  p.isPublished = true;
+  p.formatVersion = 1;
   catalog = [...catalog];
   persistPack(p);
   emit();
+  return true;
+}
+
+/** Export an owned pack without applying or mutating it. */
+export function exportThemeDesign(id: string): ReturnType<typeof serializeThemeDesign> {
+  const pack = catalog.find((candidate) => candidate.id === id);
+  return pack
+    ? serializeThemeDesign(pack)
+    : { ok: false, errors: ['theme was not found'] };
+}
+
+/** Import a portable design as a new owned pack and apply it locally. */
+export function importThemeDesign(raw: string): ThemePack | null {
+  const parsed = parseThemeDesign(raw);
+  if (!parsed.ok) return null;
+  const imported = parsed.value.theme;
+  const id = `theme_${Date.now().toString(36)}`;
+  const theme = pack({
+    ...imported,
+    id,
+    author: 'You',
+    isOwned: true,
+    isPublished: false,
+    formatVersion: 1,
+    downloads: 0,
+    likes: 0,
+  });
+  catalog = [theme, ...catalog];
+  installed = new Set(installed).add(id);
+  activeThemeId = id;
+  persistPack(theme);
+  emit();
+  return theme;
 }
 
 export function deleteOwnedTheme(id: string) {
@@ -2201,182 +2284,9 @@ export function deleteOwnedTheme(id: string) {
   emit();
 }
 
-export const CSS_THEME_TEMPLATE = `/* ZwoSocial theme CSS — custom properties */
-:root {
-  --primary: ${Palette.brand[600]};
-  --background: #0E0F13;
-  --surface: #191A21;
-  --text: #ECEDF2;
-  --wallpaper: #131419;
-  --bubble-mine: ${Palette.brand[600]};
-  --bubble-theirs: #191A21;
-  --text-mine: #FFFFFF;
-  --text-theirs: #ECEDF2;
-  --my-side: right;          /* left | right */
-  --bubble-shape: tail;      /* tail | rounded | pill | square */
-  --bubble-radius: 16;
-  --font-scale: 1;
-  --density: cozy;           /* compact | cozy | roomy */
-  --bubble-max-width: 82;
-  --wallpaper-dim: 35;
-  --bubble-padding-h: 11;
-  --bubble-padding-v: 7;
-  --emoji-scale: 1;
-  --letter-spacing: 0;
-  --show-tails: true;
-  --bubble-shadow: true;
-  --wallpaper-pattern: false;
-  --send-button: circle;     /* circle | pill | icon */
-  --composer: rounded;       /* rounded | flat | floating */
-}
-`;
-
-export type ParsedThemeCss = {
-  tokens: Partial<ThemeTokens>;
-  chat: Partial<ChatChrome>;
-  layout: Partial<ThemeLayout>;
-};
-
-/** Parse a CSS custom-properties block into theme layers. */
+/** Compatibility entry point kept for screens that import the store module. */
 export function parseThemeCss(css: string): ParsedThemeCss {
-  const tokens: Partial<ThemeTokens> = {};
-  const chat: Partial<ChatChrome> = {};
-  const layout: Partial<ThemeLayout> = {};
-  const re = /--([a-z0-9-]+)\s*:\s*([^;]+);/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(css)) !== null) {
-    const key = m[1].toLowerCase();
-    const raw = m[2].trim().replace(/^['"]|['"]$/g, '');
-    const num = Number(raw);
-    const bool = raw === 'true' ? true : raw === 'false' ? false : undefined;
-
-    switch (key) {
-      case 'primary':
-        tokens.primary = raw;
-        tokens.tint = raw;
-        tokens.tabIconSelected = raw;
-        break;
-      case 'background':
-        tokens.background = raw;
-        break;
-      case 'surface':
-        tokens.surface = raw;
-        break;
-      case 'surface-muted':
-        tokens.surfaceMuted = raw;
-        break;
-      case 'text':
-        tokens.text = raw;
-        break;
-      case 'text-secondary':
-        tokens.textSecondary = raw;
-        break;
-      case 'on-primary':
-        tokens.onPrimary = raw;
-        break;
-      case 'border':
-        tokens.border = raw;
-        break;
-      case 'wallpaper':
-        chat.wallpaper = raw;
-        break;
-      case 'wallpaper-image':
-        chat.wallpaperImage = raw;
-        break;
-      case 'bubble-mine':
-        chat.bubbleMine = raw;
-        break;
-      case 'bubble-theirs':
-        chat.bubbleTheirs = raw;
-        break;
-      case 'text-mine':
-        chat.textMine = raw;
-        break;
-      case 'text-theirs':
-        chat.textTheirs = raw;
-        break;
-      case 'composer-bg':
-        chat.composerBg = raw;
-        break;
-      case 'input-bg':
-        chat.inputBg = raw;
-        break;
-      case 'send-btn':
-        chat.sendBtnBg = raw;
-        break;
-      case 'my-side':
-        if (raw === 'left' || raw === 'right') layout.myBubbleSide = raw;
-        break;
-      case 'bubble-shape':
-        if (['tail', 'rounded', 'pill', 'square'].includes(raw)) {
-          layout.bubbleShape = raw as BubbleShape;
-        }
-        break;
-      case 'bubble-radius':
-        if (!Number.isNaN(num)) layout.bubbleRadius = clamp(num, 4, 28);
-        break;
-      case 'font-scale':
-        if (!Number.isNaN(num)) layout.fontScale = clamp(num, 0.85, 1.35);
-        break;
-      case 'density':
-        if (['compact', 'cozy', 'roomy'].includes(raw)) {
-          layout.density = raw as MessageDensity;
-        }
-        break;
-      case 'bubble-max-width':
-        if (!Number.isNaN(num)) layout.bubbleMaxWidth = clamp(num, 60, 94);
-        break;
-      case 'wallpaper-dim':
-        if (!Number.isNaN(num)) layout.wallpaperDim = clamp(num, 0, 80);
-        break;
-      case 'bubble-padding-h':
-        if (!Number.isNaN(num)) layout.bubblePaddingH = clamp(num, 6, 22);
-        break;
-      case 'bubble-padding-v':
-        if (!Number.isNaN(num)) layout.bubblePaddingV = clamp(num, 4, 18);
-        break;
-      case 'emoji-scale':
-        if (!Number.isNaN(num)) layout.emojiScale = clamp(num, 0.8, 1.6);
-        break;
-      case 'letter-spacing':
-        if (!Number.isNaN(num)) layout.letterSpacing = clamp(num, -0.5, 1.5);
-        break;
-      case 'show-tails':
-        if (bool !== undefined) layout.showTails = bool;
-        break;
-      case 'bubble-shadow':
-        if (bool !== undefined) layout.bubbleShadow = bool;
-        break;
-      case 'wallpaper-pattern':
-        if (bool !== undefined) layout.wallpaperPattern = bool;
-        break;
-      case 'full-width':
-        if (bool !== undefined) layout.fullWidthBubbles = bool;
-        break;
-      case 'send-button':
-        if (['circle', 'pill', 'icon'].includes(raw)) {
-          layout.sendButtonStyle = raw as SendButtonStyle;
-        }
-        break;
-      case 'composer':
-        if (['rounded', 'flat', 'floating'].includes(raw)) {
-          layout.composerStyle = raw as ComposerStyle;
-        }
-        break;
-      case 'header-style':
-        if (['brand', 'minimal', 'colored'].includes(raw)) {
-          layout.headerStyle = raw as HeaderStyle;
-        }
-        break;
-      default:
-        break;
-    }
-  }
-  return { tokens, chat, layout };
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
+  return parseSafeThemeCss(css);
 }
 
 export type AiThemeDraft = {

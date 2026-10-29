@@ -76,3 +76,14 @@ export async function pruneThemeImages(keep: Iterable<string>): Promise<void> {
     // Orphaned images cost disk, not correctness.
   }
 }
+
+/** Release one app-owned image after a chat/group wallpaper is replaced. */
+export function deleteThemeImage(uri: string): void {
+  if (!isThemeAsset(uri)) return;
+  try {
+    const file = new File(uri);
+    if (file.exists) file.delete();
+  } catch {
+    // Cleanup is best effort; the persisted preference remains correct.
+  }
+}

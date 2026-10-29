@@ -210,6 +210,10 @@ export type ThemePack = {
   aiPrompt?: string;
   isOfficial?: boolean;
   isOwned?: boolean;
+  /** Local publish state; publication never implies a server upload. */
+  isPublished?: boolean;
+  /** Version of the portable design document used to create this pack. */
+  formatVersion?: 1;
   /** Forked from another pack id. */
   forkedFrom?: string;
 };
