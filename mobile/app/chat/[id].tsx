@@ -1738,7 +1738,12 @@ export default function ChatScreen() {
 
   const openCamera = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
+    if (!perm.granted) {
+      // Camera denial must not discard the attachment flow. The gallery is a
+      // safe, explicit fallback and keeps the same encrypted send path.
+      await pickFromLibrary();
+      return;
+    }
     // No camera hardware (an emulator) makes the system picker throw rather
     // than cancel. The gallery is the way to attach something on that device.
     let result: ImagePicker.ImagePickerResult;

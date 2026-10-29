@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
-import { ACCESS_KEY, ApiError, BASE_URL } from './client';
+import { ACCESS_KEY, ApiError, getBaseUrl } from './client';
 import {
   encryptMediaBytes,
   generateMediaKey,
@@ -31,10 +31,10 @@ export function mediaFileURL(pathOrId: string): string {
     return pathOrId;
   }
   if (pathOrId.startsWith('/')) {
-    return `${BASE_URL}${pathOrId}`;
+    return `${getBaseUrl()}${pathOrId}`;
   }
   // bare uuid
-  return `${BASE_URL}/api/media/${pathOrId}/file`;
+  return `${getBaseUrl()}/api/media/${pathOrId}/file`;
 }
 
 /**
@@ -108,7 +108,7 @@ export async function uploadMedia(opts: UploadOpts): Promise<MediaObject> {
   if (access) headers.Authorization = `Bearer ${access}`;
   // Do NOT set Content-Type — fetch will add multipart boundary.
 
-  const res = await fetch(`${BASE_URL}/api/media/upload`, {
+  const res = await fetch(`${getBaseUrl()}/api/media/upload`, {
     method: 'POST',
     headers,
     body: form,
@@ -130,7 +130,7 @@ export async function deleteMedia(id: string): Promise<void> {
   const access = await SecureStore.getItemAsync(ACCESS_KEY);
   const headers: Record<string, string> = {};
   if (access) headers.Authorization = `Bearer ${access}`;
-  const res = await fetch(`${BASE_URL}/api/media/${id}`, {
+  const res = await fetch(`${getBaseUrl()}/api/media/${id}`, {
     method: 'DELETE',
     headers,
   });
