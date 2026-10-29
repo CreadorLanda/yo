@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,11 +20,14 @@ import (
 
 // Sentinel errors translated to HTTP status by the controller.
 var (
-	ErrInvalidCode    = errors.New("invalid_code")
-	ErrCodeExpired    = errors.New("code_expired")
-	ErrRateLimited    = errors.New("rate_limited")
-	ErrInvalidRefresh = errors.New("invalid_refresh")
-	ErrNotImplemented = errors.New("not_implemented")
+	ErrInvalidCode                     = errors.New("invalid_code")
+	ErrCodeExpired                     = errors.New("code_expired")
+	ErrRateLimited                     = errors.New("rate_limited")
+	ErrInvalidRefresh                  = errors.New("invalid_refresh")
+	ErrNotImplemented                  = errors.New("not_implemented")
+	ErrReauthentication                = errors.New("reauthentication_required")
+	ErrInvalidCredential               = errors.New("invalid_credential")
+	ErrVerificationDeliveryUnavailable = errors.New("verification_delivery_unavailable")
 )
 
 const (
@@ -41,20 +45,42 @@ return 1
 
 // Service holds the business logic for auth. Controllers stay thin.
 type Service struct {
-	repo *Repository
-	rdb  *redis.Client
-	cfg  config.JWTConfig
+	repo          *Repository
+	rdb           *redis.Client
+	cfg           config.JWTConfig
+	emailSender   EmailSender
+	phoneSender   PhoneSender
+	notifier      CredentialNotifier
+	allowDevCodes bool
 }
 
 func NewService(repo *Repository, rdb *redis.Client, cfg config.JWTConfig) *Service {
 	return &Service{repo: repo, rdb: rdb, cfg: cfg}
 }
 
-// Start issues a 6-digit OTP for the phone, stores it in Redis with a 5 minute
-// TTL, and (for now) returns it in the response in dev. In prod this hands off
-// to an SMS provider and returns only metadata.
-//
-// Skeleton: real SMS delivery + per-phone rate limiting land in backend/auth.
+func (s *Service) WithEmailSender(sender EmailSender) *Service {
+	s.emailSender = sender
+	return s
+}
+
+func (s *Service) WithPhoneSender(sender PhoneSender) *Service {
+	s.phoneSender = sender
+	return s
+}
+
+func (s *Service) WithCredentialNotifier(notifier CredentialNotifier) *Service {
+	s.notifier = notifier
+	return s
+}
+
+func (s *Service) WithDevVerificationCodes(allow bool) *Service {
+	s.allowDevCodes = allow
+	return s
+}
+
+// Start issues a 6-digit OTP for the phone, stores only its HMAC digest in
+// Redis with a 5 minute TTL, and hands delivery to the configured sender.
+// Production responses contain metadata only; dev may return the code.
 func (s *Service) Start(ctx context.Context, phone string) (code string, err error) {
 	// per-phone rate limit
 	rlKey := "rl:auth:start:" + sha256Hex(phone)
@@ -68,6 +94,9 @@ func (s *Service) Start(ctx context.Context, phone string) (code string, err err
 		return "", fmt.Errorf("store otp: %w", err)
 	}
 	_ = s.rdb.Del(ctx, otpVerifyAttemptsKey(phone)).Err()
+	if err := s.deliverPhoneCode(ctx, phone, code); err != nil {
+		return "", err
+	}
 	return code, nil
 }
 
@@ -76,49 +105,211 @@ func (s *Service) Start(ctx context.Context, phone string) (code string, err err
 //
 // Skeleton: this is the canonical happy path; pre-key bundle upload and
 // device-trust events land in backend/auth.
-func (s *Service) Verify(ctx context.Context, in VerifyRequest) (*Tokens, *User, error) {
+func (s *Service) Verify(ctx context.Context, in VerifyRequest) (*Tokens, *User, string, error) {
+	email := normalizeEmail(in.Email)
+	if email != "" {
+		if !validEmail(email) {
+			return nil, nil, "", ErrInvalidCredential
+		}
+		if s.emailSender == nil && !s.allowDevCodes {
+			return nil, nil, "", ErrVerificationDeliveryUnavailable
+		}
+	}
 	if err := s.takeBucket(ctx, otpVerifyAttemptsKey(in.Phone), maxOTPVerifyAttempts, time.Minute); err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	result, err := s.rdb.Eval(ctx, consumeOTPScript, []string{otpKey(in.Phone)}, otpDigest(in.Phone, in.Code, s.cfg.OTPPepper)).Int()
 	if err != nil {
-		return nil, nil, fmt.Errorf("verify otp: %w", err)
+		return nil, nil, "", fmt.Errorf("verify otp: %w", err)
 	}
 	switch result {
 	case 0:
-		return nil, nil, ErrCodeExpired
+		return nil, nil, "", ErrCodeExpired
 	case -1:
-		return nil, nil, ErrInvalidCode
+		return nil, nil, "", ErrInvalidCode
 	}
 	if result != 1 {
-		return nil, nil, ErrInvalidCode
+		return nil, nil, "", ErrInvalidCode
 	}
 
 	phoneHash := sha256Bytes(in.Phone)
 	user, err := s.repo.UserByPhoneHash(ctx, phoneHash)
 	if IsNoRows(err) {
-		user, err = s.repo.CreateUser(ctx, phoneHash, suggestUsername(in.Phone), "")
+		user, err = s.repo.CreateUser(ctx, phoneHash, suggestUsername(in.Phone), "", email)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("load/create user: %w", err)
+		if isUniqueViolation(err) {
+			return nil, nil, "", ErrCredentialConflict
+		}
+		return nil, nil, "", fmt.Errorf("load/create user: %w", err)
+	}
+	emailCode := ""
+	if email != "" {
+		emailCode, err = s.startEmailVerification(ctx, user.ID, email)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		user, err = s.repo.UserByID(ctx, user.ID)
+		if err != nil {
+			return nil, nil, "", err
+		}
 	}
 
 	// Signal identity is supplied by the device on first registration; for now
 	// the skeleton inserts an empty placeholder so the row exists.
 	deviceID, err := s.repo.RegisterDevice(ctx, user.ID, in.Device, in.Platform, in.DeviceKey, []byte{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("register device: %w", err)
+		return nil, nil, "", fmt.Errorf("register device: %w", err)
 	}
 
 	tokens, err := s.issueTokens(user.ID, deviceID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	if _, _, err := s.repo.CreateSession(ctx, user.ID, deviceID,
 		sha256Bytes(tokens.AccessToken), sha256Bytes(tokens.RefreshToken)); err != nil {
-		return nil, nil, fmt.Errorf("persist session: %w", err)
+		return nil, nil, "", fmt.Errorf("persist session: %w", err)
 	}
-	return tokens, user, nil
+	return tokens, user, emailCode, nil
+}
+
+func (s *Service) StartReauth(ctx context.Context, userID uuid.UUID, phone string) (string, error) {
+	phone = normalizePhone(phone)
+	if err := s.takeBucket(ctx, "rl:auth:reauth:"+userID.String(), 5, time.Minute); err != nil {
+		return "", err
+	}
+	hash, err := s.repo.PhoneHashByUser(ctx, userID)
+	if err != nil || !hmac.Equal(hash, sha256Bytes(phone)) {
+		return "", ErrReauthentication
+	}
+	code := randomDigits(6)
+	if err := s.rdb.Set(ctx, reauthKey(userID), otpDigest(userID.String(), code, s.cfg.OTPPepper), otpTTL).Err(); err != nil {
+		return "", fmt.Errorf("store reauth code: %w", err)
+	}
+	if err := s.deliverPhoneCode(ctx, phone, code); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+func (s *Service) StartEmailVerification(ctx context.Context, userID uuid.UUID, in EmailVerificationRequest) (string, error) {
+	email := normalizeEmail(in.Email)
+	if !validEmail(email) {
+		return "", ErrInvalidCredential
+	}
+	if err := s.consumeReauth(ctx, userID, in.ReauthCode); err != nil {
+		return "", err
+	}
+	return s.startEmailVerification(ctx, userID, email)
+}
+
+func (s *Service) startEmailVerification(ctx context.Context, userID uuid.UUID, email string) (string, error) {
+	code := randomDigits(6)
+	if err := s.repo.SetEmailChallenge(ctx, userID, email, []byte(otpDigest("email", code, s.cfg.OTPPepper)), time.Now().UTC().Add(10*time.Minute)); err != nil {
+		if errors.Is(err, ErrCredentialConflict) {
+			return "", ErrCredentialConflict
+		}
+		return "", err
+	}
+	if s.emailSender != nil {
+		if err := s.emailSender.Send(ctx, email, code); err != nil {
+			return "", fmt.Errorf("%w: send email verification: %v", ErrVerificationDeliveryUnavailable, err)
+		}
+	} else if !s.allowDevCodes {
+		return "", ErrVerificationDeliveryUnavailable
+	}
+	return code, nil
+}
+
+func (s *Service) VerifyEmail(ctx context.Context, userID uuid.UUID, code string) (*User, error) {
+	user, err := s.repo.VerifyEmail(ctx, userID, []byte(otpDigest("email", code, s.cfg.OTPPepper)), time.Now().UTC())
+	if err == nil {
+		s.notifyCredentialChange(ctx, userID, "email_verified")
+	}
+	return user, err
+}
+
+func (s *Service) RemoveEmail(ctx context.Context, userID uuid.UUID, code string) error {
+	if err := s.consumeReauth(ctx, userID, code); err != nil {
+		return err
+	}
+	if err := s.repo.ClearEmail(ctx, userID); err != nil {
+		return err
+	}
+	s.notifyCredentialChange(ctx, userID, "email_removed")
+	return nil
+}
+
+func (s *Service) StartPhoneChange(ctx context.Context, userID uuid.UUID, in PhoneChangeStartRequest) (string, error) {
+	phone := normalizePhone(in.Phone)
+	if existing, err := s.repo.UserByPhoneHash(ctx, sha256Bytes(phone)); err == nil && existing != nil {
+		return "", ErrCredentialConflict
+	} else if err != nil && !IsNoRows(err) {
+		return "", err
+	}
+	if err := s.consumeReauth(ctx, userID, in.ReauthCode); err != nil {
+		return "", err
+	}
+	code := randomDigits(6)
+	if err := s.repo.CreatePhoneChange(ctx, userID, sha256Bytes(phone), []byte(otpDigest("phone-change", code, s.cfg.OTPPepper)), time.Now().UTC().Add(10*time.Minute)); err != nil {
+		return "", err
+	}
+	if err := s.deliverPhoneCode(ctx, phone, code); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
+func normalizePhone(phone string) string { return strings.TrimSpace(phone) }
+func validEmail(email string) bool {
+	return strings.Contains(email, "@") && !strings.ContainsAny(email, " \t\r\n") && len(email) <= 254
+}
+func reauthKey(userID uuid.UUID) string { return "reauth:" + userID.String() }
+
+func (s *Service) ConfirmPhoneChange(ctx context.Context, userID uuid.UUID, code string) error {
+	if err := s.repo.CompletePhoneChange(ctx, userID, []byte(otpDigest("phone-change", code, s.cfg.OTPPepper)), time.Now().UTC()); err != nil {
+		return err
+	}
+	s.notifyCredentialChange(ctx, userID, "phone_changed")
+	return nil
+}
+
+func (s *Service) deliverPhoneCode(ctx context.Context, phone, code string) error {
+	if s.phoneSender != nil {
+		if err := s.phoneSender.Send(ctx, phone, code); err != nil {
+			return fmt.Errorf("%w: send phone verification: %v", ErrVerificationDeliveryUnavailable, err)
+		}
+		return nil
+	}
+	if !s.allowDevCodes {
+		return ErrVerificationDeliveryUnavailable
+	}
+	return nil
+}
+
+func (s *Service) notifyCredentialChange(ctx context.Context, userID uuid.UUID, change string) {
+	if s.notifier == nil {
+		return
+	}
+	_ = s.notifier.NotifyUser(ctx, userID, "security", "ZwoSocial", "Your account credentials changed", map[string]string{
+		"type":   "credential_changed",
+		"change": change,
+	})
+}
+
+func (s *Service) consumeReauth(ctx context.Context, userID uuid.UUID, code string) error {
+	if code == "" {
+		return ErrReauthentication
+	}
+	result, err := s.rdb.Eval(ctx, consumeOTPScript, []string{reauthKey(userID)}, otpDigest(userID.String(), code, s.cfg.OTPPepper)).Int()
+	if err != nil {
+		return err
+	}
+	if result != 1 {
+		return ErrReauthentication
+	}
+	return nil
 }
 
 // Refresh rotates an existing refresh token into a new pair, advancing a

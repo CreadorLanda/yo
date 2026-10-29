@@ -16,6 +16,8 @@ type User struct {
 	AvatarURI      string    `json:"avatar_uri,omitempty"`
 	UsernamePublic bool      `json:"username_public"`
 	CreatedAt      time.Time `json:"created_at"`
+	Email          *string   `json:"email,omitempty"`
+	EmailVerified  bool      `json:"email_verified"`
 
 	// Privacy. Served on /users/me only — see PublicView.
 	LastSeenVisibility Visibility `json:"last_seen_visibility"`

@@ -22,6 +22,9 @@ export type ApiUser = {
   read_receipts?: boolean;
   /** The wider switch — see UserPatch in data/api/users.ts. */
   ghost_mode?: boolean;
+  email?: string;
+  email_verified?: boolean;
+  email_verified_at?: string;
 };
 
 export type StartResponse = {
@@ -33,6 +36,7 @@ export type StartResponse = {
 export type VerifyResponse = {
   user: ApiUser;
   tokens: Tokens;
+  email_verification?: VerificationResponse;
 };
 
 export const authStart = (phone: string) =>
@@ -45,7 +49,28 @@ export const authVerify = (input: {
   /** Stable per-installation id, so the server reuses this device's row. */
   device_key?: string;
   platform: Platform;
+  email?: string;
 }) => api.post<VerifyResponse>('/api/auth/verify', input, { auth: false });
+
+export type VerificationResponse = { sent: boolean; dev_code?: string };
+
+export const authReauthStart = (phone: string) =>
+  api.post<VerificationResponse>('/api/auth/reauth/start', { phone });
+
+export const authEmailRequest = (email: string, reauth_code: string) =>
+  api.post<VerificationResponse>('/api/auth/email/request', { email, reauth_code });
+
+export const authEmailVerify = (code: string) =>
+  api.post<{ email?: string; email_verified_at?: string }>('/api/auth/email/verify', { code });
+
+export const authEmailRemove = (code: string) =>
+  api.del<void>('/api/auth/email', { json: { code } });
+
+export const authPhoneChangeStart = (phone: string, reauth_code: string) =>
+  api.post<VerificationResponse>('/api/auth/phone/change/start', { phone, reauth_code });
+
+export const authPhoneChangeConfirm = (code: string) =>
+  api.post<{ changed: boolean; sessions_revoked: boolean }>('/api/auth/phone/change/confirm', { code });
 
 export const authRefresh = (refresh_token: string) =>
   api.post<{ tokens: Tokens }>('/api/auth/refresh', { refresh_token }, { auth: false });

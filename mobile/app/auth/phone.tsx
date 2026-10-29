@@ -92,6 +92,15 @@ export default function PhoneScreen() {
           <Text style={[styles.hint, { color: colors.textMuted }]}>
             {t('auth.phone.common_codes')} {COUNTRY_CODES.join('  ')}
           </Text>
+          <TextField
+            label={t('auth.phone.email_label')}
+            value={data.email}
+            onChangeText={(value) => set('email', value.trim())}
+            placeholder={t('auth.phone.email_placeholder')}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
           {error ? (
             <Text style={[styles.hint, { color: colors.danger }]}>{error}</Text>
           ) : null}

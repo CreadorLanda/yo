@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ❌️ Added (Adicionado)
 
+#### Credenciais
+- Registo aceita email opcional com verificação por código; definições permitem alterar/remover email e alterar telefone com reautenticação, OTP de destino, conflitos genéricos, limite de tentativas e revogação de sessões após troca do telefone
+- Os desafios de email e telefone guardam apenas hashes dos códigos, expiram, são de uso único e enviam notificações de segurança após alterações concluídas
+
 #### Stories
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista

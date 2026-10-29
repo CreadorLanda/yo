@@ -22,7 +22,7 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 const userColumns = `id, username, display_name,
 	COALESCE(bio, '') AS bio,
 	COALESCE(avatar_uri, '') AS avatar_uri,
-	username_public, created_at,
+	username_public, created_at, email, (email_verified_at IS NOT NULL) AS email_verified,
 	last_seen_visibility, photo_visibility, read_receipts, ghost_mode`
 
 func scanUser(row pgx.Row) (*User, error) {
@@ -31,6 +31,7 @@ func scanUser(row pgx.Row) (*User, error) {
 		&u.ID, &u.Username, &u.DisplayName,
 		&u.Bio, &u.AvatarURI,
 		&u.UsernamePublic, &u.CreatedAt,
+		&u.Email, &u.EmailVerified,
 		&u.LastSeenVisibility, &u.PhotoVisibility, &u.ReadReceipts, &u.GhostMode,
 	); err != nil {
 		return nil, err

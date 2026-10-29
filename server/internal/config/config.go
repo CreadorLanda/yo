@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -16,6 +17,8 @@ type Config struct {
 	Postgres PostgresConfig
 	Redis    RedisConfig
 	JWT      JWTConfig
+	Email    EmailConfig
+	SMS      SMSConfig
 	Crypto   CryptoConfig
 	Media    MediaConfig
 	Push     PushConfig
@@ -88,6 +91,19 @@ type JWTConfig struct {
 	OTPPepper string
 }
 
+type EmailConfig struct {
+	SMTPHost string
+	SMTPPort int
+	SMTPUser string
+	SMTPPass string
+	From     string
+}
+
+type SMSConfig struct {
+	WebhookURL   string
+	WebhookToken string
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		// Production is the safe default. Local development declares APP_ENV=dev
@@ -108,6 +124,17 @@ func Load() (Config, error) {
 			AccessTokenTTL:  getenvDuration("JWT_ACCESS_TTL", 15*time.Minute),
 			RefreshTokenTTL: getenvDuration("JWT_REFRESH_TTL", 30*24*time.Hour),
 			OTPPepper:       os.Getenv("OTP_PEPPER"),
+		},
+		Email: EmailConfig{
+			SMTPHost: os.Getenv("SMTP_HOST"),
+			SMTPPort: getenvInt("SMTP_PORT", 587),
+			SMTPUser: os.Getenv("SMTP_USER"),
+			SMTPPass: os.Getenv("SMTP_PASS"),
+			From:     os.Getenv("EMAIL_FROM"),
+		},
+		SMS: SMSConfig{
+			WebhookURL:   os.Getenv("SMS_WEBHOOK_URL"),
+			WebhookToken: os.Getenv("SMS_WEBHOOK_TOKEN"),
 		},
 		Crypto: CryptoConfig{
 			// Encrypts message content at rest (see internal/crypto).
@@ -154,6 +181,12 @@ func Load() (Config, error) {
 	if cfg.Env != "dev" && cfg.Env != "prod" {
 		return cfg, errors.New("APP_ENV must be either dev or prod")
 	}
+	if cfg.SMS.WebhookURL != "" {
+		u, err := url.Parse(cfg.SMS.WebhookURL)
+		if err != nil || u.Scheme == "" || u.Host == "" || (cfg.Env == "prod" && u.Scheme != "https") {
+			return cfg, errors.New("SMS_WEBHOOK_URL must be an https URL in prod")
+		}
+	}
 	if cfg.Env == "prod" && cfg.Crypto.MessageKey != "" {
 		key, err := hex.DecodeString(cfg.Crypto.MessageKey)
 		if err != nil || len(key) != 32 {
@@ -191,6 +224,15 @@ func getenvDuration(key string, fallback time.Duration) time.Duration {
 func getenvInt64(key string, fallback int64) int64 {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
+func getenvInt(key string, fallback int) int {
+	if v, ok := os.LookupEnv(key); ok && v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}
 	}
