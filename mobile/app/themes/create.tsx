@@ -43,6 +43,7 @@ import {
   forkTheme,
   generateThemeFromAiPrompt,
   getPackById,
+  parseThemeCss,
   type BubbleShape,
   type ChatChrome,
   type ComposerStyle,
@@ -104,6 +105,8 @@ export default function ThemeCreatorScreen() {
   const [layout, setLayout] = useState<ThemeLayout>({ ...DEFAULT_LAYOUT });
   const [icons, setIcons] = useState<ThemeIcons>({});
   const [customCss, setCustomCss] = useState(CSS_THEME_TEMPLATE);
+  const [cssHistory, setCssHistory] = useState<string[]>([]);
+  const [cssFuture, setCssFuture] = useState<string[]>([]);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
 
@@ -130,7 +133,32 @@ export default function ThemeCreatorScreen() {
 
   const bgOptions = designMode === 'dark' ? PRESET_BACKGROUNDS_DARK : PRESET_BACKGROUNDS_LIGHT;
   const wallOptions = designMode === 'dark' ? WALLPAPERS_DARK : WALLPAPERS_LIGHT;
-  const canSave = name.trim().length >= 2;
+  const cssValidation = useMemo(() => parseThemeCss(customCss), [customCss]);
+  const canSave = name.trim().length >= 2 && cssValidation.valid;
+
+  const changeCss = (value: string) => {
+    setCssHistory((previous) => [...previous.slice(-19), customCss]);
+    setCssFuture([]);
+    setCustomCss(value);
+  };
+
+  const undoCss = () => {
+    const previous = cssHistory.at(-1);
+    if (previous === undefined) return;
+    setCssHistory((items) => items.slice(0, -1));
+    setCssFuture((items) => [customCss, ...items].slice(0, 20));
+    setCustomCss(previous);
+  };
+
+  const redoCss = () => {
+    const next = cssFuture[0];
+    if (next === undefined) return;
+    setCssFuture((items) => items.slice(1));
+    setCssHistory((items) => [...items.slice(-19), customCss]);
+    setCustomCss(next);
+  };
+
+  const resetCss = () => changeCss(CSS_THEME_TEMPLATE);
 
   const bubbleMine = chat.bubbleMine ?? primary;
   const bubbleTheirs = chat.bubbleTheirs ?? surface;
@@ -212,6 +240,10 @@ export default function ThemeCreatorScreen() {
   };
 
   const save = () => {
+    if (!cssValidation.valid) {
+      appAlert(t('themes.css_lead'), cssValidation.errors.map((error) => `L${error.line}: ${error.message}`).join('\n'));
+      return;
+    }
     if (!canSave) {
       appAlert(t('themes.creator_title'), t('themes.creator_need_name'));
       return;
@@ -944,7 +976,7 @@ export default function ThemeCreatorScreen() {
             </Text>
             <TextInput
               value={customCss}
-              onChangeText={setCustomCss}
+              onChangeText={changeCss}
               multiline
               autoCapitalize="none"
               autoCorrect={false}
@@ -959,15 +991,25 @@ export default function ThemeCreatorScreen() {
                 },
               ]}
             />
-            <Pressable
-              onPress={() => setCustomCss(CSS_THEME_TEMPLATE)}
-              style={[styles.secondaryBtn, { borderColor: colors.border }]}
-            >
-              <Ionicons name="refresh" size={16} color={colors.textSecondary} />
-              <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>
-                {t('themes.css_reset')}
-              </Text>
-            </Pressable>
+            <View style={styles.cssActions}>
+              <Pressable disabled={!cssHistory.length} onPress={undoCss} style={[styles.secondaryBtn, { borderColor: colors.border, opacity: cssHistory.length ? 1 : 0.45 }]}>
+                <Ionicons name="arrow-undo" size={16} color={colors.textSecondary} />
+                <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Undo</Text>
+              </Pressable>
+              <Pressable disabled={!cssFuture.length} onPress={redoCss} style={[styles.secondaryBtn, { borderColor: colors.border, opacity: cssFuture.length ? 1 : 0.45 }]}>
+                <Ionicons name="arrow-redo" size={16} color={colors.textSecondary} />
+                <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Redo</Text>
+              </Pressable>
+              <Pressable onPress={resetCss} style={[styles.secondaryBtn, { borderColor: colors.border }]}>
+                <Ionicons name="refresh" size={16} color={colors.textSecondary} />
+                <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>{t('themes.css_reset')}</Text>
+              </Pressable>
+            </View>
+            <Text style={[styles.cssValidation, { color: cssValidation.valid ? colors.success : colors.danger }]}>
+              {cssValidation.valid
+                ? `Valid CSS · ${cssValidation.appliedProperties.length} allowlisted properties`
+                : cssValidation.errors.map((error) => `L${error.line}: ${error.message}`).join('\n')}
+            </Text>
           </>
         ) : null}
 
@@ -1444,6 +1486,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   cssHint: { ...Typography.caption, lineHeight: 18, marginTop: -8 },
+  cssActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  cssValidation: { ...Typography.caption, lineHeight: 18 },
   aiInput: {
     ...Typography.body,
     minHeight: 110,

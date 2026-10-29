@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
@@ -36,7 +37,12 @@ import {
   relockAll,
   verifyLockCode,
 } from '@/data/chat-lock';
-import { forgetChatPrefs, setChatPref, useChatPrefs } from '@/data/chat-prefs';
+import {
+  forgetChatPrefs,
+  setChatPref,
+  setChatWallpaper,
+  useChatPrefs,
+} from '@/data/chat-prefs';
 import { clearChat, refreshChats, removeChat, setChatSettings, useChats } from '@/data/chat-store';
 import {
   ensureKeysPublished,
@@ -52,6 +58,7 @@ import { clearMediaCache, formatBytes, mediaCacheSize } from '@/data/media-cache
 import { mapApiMessage } from '@/data/message-map';
 import { type ChatPreview, type Message } from '@/data/mock';
 import { block, blockedAmong, refreshBlocks, useBlocked } from '@/data/block-store';
+import { persistThemeImage } from '@/data/theme-assets';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -133,7 +140,42 @@ export default function ChatInfoScreen() {
 
   // Device-local prefs: they describe this phone, not the account, so they
   // live in SecureStore instead of syncing to the server.
-  const { locked, filesVisible: fileVisible } = useChatPrefs(id);
+  const { locked, filesVisible: fileVisible, wallpaper } = useChatPrefs(id);
+
+  const chooseWallpaperPhoto = async () => {
+    if (!id) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+      allowsEditing: true,
+      aspect: [9, 16],
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const imageUri = await persistThemeImage(result.assets[0].uri);
+    setChatWallpaper(id, {
+      color: wallpaper?.color,
+      imageUri,
+      dim: wallpaper?.dim ?? 35,
+      blur: wallpaper?.blur ?? false,
+      animation: wallpaper?.animation ?? 'none',
+    });
+  };
+
+  const clearWallpaper = () => {
+    if (id) setChatWallpaper(id, undefined);
+  };
+
+  const setWallpaperColor = (color: string) => {
+    if (!id) return;
+    setChatWallpaper(id, {
+      color,
+      // A solid swatch is a replacement, not a tint over the previous photo.
+      imageUri: undefined,
+      dim: wallpaper?.dim ?? 35,
+      blur: wallpaper?.blur ?? false,
+      animation: wallpaper?.animation ?? 'none',
+    });
+  };
 
   // Real messages for the media strip and the storage estimate. These used
   // to read the mock MESSAGES fixture, so a real chat showed someone else's
@@ -674,6 +716,31 @@ export default function ChatInfoScreen() {
             onValueChange={(v) => id && setChatPref(id, 'filesVisible', v)}
             colors={colors}
           />
+          <Divider colors={colors} />
+          <Row
+            icon="color-palette-outline"
+            label={t('themes.wallpaper')}
+            subtitle={wallpaper?.imageUri ? t('themes.change_photo') : t('themes.wallpaper_photo')}
+            colors={colors}
+            onPress={chooseWallpaperPhoto}
+          />
+          <View style={styles.wallpaperControls}>
+            {['#EEF1F6', '#E8F5E9', '#FFF3E0', '#E3F2FD', '#0E0F13', '#12141C'].map((color) => (
+              <Pressable
+                key={color}
+                accessibilityLabel={color}
+                onPress={() => setWallpaperColor(color)}
+                style={[styles.wallpaperSwatch, { backgroundColor: color, borderColor: colors.border }]}
+              />
+            ))}
+            {wallpaper ? (
+              <Pressable onPress={clearWallpaper} hitSlop={8}>
+                <Text style={[styles.wallpaperReset, { color: colors.danger }]}>
+                  {t('themes.remove_photo')}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </Section>
 
         {/* Encryption */}
@@ -1224,6 +1291,16 @@ const styles = StyleSheet.create({
   adminPillText: { ...Typography.micro, fontWeight: '700' },
 
   mediaRow: { gap: Spacing.sm, padding: Spacing.sm },
+  wallpaperControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
+  },
+  wallpaperSwatch: { width: 28, height: 28, borderRadius: Radii.pill, borderWidth: 1 },
+  wallpaperReset: { ...Typography.caption, fontWeight: '700' },
   mediaTile: {
     width: 92,
     height: 92,
