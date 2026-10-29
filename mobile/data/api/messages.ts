@@ -30,6 +30,7 @@ export interface ChatDTO {
   archived_at?: string;
   /** 0 = off. Each message's clock starts when it is read. */
   disappear_seconds?: number;
+  privacy: ChatPrivacy;
 }
 
 export interface ChatSettings {
@@ -37,6 +38,26 @@ export interface ChatSettings {
   muted?: boolean;
   archived?: boolean;
 }
+
+export type ChatPermission = 'everyone' | 'admins';
+
+export type ChatPrivacy = {
+  forwarding_disabled: boolean;
+  screenshot_protection_enabled: boolean;
+  links_require_confirmation: boolean;
+  who_can_message: ChatPermission;
+  who_can_call: ChatPermission;
+  allowed_message_types: string[];
+};
+
+export type ChatPrivacySettings = {
+  forwarding_disabled?: boolean;
+  screenshot_protection_enabled?: boolean;
+  links_require_confirmation?: boolean;
+  who_can_message?: ChatPermission;
+  who_can_call?: ChatPermission;
+  allowed_message_types?: string[];
+};
 
 export interface ListChatsParams {
   limit?: number;
@@ -88,6 +109,9 @@ export interface MessageDTO {
   /** Set when a channel post was forwarded here, so we can link back. */
   source_channel_id?: string;
   source_post_id?: string;
+  /** Set for explicit forwards from another conversation. */
+  source_chat_id?: string;
+  source_message_id?: number;
   /** Present on poll messages; the body itself stays end-to-end encrypted. */
   poll_votes?: PollTally;
 }
@@ -130,6 +154,10 @@ export function updateChatSettings(chatId: string, settings: ChatSettings) {
   return api.patch<ChatDTO>(`/api/chats/${chatId}/settings`, settings);
 }
 
+export function updateChatPrivacy(chatId: string, settings: ChatPrivacySettings) {
+  return api.patch<ChatDTO>(`/api/chats/${chatId}/privacy`, settings);
+}
+
 /** Hide existing messages for the caller only; the peer keeps their copy. */
 /** The durations the server accepts. Anything else is refused. */
 export const DISAPPEAR_OPTIONS = [0, 3600, 86400, 604800, 2592000] as const;
@@ -165,6 +193,8 @@ export type MessageOrigin = {
   forwardCount?: number;
   sourceChannelId?: string;
   sourcePostId?: string;
+  sourceChatId?: string;
+  sourceMessageId?: number;
   /** Plaintext attachment ids needed for server-side access grants. */
   mediaIds?: string[];
 };
@@ -185,6 +215,8 @@ export function sendMessage(
     forward_count: origin?.forwardCount,
     source_channel_id: origin?.sourceChannelId,
     source_post_id: origin?.sourcePostId,
+    source_chat_id: origin?.sourceChatId,
+    source_message_id: origin?.sourceMessageId,
     media_ids: origin?.mediaIds,
   });
 }

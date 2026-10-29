@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/blocks"
+	"github.com/CreadorLanda/zwosocial/server/internal/modules/groups"
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/users"
 	"github.com/CreadorLanda/zwosocial/server/internal/platform/postgres"
 )
@@ -560,6 +561,123 @@ func TestForwardCountCannotBeLaundered(t *testing.T) {
 		t.Fatalf("forwarding a 6-hop message gave %d, want 7", got)
 	}
 }
+
+// TestAdvancedPrivacyPersistsAndEnforces covers the policy boundary rather
+// than the settings screen. A client may hide a button, but the server must
+// still reject a disallowed type and an explicit forward from a protected
+// source chat.
+func TestAdvancedPrivacyPersistsAndEnforces(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+
+	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_"+uuid.NewString()[:8])
+	carol := createTestUser(t, pool, "carol_"+uuid.NewString()[:8])
+
+	source, err := svc.CreateDirectChat(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("CreateDirectChat(source): %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, source.ID, bob); err != nil {
+		t.Fatalf("AcceptChat(source): %v", err)
+	}
+	destination, err := svc.CreateDirectChat(ctx, alice, carol)
+	if err != nil {
+		t.Fatalf("CreateDirectChat(destination): %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, destination.ID, carol); err != nil {
+		t.Fatalf("AcceptChat(destination): %v", err)
+	}
+
+	textOnly := []MessageType{MsgText}
+	updated, err := svc.UpdateChatPrivacy(ctx, source.ID, alice, ChatPrivacySettingsRequest{
+		ForwardingDisabled:  ptr(true),
+		AllowedMessageTypes: &textOnly,
+	})
+	if err != nil {
+		t.Fatalf("UpdateChatPrivacy: %v", err)
+	}
+	if !updated.Privacy.ForwardingDisabled || len(updated.Privacy.AllowedMessageTypes) != 1 ||
+		updated.Privacy.AllowedMessageTypes[0] != MsgText {
+		t.Fatalf("privacy after update: %+v", updated.Privacy)
+	}
+
+	if _, err := svc.UpdateChatPrivacy(ctx, source.ID, bob, ChatPrivacySettingsRequest{ForwardingDisabled: ptr(false)}); !errors.Is(err, ErrPrivacyAdmin) {
+		t.Fatalf("non-owner privacy update: %v, want ErrPrivacyAdmin", err)
+	}
+
+	if _, err := svc.SendMessage(ctx, source.ID, alice, SendMessageRequest{
+		Content: testDirectEnvelope("image"), MessageType: MsgImage,
+	}); !errors.Is(err, ErrMessageTypeNotAllowed) {
+		t.Fatalf("disallowed image: %v, want ErrMessageTypeNotAllowed", err)
+	}
+
+	original, err := svc.SendMessage(ctx, source.ID, alice, SendMessageRequest{Content: testDirectEnvelope("text")})
+	if err != nil {
+		t.Fatalf("allowed text: %v", err)
+	}
+	if _, err := svc.SendMessage(ctx, destination.ID, alice, SendMessageRequest{
+		Content:         testDirectEnvelope("forward"),
+		SourceChatID:    &source.ID,
+		SourceMessageID: &original.ID,
+	}); !errors.Is(err, ErrForwardingDisabled) {
+		t.Fatalf("protected forward: %v, want ErrForwardingDisabled", err)
+	}
+
+	if _, err := svc.UpdateChatPrivacy(ctx, source.ID, alice, ChatPrivacySettingsRequest{ForwardingDisabled: ptr(false)}); err != nil {
+		t.Fatalf("enable forwarding: %v", err)
+	}
+	forwarded, err := svc.SendMessage(ctx, destination.ID, alice, SendMessageRequest{
+		Content:         testDirectEnvelope("forward"),
+		SourceChatID:    &source.ID,
+		SourceMessageID: &original.ID,
+	})
+	if err != nil {
+		t.Fatalf("allowed forward: %v", err)
+	}
+	if forwarded.SourceChatID == nil || *forwarded.SourceChatID != source.ID ||
+		forwarded.SourceMessageID == nil || *forwarded.SourceMessageID != original.ID {
+		t.Fatalf("forward origin was not retained: %+v", forwarded)
+	}
+
+	groupID, err := groups.NewRepository(pool).Create(ctx, alice, "privacy group", "", "", []uuid.UUID{bob, carol})
+	if err != nil {
+		t.Fatalf("create privacy group: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM chats WHERE id = $1`, groupID)
+	})
+
+	admins := PermissionAdmins
+	groupPolicy, err := svc.UpdateChatPrivacy(ctx, groupID, alice, ChatPrivacySettingsRequest{
+		WhoCanMessage: &admins,
+		WhoCanCall:    &admins,
+	})
+	if err != nil {
+		t.Fatalf("set group admin-only policy: %v", err)
+	}
+	if groupPolicy.Privacy.WhoCanMessage != PermissionAdmins || groupPolicy.Privacy.WhoCanCall != PermissionAdmins {
+		t.Fatalf("group policy after update: %+v", groupPolicy.Privacy)
+	}
+
+	if allowed, err := svc.repo.CanSendMessage(ctx, groupID, bob); err != nil || allowed {
+		t.Fatalf("member message permission = %v, err=%v; want false", allowed, err)
+	}
+	if allowed, err := svc.repo.CanCall(ctx, groupID, bob); err != nil || allowed {
+		t.Fatalf("member call permission = %v, err=%v; want false", allowed, err)
+	}
+	if _, err := svc.SendMessage(ctx, groupID, bob, SendMessageRequest{
+		Content: testGroupEnvelope(bob.String(), 0, 0),
+	}); !errors.Is(err, ErrMessagingRestricted) {
+		t.Fatalf("restricted group message: %v, want ErrMessagingRestricted", err)
+	}
+	if allowed, err := svc.repo.CanSendMessage(ctx, groupID, alice); err != nil || !allowed {
+		t.Fatalf("admin message permission = %v, err=%v; want true", allowed, err)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
 
 // TestReadReceiptsAreReciprocal is the rule that makes the setting honest:
 // turning yours off also stops you seeing anyone else's.

@@ -5,8 +5,10 @@ import {
   deleteChat as apiDeleteChat,
   listChats,
   updateChatSettings as apiUpdateSettings,
+  updateChatPrivacy as apiUpdatePrivacy,
   type ChatDTO,
   type ChatSettings,
+  type ChatPrivacySettings,
 } from './api/messages';
 
 /**
@@ -132,6 +134,23 @@ export async function setChatSettings(chatId: string, settings: ChatSettings): P
     chats = before;
     emit();
     throw new Error('chat_settings_failed');
+  }
+}
+
+export async function setChatPrivacy(chatId: string, settings: ChatPrivacySettings): Promise<void> {
+  const before = chats;
+  chats = chats.map((c) =>
+    c.id === chatId ? { ...c, privacy: { ...c.privacy, ...settings } } : c,
+  );
+  emit();
+  try {
+    const updated = await apiUpdatePrivacy(chatId, settings);
+    chats = chats.map((c) => (c.id === chatId ? updated : c));
+    emit();
+  } catch {
+    chats = before;
+    emit();
+    throw new Error('chat_privacy_failed');
   }
 }
 

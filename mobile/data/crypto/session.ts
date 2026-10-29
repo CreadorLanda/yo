@@ -19,6 +19,9 @@ import {
   takeOtkSecret,
 } from './device-keys';
 import { b64urlToBytes, bytesToB64url, utf8Decode, utf8Encode } from './encoding';
+import { messageKey, nonceFromCounter } from './primitives';
+
+export { messageKey, nonceFromCounter } from './primitives';
 
 const SESSION_PREFIX = 'e2ee.session.v1.';
 const ENVELOPE_PREFIX = 'soc1.';
@@ -353,18 +356,6 @@ export async function establishSessionAsResponder(
   };
   await saveSession(session);
   return session;
-}
-
-export function messageKey(root: Uint8Array, n: number): Uint8Array {
-  return hkdfLike(root, `msg-${n}`);
-}
-
-export function nonceFromCounter(n: number): Uint8Array {
-  const nonce = new Uint8Array(24);
-  const view = new DataView(nonce.buffer);
-  view.setUint32(0, n, false);
-  view.setUint32(4, 0x534f4349 /* SOCI */, false);
-  return nonce;
 }
 
 export function isEnvelope(content: string): boolean {
