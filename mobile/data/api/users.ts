@@ -30,6 +30,10 @@ export const me = () => api.get<ApiUser>('/api/users/me');
 
 export const patchMe = (patch: UserPatch) => api.patch<ApiUser>('/api/users/me', patch);
 
+export const activateGhostMode = () => api.post<ApiUser>('/api/users/me/ghost-mode');
+
+export const deactivateGhostMode = () => api.del<ApiUser>('/api/users/me/ghost-mode');
+
 /**
  * Erase the account for good.
  *

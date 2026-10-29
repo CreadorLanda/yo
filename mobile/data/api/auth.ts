@@ -25,6 +25,9 @@ export type ApiUser = {
   email?: string;
   email_verified?: boolean;
   email_verified_at?: string;
+  ghost_mode_started_at?: string;
+  ghost_mode_expires_at?: string;
+  ghost_mode_next_activation_at?: string;
 };
 
 export type StartResponse = {
