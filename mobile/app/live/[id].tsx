@@ -181,7 +181,10 @@ export default function LiveScreen() {
       // not allowed to use. Asking anyway would put a permission prompt in
       // front of someone who only wants to watch.
       audio={grant.host && hostMedia.microphone}
-      video={grant.host && hostMedia.camera}
+      // The camera starts off and the host turns it on with the button: an
+      // emulator may advertise a camera that fails when WebRTC opens it, and
+      // opening it here took the whole screen down.
+      video={false}
       options={{ adaptiveStream: true, dynacast: true }}
       onConnected={() => setConnectionNotice(null)}
       onDisconnected={() => setConnectionNotice(t('live.reconnecting'))}

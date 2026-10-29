@@ -1744,11 +1744,19 @@ export default function ChatScreen() {
       await pickFromLibrary();
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.8,
-      videoMaxDuration: 60,
-    });
+    // No camera hardware (an emulator) makes the system picker throw rather
+    // than cancel. The gallery is the way to attach something on that device.
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images', 'videos'],
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
+    } catch {
+      await pickFromLibrary();
+      return;
+    }
     if (!result.canceled && result.assets[0]) openEditor(result.assets[0]);
   };
 

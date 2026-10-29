@@ -35,7 +35,8 @@ test('a recusa de media e a reconexão ficam visíveis sem fingir que a emissão
   expect(liveScreen).toContain('requestCamera');
   expect(liveScreen).toContain('requestMicrophone');
   expect(liveScreen).toContain('audio={grant.host && hostMedia.microphone}');
-  expect(liveScreen).toContain('video={grant.host && hostMedia.camera}');
+  // The camera starts off and is turned on with the button (#236).
+  expect(liveScreen).toContain('video={false}');
   expect(liveScreen).toContain("t('live.backgrounded')");
   expect(liveScreen).toContain("t('live.reconnecting')");
 });
