@@ -57,6 +57,9 @@ func (c *Controller) PatchMe(ctx *gin.Context) {
 		writeErr(ctx, err)
 		return
 	}
+	ctx.JSON(http.StatusOK, u)
+}
+
 func (c *Controller) GetMe(ctx *gin.Context) {
 	u, err := c.svc.Me(ctx.Request.Context(), middleware.UserIDFrom(ctx))
 	if err != nil {
