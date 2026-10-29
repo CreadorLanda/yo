@@ -72,7 +72,7 @@ const { width: W, height: H } = Dimensions.get('window');
 // The brand violet leads; the rest are the user's own choices, so blue
 // stays available as one of them rather than as the product's colour.
 const ACCENTS = ['#4F46E5', '#111827', '#10B981', '#FF6FB5', '#F59E0B', '#2D5BFF', '#EF4444', '#FFFFFF'];
-/** All creatable modes — live is listed but blocked until hangout ships. */
+/** All creatable modes. Live opens its own setup screen. */
 const CAPTURE_MODES: CaptureMode[] = ['type', 'normal', 'boomerang', 'handsfree', 'audio', 'live'];
 
 /**
@@ -194,9 +194,10 @@ export default function CreateStoryScreen() {
   }, [captureMode, phase]);
 
   const selectCaptureMode = (mode: CaptureMode) => {
+    // Going live has its own screen, where the audience is chosen. It is a
+    // mode in the carousel because that is where people look for it.
     if (mode === 'live') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      appAlert(t('stories.go_live'), t('stories.live_coming_soon') || 'Live is coming soon.');
+      router.push(caption.trim() ? `/live/setup?title=${encodeURIComponent(caption.trim())}` : '/live/setup');
       return;
     }
     setCaptureMode(mode);
@@ -1645,59 +1646,4 @@ const styles = StyleSheet.create({
   },
   privacyRowText: { ...Typography.bodyStrong, color: '#FFF' },
   privacyRowHint: { ...Typography.micro, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
-  liveSetupBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0A0B0F',
-  },
-  livePulseRing: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '28%',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    borderWidth: 2,
-    borderColor: 'rgba(239,68,68,0.35)',
-  },
-  liveSetupCard: {
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-  },
-  liveBadgeBig: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: Radii.pill,
-    backgroundColor: '#EF4444',
-  },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FFF' },
-  liveBadgeBigText: { ...Typography.caption, color: '#FFF', fontWeight: '800', letterSpacing: 1 },
-  liveAvatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 3,
-    borderColor: '#EF4444',
-  },
-  liveTitle: { ...Typography.h3, color: '#FFF', textAlign: 'center' },
-  liveHint: {
-    ...Typography.caption,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-  },
-  liveTitleInput: {
-    width: '100%',
-    marginTop: Spacing.sm,
-    ...Typography.bodyStrong,
-    color: '#FFF',
-    textAlign: 'center',
-    paddingVertical: Spacing.md,
-    borderRadius: Radii.xl,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
 });

@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Novo tema oficial **ZwoSocial Liquid**: fundo de cor líquida animado na GPU (Skia) por trás do ecrã inicial e das conversas, cabeçalho transparente com ações numa cápsula de vidro, barra inferior de vidro flutuante cujo indicador estica ao passar de um separador para outro, e bolhas translúcidas. Claro e escuro. Pára quando o ecrã fica tapado e respeita o "reduzir movimento"
 - "Líquido" passa a ser uma opção de movimento do fundo no criador de temas
 
+#### Lives
+- Live conjunta: iniciada num chat a dois, as duas pessoas são anfitriãs e moderadoras. A outra pessoa é convidada como numa chamada e, se recusar, pode entrar mais tarde
+- Quem inicia escolhe o público: membros do chat, grupo ou canal, contactos, pessoas escolhidas, ou pública. As Lives dos Stories não precisam de destino
+- Moderação: banir (sai da sala na hora e não volta), apagar comentários, desligar comentários e nomear moderadores. Administradores de grupos e canais moderam as Lives desses sítios
+- Palco: espectadores podem pedir para falar e os moderadores podem chamar alguém, que aceita ou recusa
+- Comentários guardados e em tempo real, e estatísticas para quem anfitria: espectadores, pico, únicos, corações, comentários e duração
+- Novo ecrã da Live ao estilo TikTok: vídeo em ecrã inteiro (dividido quando há duas ou mais pessoas a falar), comentários em baixo à esquerda, corações com duplo toque, e as ferramentas de moderação num único botão. Ao terminar, quem anfitria vê o resumo da Live
+- Antes de entrar em direto escolhe-se o título e o público, a partir dos Stories, de um chat, de um grupo ou de um canal
+
 ### ✏️ Changed (Alterado)
 
 #### Marca
