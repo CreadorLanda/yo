@@ -320,6 +320,7 @@ export default function SettingsScreen() {
           const res = await authPhoneChangeStart(next, reauthCode);
           const confirm = async (code: string) => {
             await authPhoneChangeConfirm(code);
+            await resetAllStores();
             await clearSession();
             router.replace('/onboarding');
           };
@@ -587,14 +588,13 @@ export default function SettingsScreen() {
           // authenticated-or-not depending on which promise won, so the
           // device stayed subscribed to an account nobody was signed in to.
           // resetAllStores never rejects and each step is bounded.
-          void resetAllStores().finally(() => {
-            clearSession().catch(() => {
-              /* swallowed — local SecureStore wipe is best-effort */
-            });
-          });
-          // replace, not push — the user shouldn't be able to swipe back
-          // into a screen that still thinks it's authenticated.
-          router.replace('/onboarding');
+          void (async () => {
+            await resetAllStores();
+            await clearSession();
+            // Replace only after teardown, so a new session cannot race a
+            // pending reset of this account's local stores.
+            router.replace('/onboarding');
+          })();
         },
       },
     ]);

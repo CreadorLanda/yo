@@ -20,8 +20,12 @@ export async function readFileBytes(uri: string): Promise<Uint8Array> {
   if (uri.startsWith('content://')) {
     const copy = new File(Paths.cache, 'inbox', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     copy.create({ intermediates: true, overwrite: true });
-    await FileSystem.copyAsync({ from: uri, to: copy.uri });
-    return copy.bytes();
+    try {
+      await FileSystem.copyAsync({ from: uri, to: copy.uri });
+      return copy.bytes();
+    } finally {
+      deleteTempFile(copy.uri);
+    }
   }
   return new File(uri).bytes();
 }
@@ -37,4 +41,13 @@ export async function writeTempFile(name: string, bytes: Uint8Array): Promise<st
   file.create({ intermediates: true, overwrite: true });
   file.write(bytes);
   return file.uri;
+}
+
+export function deleteTempFile(uri: string): void {
+  try {
+    const file = new File(uri);
+    if (file.exists) file.delete();
+  } catch {
+    // Cache cleanup is best effort; the upload result remains authoritative.
+  }
 }

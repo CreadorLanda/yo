@@ -1,5 +1,5 @@
 import type { ThemePack } from './theme-model';
-import { DEFAULT_LAYOUT } from './theme-model';
+import { DEFAULT_LAYOUT, THEME_LAYOUT_RANGES } from './theme-model';
 import { ICON_SETS, ICON_SLOTS } from './theme-icons';
 import { FONT_FAMILY_IDS } from './theme-fonts';
 import { isSafeThemeColor, parseThemeCss } from './theme-css';
@@ -78,24 +78,21 @@ const CHAT_COLOR_KEYS = new Set([
   'unreadBadge',
 ]);
 const CATEGORIES = new Set(['official', 'neon', 'pastel', 'minimal', 'nature', 'midnight', 'retro']);
-const LAYOUT_RANGES: Record<string, [number, number]> = {
-  bubbleRadius: [4, 28],
-  fontScale: [0.85, 1.35],
-  iconScale: [0.8, 1.4],
-  glassIntensity: [10, 100],
-  bubbleMaxWidth: [60, 92],
-  bubblePaddingH: [6, 22],
-  bubblePaddingV: [4, 18],
-  emojiScale: [0.8, 1.6],
-  letterSpacing: [-0.5, 1.5],
-  lineHeightExtra: [0, 20],
-  bubbleShadowStrength: [0, 1],
-  inputRadius: [0, 32],
-  listAvatarSize: [20, 96],
-  wallpaperDim: [0, 80],
-  reactionScale: [0.8, 1.6],
-  metaSize: [0.7, 1.4],
-  gapAfterGroup: [0, 32],
+const LAYOUT_ENUMS: Record<string, readonly string[]> = {
+  myBubbleSide: ['left', 'right'],
+  bubbleShape: ['rounded', 'tail', 'square', 'pill'],
+  density: ['compact', 'cozy', 'roomy'],
+  avatarPosition: ['left', 'right', 'hidden'],
+  selectionCheckSide: ['left', 'right'],
+  headerStyle: ['brand', 'minimal', 'colored'],
+  tabBarPosition: ['top', 'bottom'],
+  tabBarLabels: ['labels', 'icons', 'both'],
+  composerStyle: ['rounded', 'flat', 'floating'],
+  datePillStyle: ['pill', 'text', 'hidden'],
+  replyStyle: ['quote', 'bar', 'minimal'],
+  sendButtonStyle: ['circle', 'pill', 'icon'],
+  attachSide: ['left', 'right'],
+  wallpaperAnimation: ['none', 'aurora', 'drift', 'pulse', 'liquid'],
 };
 
 function validateScheme(
@@ -143,7 +140,12 @@ function validateLayout(value: unknown, errors: string[]) {
       errors.push(`theme.layout.${key} must be a ${expected}`);
       continue;
     }
-    const range = LAYOUT_RANGES[key];
+    const enumValues = LAYOUT_ENUMS[key];
+    if (enumValues && !enumValues.includes(String(item))) {
+      errors.push(`theme.layout.${key} is not supported`);
+      continue;
+    }
+    const range = THEME_LAYOUT_RANGES[key as keyof typeof THEME_LAYOUT_RANGES];
     if (range && (typeof item !== 'number' || !Number.isFinite(item) || item < range[0] || item > range[1])) {
       errors.push(`theme.layout.${key} must be between ${range[0]} and ${range[1]}`);
     }

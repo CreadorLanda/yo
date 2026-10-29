@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 
 import { deleteThemeImage } from './theme-assets';
+import { getCurrentUser } from './auth-store';
 import type { WallpaperAnimation } from './theme-model';
 
 /**
@@ -38,12 +39,20 @@ export type ChatWallpaper = {
 const DEFAULTS: ChatPrefs = { locked: false, filesVisible: true };
 
 let prefs: Record<string, ChatPrefs> = {};
-let booted = false;
+let bootedFor: string | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
   prefs = { ...prefs };
   listeners.forEach((l) => l());
+}
+
+function accountKey(): string {
+  return getCurrentUser()?.id ?? 'anonymous';
+}
+
+function storageKey(account = accountKey()): string {
+  return `${STORAGE_KEY}.${account}`;
 }
 
 function subscribe(listener: () => void) {
@@ -82,12 +91,15 @@ function normalize(value: unknown): Record<string, ChatPrefs> {
 
 /** Load once at startup. Corrupt storage falls back to defaults, never throws. */
 export async function bootstrapChatPrefs(): Promise<void> {
-  if (booted) return;
-  booted = true;
+  const account = accountKey();
+  if (bootedFor === account) return;
+  bootedFor = account;
+  prefs = {};
   try {
-    const raw = await SecureStore.getItemAsync(STORAGE_KEY);
+    const raw = await SecureStore.getItemAsync(storageKey(account));
     if (!raw) return;
     const parsed = JSON.parse(raw);
+    if (accountKey() !== account) return;
     if (parsed && typeof parsed === 'object') {
       prefs = normalize(parsed);
       emit();
@@ -97,9 +109,9 @@ export async function bootstrapChatPrefs(): Promise<void> {
   }
 }
 
-async function persist() {
+async function persist(account = accountKey()) {
   try {
-    await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(prefs));
+    await SecureStore.setItemAsync(storageKey(account), JSON.stringify(prefs));
   } catch {
     /* keep the in-memory value; the toggle still works this session */
   }
@@ -116,7 +128,7 @@ export function setChatPref<K extends keyof ChatPrefs>(
 ): void {
   prefs[chatId] = { ...getChatPrefs(chatId), [key]: value };
   emit();
-  void persist();
+  void persist(accountKey());
 }
 
 export function setChatWallpaper(chatId: string, wallpaper?: ChatWallpaper): void {
@@ -124,7 +136,7 @@ export function setChatWallpaper(chatId: string, wallpaper?: ChatWallpaper): voi
   const next = { ...getChatPrefs(chatId), wallpaper };
   prefs[chatId] = next;
   emit();
-  void persist();
+  void persist(accountKey());
   if (previous && previous !== wallpaper?.imageUri && !Object.values(prefs).some((p) => p.wallpaper?.imageUri === previous)) {
     deleteThemeImage(previous);
   }
@@ -136,7 +148,7 @@ export function forgetChatPrefs(chatId: string): void {
   const previous = prefs[chatId].wallpaper?.imageUri;
   delete prefs[chatId];
   emit();
-  void persist();
+  void persist(accountKey());
   if (previous && !Object.values(prefs).some((p) => p.wallpaper?.imageUri === previous)) {
     deleteThemeImage(previous);
   }
@@ -176,6 +188,7 @@ export function useLockedChatIds(): Set<string> {
  */
 export function resetChatPrefsCache(): void {
   prefs = {};
-  booted = false;
+  bootedFor = null;
+  void SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
   emit();
 }

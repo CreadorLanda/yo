@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'server/**'
+      - 'mobile/**'
       - '.github/workflows/backend-security.yml'
   push:
     branches: [audit/e2ee-server-session-removal]
@@ -62,6 +63,25 @@ jobs:
             -v "$GITHUB_WORKSPACE/server/migrations:/migrations:ro" \
             migrate/migrate:v4.18.3 \
             -path=/migrations -database "$TEST_POSTGRES_URL" up
+      - name: Verify representative migration upgrades
+        run: |
+          for version in 44 47 50; do
+            database="upgrade_v${version}"
+            docker run --network host --rm -e PGPASSWORD=socialize postgres:16-alpine \
+              psql -h 127.0.0.1 -U socialize -d socialize -v ON_ERROR_STOP=1 \
+              -c "DROP DATABASE IF EXISTS \"$database\"" \
+              -c "CREATE DATABASE \"$database\""
+            url="postgres://socialize:socialize@127.0.0.1:5432/${database}?sslmode=disable"
+            docker run --network host --rm \
+              -v "$GITHUB_WORKSPACE/server/migrations:/migrations:ro" \
+              migrate/migrate:v4.18.3 -path=/migrations -database "$url" goto "$version"
+            docker run --network host --rm \
+              -v "$GITHUB_WORKSPACE/server/migrations:/migrations:ro" \
+              migrate/migrate:v4.18.3 -path=/migrations -database "$url" up
+            docker run --network host --rm -e PGPASSWORD=socialize postgres:16-alpine \
+              psql -h 127.0.0.1 -U socialize -d socialize -v ON_ERROR_STOP=1 \
+              -c "DROP DATABASE \"$database\""
+          done
       - run: gofmt -d .
       - run: go test ./...
       - run: go test -race ./...

@@ -192,14 +192,23 @@ func (r *Repository) IsParticipant(ctx context.Context, chatID, userID uuid.UUID
 func (r *Repository) Patch(
 	ctx context.Context,
 	id uuid.UUID,
+	actor uuid.UUID,
 	title, description, avatar *string,
 	histEnabled *bool,
 	histMode *HistoryMode,
 	histLimit *int,
 	permissions *GroupPermissions,
 ) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockGroupAdmin(ctx, tx, id, actor); err != nil {
+		return err
+	}
 	// Single UPDATE with COALESCE for optional fields.
-	_, err := r.db.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		UPDATE chats SET
 			title = COALESCE($2, title),
 			description = COALESCE($3, description),
@@ -220,8 +229,10 @@ func (r *Repository) Patch(
 		permissionValue(permissions, func(p GroupPermissions) PermissionLevel { return p.Audio }),
 		permissionValue(permissions, func(p GroupPermissions) PermissionLevel { return p.Media }),
 		permissionValue(permissions, func(p GroupPermissions) PermissionLevel { return p.Posting }),
-		permissions != nil, permissionUntil(permissions))
-	return err
+		permissions != nil, permissionUntil(permissions)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func permissionValue(p *GroupPermissions, pick func(GroupPermissions) PermissionLevel) any {

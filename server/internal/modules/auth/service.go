@@ -43,6 +43,28 @@ redis.call("DEL", KEYS[1])
 return 1
 `
 
+const consumeReauthScript = `
+local stored = redis.call("GET", KEYS[1])
+if not stored then return 0 end
+if stored == ARGV[1] then
+  redis.call("DEL", KEYS[1], KEYS[2])
+  return 1
+end
+local attempts = redis.call("INCR", KEYS[2])
+redis.call("EXPIRE", KEYS[2], ARGV[2])
+if attempts >= tonumber(ARGV[3]) then
+  redis.call("DEL", KEYS[1], KEYS[2])
+  return -2
+end
+return -1
+`
+
+const issueReauthScript = `
+redis.call("SET", KEYS[1], ARGV[1], "EX", ARGV[2])
+redis.call("DEL", KEYS[2])
+return 1
+`
+
 // Service holds the business logic for auth. Controllers stay thin.
 type Service struct {
 	repo          *Repository
@@ -183,7 +205,9 @@ func (s *Service) StartReauth(ctx context.Context, userID uuid.UUID, phone strin
 		return "", ErrReauthentication
 	}
 	code := randomDigits(6)
-	if err := s.rdb.Set(ctx, reauthKey(userID), otpDigest(userID.String(), code, s.cfg.OTPPepper), otpTTL).Err(); err != nil {
+	if _, err := s.rdb.Eval(ctx, issueReauthScript,
+		[]string{reauthKey(userID), reauthAttemptsKey(userID)},
+		otpDigest(userID.String(), code, s.cfg.OTPPepper), int(otpTTL/time.Second)).Int(); err != nil {
 		return "", fmt.Errorf("store reauth code: %w", err)
 	}
 	if err := s.deliverPhoneCode(ctx, phone, code); err != nil {
@@ -265,7 +289,8 @@ func normalizePhone(phone string) string { return strings.TrimSpace(phone) }
 func validEmail(email string) bool {
 	return strings.Contains(email, "@") && !strings.ContainsAny(email, " \t\r\n") && len(email) <= 254
 }
-func reauthKey(userID uuid.UUID) string { return "reauth:" + userID.String() }
+func reauthKey(userID uuid.UUID) string         { return "reauth:" + userID.String() }
+func reauthAttemptsKey(userID uuid.UUID) string { return "rl:auth:reauth:attempts:" + userID.String() }
 
 func (s *Service) ConfirmPhoneChange(ctx context.Context, userID uuid.UUID, code string) error {
 	if err := s.repo.CompletePhoneChange(ctx, userID, []byte(otpDigest("phone-change", code, s.cfg.OTPPepper)), time.Now().UTC()); err != nil {
@@ -302,9 +327,19 @@ func (s *Service) consumeReauth(ctx context.Context, userID uuid.UUID, code stri
 	if code == "" {
 		return ErrReauthentication
 	}
-	result, err := s.rdb.Eval(ctx, consumeOTPScript, []string{reauthKey(userID)}, otpDigest(userID.String(), code, s.cfg.OTPPepper)).Int()
+	result, err := s.rdb.Eval(
+		ctx,
+		consumeReauthScript,
+		[]string{reauthKey(userID), reauthAttemptsKey(userID)},
+		otpDigest(userID.String(), code, s.cfg.OTPPepper),
+		int(otpTTL/time.Second),
+		maxOTPVerifyAttempts,
+	).Int()
 	if err != nil {
 		return err
+	}
+	if result == -2 {
+		return ErrRateLimited
 	}
 	if result != 1 {
 		return ErrReauthentication

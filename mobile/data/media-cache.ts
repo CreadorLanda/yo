@@ -1,8 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
-import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 
-import { ACCESS_KEY, BASE_URL } from './api/client';
+import { api } from './api/client';
 import { decryptMediaBytes, hasMediaKey, type MediaKey } from './crypto/media-crypto';
 
 /**
@@ -111,10 +110,7 @@ export async function ensureLocal(
 
     setState(mediaId, { status: 'downloading', progress: 0 });
     try {
-      const token = await SecureStore.getItemAsync(ACCESS_KEY);
-      const res = await fetch(`${BASE_URL}/api/media/${mediaId}/file`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await api.raw(`/api/media/${mediaId}/file`);
       if (!res.ok) {
         // 410 is the server telling us the blob was swept after delivery.
         setState(mediaId, {

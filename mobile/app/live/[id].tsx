@@ -40,6 +40,7 @@ import {
   banFromLive,
   deleteLiveComment,
   endLive,
+  heartbeatLive,
   joinLive,
   leaveLive,
   leaveStage,
@@ -55,6 +56,7 @@ import {
   type LiveGrant,
   type LiveStats,
 } from '@/data/api/lives';
+import { ApiError } from '@/data/api/client';
 import { getCurrentUser } from '@/data/auth-store';
 import { appAlert } from '@/data/dialog-store';
 import { addOwnComment, closeRoom, openRoom, patchRoom, useLiveRoom } from '@/data/live-room';
@@ -323,6 +325,18 @@ function Stage({
     }, 3000);
     return () => clearInterval(flush);
   }, [liveId]);
+
+  useEffect(() => {
+    if (isHost) return;
+    const beat = () => {
+      void heartbeatLive(liveId).catch((err) => {
+        if (err instanceof ApiError && err.status === 404) patchRoom({ ended: true });
+      });
+    };
+    beat();
+    const timer = setInterval(beat, 15_000);
+    return () => clearInterval(timer);
+  }, [isHost, liveId]);
   const lastTap = useRef(0);
   const tapStage = () => {
     const now = Date.now();

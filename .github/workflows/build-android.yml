@@ -29,6 +29,10 @@ on:
     paths:
       - 'mobile/**'
       - '.github/workflows/build-android.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/build-android.yml'
 
 concurrency:
   # A newer push makes an in-flight build pointless.
@@ -37,6 +41,10 @@ concurrency:
 
 jobs:
   build:
+    # Forks do not receive repository secrets. Trusted PRs, pushes and manual
+    # runs still execute the signed native build; fork PRs keep the mobile
+    # checks from backend-security.yml without failing at EXPO_TOKEN.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     env:
       # One place. The version appears in the cache path, the cache key and the
