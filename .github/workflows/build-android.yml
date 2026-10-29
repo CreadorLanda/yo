@@ -72,6 +72,10 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
+        # The action's default includes the removed `tools` package. The
+        # command-line tools are installed by the action itself.
+        with:
+          packages: platform-tools
 
       # The NDK is over a gigabyte and does not change between runs.
       - name: Cache the NDK
