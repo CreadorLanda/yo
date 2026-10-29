@@ -46,7 +46,27 @@ type Chat struct {
 	MutedUntil *time.Time `json:"muted_until,omitempty"`
 	ArchivedAt *time.Time `json:"archived_at,omitempty"`
 	// 0 = off. Each message's clock starts when it is read.
-	DisappearSeconds int `json:"disappear_seconds"`
+	DisappearSeconds int         `json:"disappear_seconds"`
+	Privacy          ChatPrivacy `json:"privacy"`
+}
+
+type ChatPermission string
+
+const (
+	PermissionEveryone ChatPermission = "everyone"
+	PermissionAdmins   ChatPermission = "admins"
+)
+
+// ChatPrivacy is conversation-wide policy. Screenshot protection is a client
+// request: the server persists the user's choice, but cannot manufacture a
+// platform capability that does not exist.
+type ChatPrivacy struct {
+	ForwardingDisabled       bool           `json:"forwarding_disabled"`
+	ScreenshotProtection     bool           `json:"screenshot_protection_enabled"`
+	LinksRequireConfirmation bool           `json:"links_require_confirmation"`
+	WhoCanMessage            ChatPermission `json:"who_can_message"`
+	WhoCanCall               ChatPermission `json:"who_can_call"`
+	AllowedMessageTypes      []MessageType  `json:"allowed_message_types"`
 }
 
 // ListChatsOptions pages the chat list and selects the archived slice.
@@ -81,6 +101,17 @@ type ChatSettingsRequest struct {
 	Pinned   *bool `json:"pinned,omitempty"`
 	Muted    *bool `json:"muted,omitempty"`
 	Archived *bool `json:"archived,omitempty"`
+}
+
+// ChatPrivacySettingsRequest is partial so changing one control never
+// silently resets another. An omitted AllowedMessageTypes leaves it intact.
+type ChatPrivacySettingsRequest struct {
+	ForwardingDisabled       *bool           `json:"forwarding_disabled"`
+	ScreenshotProtection     *bool           `json:"screenshot_protection_enabled"`
+	LinksRequireConfirmation *bool           `json:"links_require_confirmation"`
+	WhoCanMessage            *ChatPermission `json:"who_can_message"`
+	WhoCanCall               *ChatPermission `json:"who_can_call"`
+	AllowedMessageTypes      *[]MessageType  `json:"allowed_message_types"`
 }
 
 type MessagePreview struct {
@@ -144,11 +175,13 @@ type Message struct {
 	// means either no timer or not read yet.
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	// 0 for anything written here; 1+ once it has been passed along.
-	ForwardCount    int     `json:"forward_count,omitempty"`
-	SourceChannelID *string `json:"source_channel_id,omitempty"`
-	SourcePostID    *string `json:"source_post_id,omitempty"`
-	DeliveredTo     int     `json:"delivered_to,omitempty"`
-	ReadBy          int     `json:"read_by,omitempty"`
+	ForwardCount    int        `json:"forward_count,omitempty"`
+	SourceChannelID *string    `json:"source_channel_id,omitempty"`
+	SourcePostID    *string    `json:"source_post_id,omitempty"`
+	SourceChatID    *uuid.UUID `json:"source_chat_id,omitempty"`
+	SourceMessageID *int64     `json:"source_message_id,omitempty"`
+	DeliveredTo     int        `json:"delivered_to,omitempty"`
+	ReadBy          int        `json:"read_by,omitempty"`
 	// IsUnread is relative to the requesting participant's read cursor.
 	// It lets clients filter unread messages even after opening the chat
 	// advances that cursor.
@@ -225,8 +258,10 @@ type SendMessageRequest struct {
 	// heavily-forwarded message by claiming zero.
 	ForwardCount *int `json:"forward_count,omitempty"`
 	// Where a forwarded channel post came from, so the bubble can link back.
-	SourceChannelID *string `json:"source_channel_id,omitempty"`
-	SourcePostID    *string `json:"source_post_id,omitempty"`
+	SourceChannelID *string    `json:"source_channel_id,omitempty"`
+	SourcePostID    *string    `json:"source_post_id,omitempty"`
+	SourceChatID    *uuid.UUID `json:"source_chat_id,omitempty"`
+	SourceMessageID *int64     `json:"source_message_id,omitempty"`
 }
 
 type EditMessageRequest struct {
@@ -266,15 +301,17 @@ type ListMessagesQuery struct {
 // ── Internal row shapes ─────────────────────────────────────────────────────
 
 type messageRow struct {
-	ID          int64
-	ChatID      uuid.UUID
-	SenderID    *uuid.UUID
-	Content     string // ciphertext hex
-	MessageType string
-	ReplyToID   *int64
-	CreatedAt   time.Time
-	EditedAt    *time.Time
-	DeletedAt   *time.Time
+	ID              int64
+	ChatID          uuid.UUID
+	SenderID        *uuid.UUID
+	Content         string // ciphertext hex
+	MessageType     string
+	ReplyToID       *int64
+	CreatedAt       time.Time
+	EditedAt        *time.Time
+	DeletedAt       *time.Time
+	SourceChatID    *uuid.UUID
+	SourceMessageID *int64
 }
 
 // PollTally is the vote state of one poll, as the server can see it: counts

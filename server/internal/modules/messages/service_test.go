@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/blocks"
+	"github.com/CreadorLanda/zwosocial/server/internal/modules/groups"
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/users"
 	"github.com/CreadorLanda/zwosocial/server/internal/platform/postgres"
 )
@@ -60,6 +61,21 @@ func newTestService(pool *pgxpool.Pool) *Service {
 	return NewService(NewRepository(pool, ""), usersRepo, nil, nil).
 		WithBlocks(blocks.NewRepo(pool))
 }
+
+type recordedEvent struct {
+	recipients []uuid.UUID
+	typ        string
+}
+
+type recordingBroadcaster struct {
+	events []recordedEvent
+}
+
+func (b *recordingBroadcaster) PublishJSON(userIDs []uuid.UUID, typ, _ string, _ any) {
+	b.events = append(b.events, recordedEvent{recipients: append([]uuid.UUID(nil), userIDs...), typ: typ})
+}
+
+func (b *recordingBroadcaster) Online(uuid.UUID) bool { return true }
 
 // TestDirectChatFriendRequestFlow exercises the whole pending → accept
 // lifecycle: a fresh direct chat is a "friend request" that caps the
@@ -651,6 +667,123 @@ func TestForwardCountCannotBeLaundered(t *testing.T) {
 	}
 }
 
+// TestAdvancedPrivacyPersistsAndEnforces covers the policy boundary rather
+// than the settings screen. A client may hide a button, but the server must
+// still reject a disallowed type and an explicit forward from a protected
+// source chat.
+func TestAdvancedPrivacyPersistsAndEnforces(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+
+	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_"+uuid.NewString()[:8])
+	carol := createTestUser(t, pool, "carol_"+uuid.NewString()[:8])
+
+	source, err := svc.CreateDirectChat(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("CreateDirectChat(source): %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, source.ID, bob); err != nil {
+		t.Fatalf("AcceptChat(source): %v", err)
+	}
+	destination, err := svc.CreateDirectChat(ctx, alice, carol)
+	if err != nil {
+		t.Fatalf("CreateDirectChat(destination): %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, destination.ID, carol); err != nil {
+		t.Fatalf("AcceptChat(destination): %v", err)
+	}
+
+	textOnly := []MessageType{MsgText}
+	updated, err := svc.UpdateChatPrivacy(ctx, source.ID, alice, ChatPrivacySettingsRequest{
+		ForwardingDisabled:  ptr(true),
+		AllowedMessageTypes: &textOnly,
+	})
+	if err != nil {
+		t.Fatalf("UpdateChatPrivacy: %v", err)
+	}
+	if !updated.Privacy.ForwardingDisabled || len(updated.Privacy.AllowedMessageTypes) != 1 ||
+		updated.Privacy.AllowedMessageTypes[0] != MsgText {
+		t.Fatalf("privacy after update: %+v", updated.Privacy)
+	}
+
+	if _, err := svc.UpdateChatPrivacy(ctx, source.ID, bob, ChatPrivacySettingsRequest{ForwardingDisabled: ptr(false)}); !errors.Is(err, ErrPrivacyAdmin) {
+		t.Fatalf("non-owner privacy update: %v, want ErrPrivacyAdmin", err)
+	}
+
+	if _, err := svc.SendMessage(ctx, source.ID, alice, SendMessageRequest{
+		Content: testDirectEnvelope("image"), MessageType: MsgImage,
+	}); !errors.Is(err, ErrMessageTypeNotAllowed) {
+		t.Fatalf("disallowed image: %v, want ErrMessageTypeNotAllowed", err)
+	}
+
+	original, err := svc.SendMessage(ctx, source.ID, alice, SendMessageRequest{Content: testDirectEnvelope("text")})
+	if err != nil {
+		t.Fatalf("allowed text: %v", err)
+	}
+	if _, err := svc.SendMessage(ctx, destination.ID, alice, SendMessageRequest{
+		Content:         testDirectEnvelope("forward"),
+		SourceChatID:    &source.ID,
+		SourceMessageID: &original.ID,
+	}); !errors.Is(err, ErrForwardingDisabled) {
+		t.Fatalf("protected forward: %v, want ErrForwardingDisabled", err)
+	}
+
+	if _, err := svc.UpdateChatPrivacy(ctx, source.ID, alice, ChatPrivacySettingsRequest{ForwardingDisabled: ptr(false)}); err != nil {
+		t.Fatalf("enable forwarding: %v", err)
+	}
+	forwarded, err := svc.SendMessage(ctx, destination.ID, alice, SendMessageRequest{
+		Content:         testDirectEnvelope("forward"),
+		SourceChatID:    &source.ID,
+		SourceMessageID: &original.ID,
+	})
+	if err != nil {
+		t.Fatalf("allowed forward: %v", err)
+	}
+	if forwarded.SourceChatID == nil || *forwarded.SourceChatID != source.ID ||
+		forwarded.SourceMessageID == nil || *forwarded.SourceMessageID != original.ID {
+		t.Fatalf("forward origin was not retained: %+v", forwarded)
+	}
+
+	groupID, err := groups.NewRepository(pool).Create(ctx, alice, "privacy group", "", "", []uuid.UUID{bob, carol})
+	if err != nil {
+		t.Fatalf("create privacy group: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM chats WHERE id = $1`, groupID)
+	})
+
+	admins := PermissionAdmins
+	groupPolicy, err := svc.UpdateChatPrivacy(ctx, groupID, alice, ChatPrivacySettingsRequest{
+		WhoCanMessage: &admins,
+		WhoCanCall:    &admins,
+	})
+	if err != nil {
+		t.Fatalf("set group admin-only policy: %v", err)
+	}
+	if groupPolicy.Privacy.WhoCanMessage != PermissionAdmins || groupPolicy.Privacy.WhoCanCall != PermissionAdmins {
+		t.Fatalf("group policy after update: %+v", groupPolicy.Privacy)
+	}
+
+	if allowed, err := svc.repo.CanSendMessage(ctx, groupID, bob); err != nil || allowed {
+		t.Fatalf("member message permission = %v, err=%v; want false", allowed, err)
+	}
+	if allowed, err := svc.repo.CanCall(ctx, groupID, bob); err != nil || allowed {
+		t.Fatalf("member call permission = %v, err=%v; want false", allowed, err)
+	}
+	if _, err := svc.SendMessage(ctx, groupID, bob, SendMessageRequest{
+		Content: testGroupEnvelope(bob.String(), 0, 0),
+	}); !errors.Is(err, ErrMessagingRestricted) {
+		t.Fatalf("restricted group message: %v, want ErrMessagingRestricted", err)
+	}
+	if allowed, err := svc.repo.CanSendMessage(ctx, groupID, alice); err != nil || !allowed {
+		t.Fatalf("admin message permission = %v, err=%v; want true", allowed, err)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
 // TestReadReceiptsAreReciprocal is the rule that makes the setting honest:
 // turning yours off also stops you seeing anyone else's.
 //
@@ -1125,6 +1258,46 @@ func TestReactionsSurviveReload(t *testing.T) {
 	}
 }
 
+func TestMessageReactionsCapAndRemoval(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_"+uuid.NewString()[:8])
+	chat, err := svc.CreateDirectChat(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("CreateDirectChat: %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, chat.ID, bob); err != nil {
+		t.Fatalf("AcceptChat: %v", err)
+	}
+	sent, err := svc.SendMessage(ctx, chat.ID, alice, SendMessageRequest{Content: testDirectEnvelope("reactions")})
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	for _, emoji := range []string{"🔥", "👍🏽"} {
+		if _, err := svc.React(ctx, chat.ID, bob, sent.ID, emoji, false); err != nil {
+			t.Fatalf("React(%s): %v", emoji, err)
+		}
+	}
+	if _, err := svc.React(ctx, chat.ID, bob, sent.ID, "🎉", false); !errors.Is(err, ErrTooManyReactions) {
+		t.Fatalf("third reaction: got %v, want ErrTooManyReactions", err)
+	}
+	if _, err := svc.React(ctx, chat.ID, bob, sent.ID, "🔥", true); err != nil {
+		t.Fatalf("RemoveReaction: %v", err)
+	}
+	if _, err := svc.React(ctx, chat.ID, bob, sent.ID, "🎉", false); err != nil {
+		t.Fatalf("replacement after removal: %v", err)
+	}
+	rows, err := svc.repo.ListReactions(ctx, sent.ID)
+	if err != nil {
+		t.Fatalf("ListReactions: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("stored reactions = %d, want 2: %+v", len(rows), rows)
+	}
+}
+
 // TestGhostModeIsReciprocal holds ghost mode to the same bargain read
 // receipts have been on since 0029: with it on you neither send these
 // signals nor see anyone else's.
@@ -1136,6 +1309,8 @@ func TestGhostModeIsReciprocal(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
 	svc := newTestService(pool)
+	hub := &recordingBroadcaster{}
+	svc.hub = hub
 	usersRepo := users.NewRepository(pool)
 
 	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
@@ -1180,8 +1355,7 @@ func TestGhostModeIsReciprocal(t *testing.T) {
 
 	// Alice goes ghost. Note she never touched read_receipts — the wider
 	// switch has to cover the narrower one on its own.
-	on := true
-	if _, err := usersRepo.Patch(ctx, alice, users.PatchRequest{GhostMode: &on}); err != nil {
+	if _, err := users.NewService(usersRepo).ActivateGhostMode(ctx, alice); err != nil {
 		t.Fatalf("patch alice: %v", err)
 	}
 
@@ -1190,6 +1364,22 @@ func TestGhostModeIsReciprocal(t *testing.T) {
 	}
 	if got := readBy(bob, sent.ID); got != 1 {
 		t.Fatalf("bob lost a receipt he did not opt out of: %d", got)
+	}
+	hub.events = nil
+	if err := svc.SetReceipts(ctx, chat.ID, bob, ReceiptRequest{
+		MessageIDs: []int64{sent.ID}, Status: ReceiptRead,
+	}); err != nil {
+		t.Fatalf("SetReceipts(bob after ghost): %v", err)
+	}
+	for _, event := range hub.events {
+		if event.typ != "receipt" {
+			continue
+		}
+		for _, recipient := range event.recipients {
+			if recipient == alice {
+				t.Fatal("ghost alice received a live receipt event")
+			}
+		}
 	}
 
 	// And her own reads stop being recorded as reads.
@@ -1222,5 +1412,21 @@ func TestGhostModeIsReciprocal(t *testing.T) {
 	}
 	if len(ids) != 1 || ids[0] != bob {
 		t.Fatalf("typing recipients wrong: %v", ids)
+	}
+
+	// Expiry must restore delivery without requiring a client-side toggle.
+	if _, err := pool.Exec(ctx, `
+		UPDATE users
+		SET ghost_mode_expires_at = NOW() - INTERVAL '1 second'
+		WHERE id = $1
+	`, alice); err != nil {
+		t.Fatalf("expire alice ghost session: %v", err)
+	}
+	ids, err = svc.repo.NonGhostParticipantIDs(ctx, chat.ID)
+	if err != nil {
+		t.Fatalf("NonGhostParticipantIDs after expiry: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expired ghost recipients = %v, want both participants", ids)
 	}
 }
