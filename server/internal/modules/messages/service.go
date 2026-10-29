@@ -116,6 +116,9 @@ func (s *Service) WithGroupPolicy(policy GroupPolicy) *Service {
 // ── Chats ───────────────────────────────────────────────────────────────────
 
 func (s *Service) CreateDirectChat(ctx context.Context, userID, peerID uuid.UUID) (Chat, error) {
+	if userID == peerID {
+		return s.CreateSelfChat(ctx, userID)
+	}
 	existing, err := s.repo.FindDirectChat(ctx, userID, peerID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Chat{}, err
@@ -125,6 +128,15 @@ func (s *Service) CreateDirectChat(ctx context.Context, userID, peerID uuid.UUID
 	}
 
 	chatID, err := s.repo.CreateChat(ctx, ChatDirect, userID, []uuid.UUID{userID, peerID}, ChatStatusPending)
+	if err != nil {
+		return Chat{}, err
+	}
+	return s.loadChat(ctx, chatID, userID)
+}
+
+// CreateSelfChat opens the account's single active saved-messages chat.
+func (s *Service) CreateSelfChat(ctx context.Context, userID uuid.UUID) (Chat, error) {
+	chatID, err := s.repo.CreateSelfChat(ctx, userID)
 	if err != nil {
 		return Chat{}, err
 	}
@@ -390,7 +402,7 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 	//
 	// Group moderation is enforced by groupPolicy above; personal blocks still
 	// do not remove another member's ability to participate in the room.
-	if s.blocks != nil && chat.Type == ChatDirect {
+	if s.blocks != nil && chat.Type == ChatDirect && !chat.IsSelf {
 		peer, err := s.repo.PeerUser(ctx, chatID, senderID)
 		if err == nil && peer != nil {
 			blocked, err := s.blocks.EitherWay(ctx, senderID, peer.ID)
@@ -973,6 +985,13 @@ func (s *Service) ReportChat(ctx context.Context, chatID, userID uuid.UUID, reas
 		return err
 	}
 	if reason == "" {
+		return ErrInvalidReport
+	}
+	chat, err := s.repo.GetChat(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if chat.IsSelf {
 		return ErrInvalidReport
 	}
 	if err := s.repo.InsertReport(ctx, chatID, userID, reason, note); err != nil {

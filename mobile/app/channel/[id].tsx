@@ -32,6 +32,7 @@ import { appAlert, appPrompt } from '@/data/dialog-store';
 import { deleteChannelPost, editChannelPost, setCommentReactions } from '@/data/api/channels';
 import { ForwardPicker } from '@/components/chat/forward-picker';
 import { sendMessage as apiSendMessage } from '@/data/api/messages';
+import { displayChatName } from '@/data/chat-identity';
 import { refreshChats, useChats } from '@/data/chat-store';
 import { getGroup, type GroupMemberDTO } from '@/data/api/groups';
 import {
@@ -333,7 +334,7 @@ export default function ChannelScreen() {
         sourcePostId: post.id,
       });
       await refreshChats();
-      appAlert(t('chat.forward_sent', { name: dest?.title ?? '' }));
+      appAlert(t('chat.forward_sent', { name: dest ? displayChatName(dest, t('chats.saved_messages'), '') : '' }));
     } catch {
       appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
     }

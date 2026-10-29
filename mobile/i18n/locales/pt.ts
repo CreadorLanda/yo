@@ -198,6 +198,8 @@ export default {
     online: 'online',
     last_seen: 'visto há pouco',
     your_story: 'O teu story',
+    saved_messages: 'Mensagens guardadas',
+    saved_messages_hint: 'As tuas notas privadas',
     new_chat: 'Nova conversa',
     open_chat: 'Abrir conversa com {{name}}',
     filter_all: 'Todas',

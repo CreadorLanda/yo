@@ -198,6 +198,8 @@ export default {
     online: 'online',
     last_seen: 'last seen recently',
     your_story: 'Your story',
+    saved_messages: 'Saved messages',
+    saved_messages_hint: 'Your private notes',
     new_chat: 'New chat',
     open_chat: 'Open chat with {{name}}',
     filter_all: 'All',

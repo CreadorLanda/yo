@@ -110,6 +110,7 @@ import {
   type RealtimeEvent,
   type ReactionDTO,
 } from '@/data/api/messages';
+import { displayChatName } from '@/data/chat-identity';
 import {
   CHATS,
   DANDARA,
@@ -292,7 +293,7 @@ export default function ChatScreen() {
     if (!apiChatInfo) return undefined;
     return {
       id: apiChatInfo.id,
-      name: apiChatInfo.title ?? 'Chat',
+      name: displayChatName(apiChatInfo, t('chats.saved_messages'), 'Chat'),
       username: apiChatInfo.peer_username
         ? `@${apiChatInfo.peer_username.replace(/^@/, '')}`
         : '',
@@ -303,6 +304,7 @@ export default function ChatScreen() {
       online: false,
       isGroup: apiChatInfo.type === 'group',
       isPending: apiChatInfo.status === 'pending',
+      isSelf: apiChatInfo.is_self,
       pinned: !!apiChatInfo.pinned_at,
       muted: !!apiChatInfo.muted_until,
     };
@@ -877,6 +879,7 @@ export default function ChatScreen() {
   }, [isGroup, id]);
   const isPending = apiChatInfo?.status === 'pending';
   const isBlocked = apiChatInfo?.status === 'blocked';
+  const isSelf = !!apiChatInfo?.is_self;
   const iSentRequest = isPending && apiChatInfo?.created_by === currentUser?.id;
   // Requester may send one intro message while pending; recipient only accept/block.
   const hasMyIntro = messages.some((m) => m.fromMe);
@@ -2585,11 +2588,13 @@ export default function ChatScreen() {
                   <Text style={[styles.peerStatus, { color: colors.textSecondary }]} numberOfLines={1}>
                     {isAIChat
                       ? t('chat.ai_subtitle')
-                      : isGroup
-                        ? t('group.members_count', { count: memberCount })
-                        : chat?.online
-                          ? t('chats.online')
-                          : t('chats.last_seen')}
+                      : isSelf
+                        ? t('chats.saved_messages_hint')
+                        : isGroup
+                          ? t('group.members_count', { count: memberCount })
+                          : chat?.online
+                            ? t('chats.online')
+                            : t('chats.last_seen')}
                   </Text>
                 </View>
               </View>

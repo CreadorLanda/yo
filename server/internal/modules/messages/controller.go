@@ -40,6 +40,16 @@ func (c *Controller) PostChat(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, CreateChatResponse{ChatID: chat.ID, Chat: chat})
 }
 
+// PostSelfChat — POST /chats/self
+func (c *Controller) PostSelfChat(ctx *gin.Context) {
+	chat, err := c.svc.CreateSelfChat(ctx.Request.Context(), middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, CreateChatResponse{ChatID: chat.ID, Chat: chat})
+}
+
 // GetChats — GET /chats?limit=&offset=&archived=
 func (c *Controller) GetChats(ctx *gin.Context) {
 	limit, _ := strconv.Atoi(ctx.Query("limit"))

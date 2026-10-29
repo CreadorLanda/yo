@@ -186,6 +186,20 @@ export function getCachedChat(chatId: string): ChatDTO | undefined {
   return chats.find((c) => c.id === chatId);
 }
 
+/** Make a newly opened chat available before the next list refresh. */
+export function upsertChat(chat: ChatDTO): void {
+  const index = chats.findIndex((c) => c.id === chat.id);
+  if (index === -1) {
+    chats = [chat, ...chats];
+  } else {
+    chats[index] = chat;
+  }
+  if (!chat.archived_at) {
+    archived = archived.filter((c) => c.id !== chat.id);
+  }
+  emit();
+}
+
 export function useChats(): { chats: ChatDTO[]; loaded: boolean } {
   const list = useSyncExternalStore(
     subscribe,

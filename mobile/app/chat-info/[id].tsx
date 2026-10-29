@@ -67,6 +67,7 @@ import { refreshGroup, useGroup } from '@/data/group-store';
 import { clearMediaCache, formatBytes, mediaCacheSize } from '@/data/media-cache';
 import { mapApiMessage } from '@/data/message-map';
 import { type ChatPreview, type Message } from '@/data/mock';
+import { displayChatName } from '@/data/chat-identity';
 import { block, blockedAmong, refreshBlocks, useBlocked } from '@/data/block-store';
 import { persistThemeImage } from '@/data/theme-assets';
 import { useTheme } from '@/hooks/use-theme';
@@ -95,6 +96,7 @@ export default function ChatInfoScreen() {
   }, [chats.length]);
 
   const isGroup = apiChat?.type === 'group';
+  const isSelf = !!apiChat?.is_self;
   const group = useGroup(isGroup ? id : undefined);
   const allBlocked = useBlocked();
   // Recomputed as the roster or the block list changes — someone can be added
@@ -113,7 +115,7 @@ export default function ChatInfoScreen() {
   const chat: ChatPreview | undefined = apiChat
     ? {
           id: apiChat.id,
-          name: apiChat.title ?? group?.name ?? 'Chat',
+          name: displayChatName(apiChat, t('chats.saved_messages'), group?.name ?? 'Chat'),
           username: apiChat.peer_username ? `@${apiChat.peer_username.replace(/^@/, '')}` : '',
           avatarUri: apiChat.avatar_url ?? group?.avatarUri ?? '',
           lastMessage: '',
@@ -121,6 +123,7 @@ export default function ChatInfoScreen() {
           unreadCount: apiChat.unread_count,
           online: false,
           isGroup: apiChat.type === 'group',
+          isSelf: apiChat.is_self,
           memberCount: group?.members.length,
         }
     : group
@@ -1218,7 +1221,7 @@ export default function ChatInfoScreen() {
               destructive
               onPress={confirmLeaveGroup}
             />
-          ) : (
+          ) : isSelf ? null : (
             <>
               <Row
                 icon="ban-outline"

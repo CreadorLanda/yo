@@ -33,6 +33,8 @@ export type ChatPreview = {
   isAI?: boolean;
   /** Pending friend request chat */
   isPending?: boolean;
+  /** Saved-messages chat owned by the current user. */
+  isSelf?: boolean;
 };
 
 /** The Dandara AI assistant — her own chat plus an in-chat helper. */
