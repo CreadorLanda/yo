@@ -60,8 +60,7 @@ export default function LiveScreen() {
   const [failure, setFailure] = useState<string | null>(null);
   const [hostHere, setHostHere] = useState(false);
   const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(true);
-  const [noCamera, setNoCamera] = useState(false);
+  const [camOn, setCamOn] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [hearts, setHearts] = useState<Heart[]>([]);
   const [draft, setDraft] = useState('');
@@ -151,15 +150,7 @@ export default function LiveScreen() {
           setHostHere(true);
           const devices = await availableMedia();
           if (devices.microphone) await room.localParticipant.setMicrophoneEnabled(true);
-          if (devices.camera) {
-            await room.localParticipant.setCameraEnabled(true);
-            const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
-            if (pub?.track && previewEl.current) pub.track.attach(previewEl.current);
-          } else {
-            setNoCamera(true);
-            setCamOn(false);
-            appAlert(t('call.camera_failed_title'), t('call.no_camera_body'));
-          }
+          // The camera starts off; the host turns it on with the button.
         } else {
           // Someone already on air: pick up what is being published now.
           room.remoteParticipants.forEach((p) => {
@@ -312,11 +303,7 @@ export default function LiveScreen() {
           <div className="zwo-live-empty">
             <Ionicons name="videocam-off-outline" size={40} color="rgba(255,255,255,0.35)" />
             <span>
-              {isHost
-                ? noCamera
-                  ? t('call.no_camera_body')
-                  : t('live.your_camera_is_off')
-                : t('live.waiting_for_host')}
+              {isHost ? t('live.your_camera_is_off') : t('live.waiting_for_host')}
             </span>
           </div>
         ) : null}

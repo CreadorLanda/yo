@@ -60,7 +60,7 @@ export default function CallScreen() {
   const [e2eeKey, setE2eeKey] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
   const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(callMode === 'video');
+  const [camOn, setCamOn] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const startedAt = useRef<number | null>(null);
 
@@ -151,15 +151,8 @@ export default function CallScreen() {
     async function finishJoin(active: Room) {
       if (cancelled) return;
       await active.localParticipant.setMicrophoneEnabled(true);
-      if (callMode === 'video') {
-        try {
-          await active.localParticipant.setCameraEnabled(true);
-          const pub = active.localParticipant.getTrackPublication(Track.Source.Camera);
-          if (pub?.track && localEl.current) pub.track.attach(localEl.current);
-        } catch {
-          setCamOn(false);
-        }
-      }
+      // The camera starts off, as on the phone: the person turns it on, where
+      // a failure is caught and explained.
       active.remoteParticipants.forEach((p: RemoteParticipant) => {
         p.trackPublications.forEach((pub) => {
           if (pub.track) attach(pub.track);
@@ -268,15 +261,13 @@ export default function CallScreen() {
         )}
       </View>
 
-      {callMode === 'video' ? (
-        <video
-          ref={localEl}
-          muted
-          autoPlay
-          playsInline
-          style={{ ...localStyle, display: camOn ? 'block' : 'none' }}
-        />
-      ) : null}
+      <video
+        ref={localEl}
+        muted
+        autoPlay
+        playsInline
+        style={{ ...localStyle, display: camOn ? 'block' : 'none' }}
+      />
 
       <View style={styles.controls}>
         <RoundButton
