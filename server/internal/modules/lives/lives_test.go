@@ -66,6 +66,25 @@ func mkChat(t *testing.T, pool *pgxpool.Pool, members ...uuid.UUID) uuid.UUID {
 	return id
 }
 
+func mkDirectChat(t *testing.T, pool *pgxpool.Pool, members ...uuid.UUID) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	var id uuid.UUID
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO chats (type, created_by, status) VALUES ('direct', $1, 'active') RETURNING id
+	`, members[0]).Scan(&id); err != nil {
+		t.Fatalf("create direct chat: %v", err)
+	}
+	for _, m := range members {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2)`, id, m); err != nil {
+			t.Fatalf("add direct participant: %v", err)
+		}
+	}
+	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM chats WHERE id = $1`, id) })
+	return id
+}
+
 // ── fakes for the seams ─────────────────────────────────────────────────────
 
 type fakeAudience struct {
@@ -160,6 +179,32 @@ func TestViewerCannotPublish(t *testing.T) {
 	// Same room, or they are not at the same broadcast.
 	if viewerGrant.Room != hostGrant.Room {
 		t.Fatalf("viewer room %q != host room %q", viewerGrant.Room, hostGrant.Room)
+	}
+}
+
+// TestDirectChatUsesMembershipAuthorization keeps the Stories chooser's 1:1
+// option on the same server-side boundary as groups. A guessed direct-chat id
+// must not turn into a broadcast room for someone outside the conversation.
+func TestDirectChatUsesMembershipAuthorization(t *testing.T) {
+	pool := liveDB(t)
+	ctx := context.Background()
+
+	host, viewer, outsider := mkUser(t, pool), mkUser(t, pool), mkUser(t, pool)
+	chat := mkDirectChat(t, pool, host, viewer)
+	svc := newSvc(pool, fakeAudience{
+		inChat:  map[uuid.UUID]bool{host: true, viewer: true},
+		members: []uuid.UUID{host, viewer},
+	}, &fakeAnnouncer{})
+
+	grant, err := svc.Start(ctx, StartInput{ChatID: &chat, Title: "Direct"}, host)
+	if err != nil {
+		t.Fatalf("Start direct: %v", err)
+	}
+	if _, err := svc.Join(ctx, grant.Live.ID, viewer); err != nil {
+		t.Fatalf("Join direct member: %v", err)
+	}
+	if _, err := svc.Join(ctx, grant.Live.ID, outsider); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("Join direct outsider = %v, want ErrNotAllowed", err)
 	}
 }
 

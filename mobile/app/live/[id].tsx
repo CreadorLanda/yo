@@ -12,8 +12,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Track } from 'livekit-client';
 import type { TrackReference } from '@livekit/react-native';
+import { useCameraPermission, useMicrophonePermission } from 'react-native-vision-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
@@ -26,7 +27,7 @@ import {
   type LiveGrant,
 } from '@/data/api/lives';
 import { appAlert } from '@/data/dialog-store';
-import { useLiveViewers } from '@/data/live-store';
+import { refreshRunningLives, useLiveViewers } from '@/data/live-store';
 import { t } from '@/i18n';
 
 registerGlobals();
@@ -57,16 +58,62 @@ export default function LiveScreen() {
 
   const [grant, setGrant] = useState<LiveGrant | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [hostMedia, setHostMedia] = useState({ ready: false, camera: true, microphone: true });
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+  const [backgrounded, setBackgrounded] = useState(
+    AppState.currentState === 'background' || AppState.currentState === 'inactive',
+  );
+  const { hasPermission: hasCamera, requestPermission: requestCamera } = useCameraPermission();
+  const { hasPermission: hasMicrophone, requestPermission: requestMicrophone } =
+    useMicrophonePermission();
+  const mediaPermission = useRef({ camera: !!hasCamera, microphone: !!hasMicrophone });
+
+  useEffect(() => {
+    mediaPermission.current = { camera: !!hasCamera, microphone: !!hasMicrophone };
+  }, [hasCamera, hasMicrophone]);
+
+  const requestHostMedia = useCallback(async () => {
+    const camera =
+      mediaPermission.current.camera || (await requestCamera().catch(() => false));
+    const microphone =
+      mediaPermission.current.microphone || (await requestMicrophone().catch(() => false));
+    mediaPermission.current = { camera, microphone };
+    return { ready: true, camera, microphone };
+  }, [requestCamera, requestMicrophone]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        let media = { ready: true, camera: true, microphone: true };
+        // Ask before creating a new broadcast. A denied permission must not
+        // leave an orphaned server-side live while the prompt is on screen.
+        if (id === 'new') {
+          media = await requestHostMedia();
+        }
+
+        if (cancelled) return;
+
         const g =
           id === 'new'
             ? await startLive({ chatId: chat, channelId: channel, title })
             : await joinLive(id!);
-        if (!cancelled) setGrant(g);
+
+        // A host returning to an existing room still needs the same honest
+        // media state; viewers never receive either permission prompt.
+        if (g.host && id !== 'new') {
+          media = await requestHostMedia();
+        }
+
+        if (cancelled) {
+          void (g.host ? endLive(g.live.id) : leaveLive(g.live.id)).catch(() => {});
+          return;
+        }
+        setHostMedia(media);
+        setGrant(g);
+        // The host is excluded from live.started announcements. Refreshing
+        // here makes the Stories rail truthful immediately after starting.
+        void refreshRunningLives();
       } catch (err) {
         if (cancelled) return;
         // "Already live" is not a failure the person can do anything about by
@@ -78,7 +125,14 @@ export default function LiveScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, chat, channel, title]);
+  }, [id, chat, channel, title, requestHostMedia]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      setBackgrounded(state !== 'active');
+    });
+    return () => subscription.remove();
+  }, []);
 
   // The audio session has to be running before the room connects, or the first
   // seconds arrive with nowhere to play.
@@ -126,12 +180,19 @@ export default function LiveScreen() {
       // The host publishes; the audience does not ask for a microphone it is
       // not allowed to use. Asking anyway would put a permission prompt in
       // front of someone who only wants to watch.
-      audio={grant.host}
-      video={grant.host}
+      audio={grant.host && hostMedia.microphone}
+      video={grant.host && hostMedia.camera}
       options={{ adaptiveStream: true, dynacast: true }}
-      onError={() => setFailure(t('live.failed'))}
+      onConnected={() => setConnectionNotice(null)}
+      onDisconnected={() => setConnectionNotice(t('live.reconnecting'))}
+      onError={() => setConnectionNotice(t('live.reconnecting'))}
     >
-      <Stage grant={grant} />
+      <Stage
+        grant={grant}
+        hostMedia={hostMedia}
+        connectionNotice={connectionNotice}
+        backgrounded={backgrounded}
+      />
     </LiveKitRoom>
   );
 }
@@ -142,7 +203,17 @@ export default function LiveScreen() {
  * Split out because the LiveKit hooks only work under the provider — the outer
  * component cannot see participants or tracks at all.
  */
-function Stage({ grant }: { grant: LiveGrant }) {
+function Stage({
+  grant,
+  hostMedia,
+  connectionNotice,
+  backgrounded,
+}: {
+  grant: LiveGrant;
+  hostMedia: { ready: boolean; camera: boolean; microphone: boolean };
+  connectionNotice: string | null;
+  backgrounded: boolean;
+}) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const participants = useParticipants();
   const liveId = grant.live.id;
@@ -196,7 +267,9 @@ function Stage({ grant }: { grant: LiveGrant }) {
         text: t('live.end_confirm'),
         style: 'destructive',
         onPress: () => {
-          void endLive(liveId).catch(() => {});
+          void endLive(liveId)
+            .then(() => refreshRunningLives())
+            .catch(() => {});
           router.back();
         },
       },
@@ -254,6 +327,31 @@ function Stage({ grant }: { grant: LiveGrant }) {
           <Ionicons name="information-circle-outline" size={13} color="rgba(255,255,255,0.55)" />
           <Text style={styles.noticeText}>{t('live.not_e2ee')}</Text>
         </View>
+
+        {backgrounded ? (
+          <View style={styles.runtimeNotice}>
+            <Ionicons name="phone-portrait-outline" size={14} color="rgba(255,255,255,0.7)" />
+            <Text style={styles.noticeText}>{t('live.backgrounded')}</Text>
+          </View>
+        ) : connectionNotice ? (
+          <View style={styles.runtimeNotice}>
+            <Ionicons name="cloud-offline-outline" size={14} color="#FBBF24" />
+            <Text style={styles.noticeText}>{connectionNotice}</Text>
+          </View>
+        ) : null}
+
+        {grant.host && (!hostMedia.camera || !hostMedia.microphone) ? (
+          <View style={styles.runtimeNotice}>
+            <Ionicons name="lock-closed-outline" size={14} color="rgba(255,255,255,0.7)" />
+            <Text style={styles.noticeText}>
+              {!hostMedia.camera && !hostMedia.microphone
+                ? `${t('live.camera_denied')} ${t('live.microphone_denied')}`
+                : !hostMedia.camera
+                  ? t('live.camera_denied')
+                  : t('live.microphone_denied')}
+            </Text>
+          </View>
+        ) : null}
 
         {grant.host ? (
           <View style={styles.controls}>
@@ -357,6 +455,7 @@ const styles = StyleSheet.create({
   hostName: { ...Typography.h3, color: '#FFF' },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   noticeText: { ...Typography.micro, color: 'rgba(255,255,255,0.55)', flex: 1 },
+  runtimeNotice: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 
   controls: {
     flexDirection: 'row',
