@@ -10,7 +10,7 @@ import (
 )
 
 type Controller struct {
-	svc         *Service
+	svc           *Service
 	onboardingSvc *OnboardingService
 }
 
