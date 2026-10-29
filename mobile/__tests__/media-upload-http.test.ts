@@ -4,8 +4,12 @@ let encryptedBytes: Uint8Array | null = null;
 mock.module('expo-crypto', () => ({
   getRandomBytes: (length: number) => crypto.getRandomValues(new Uint8Array(length)),
 }));
+// Complete, not just the getter: bun shares module mocks across test files in
+// one run, and a partial mock leaves other files without setItemAsync.
 mock.module('expo-secure-store', () => ({
   getItemAsync: async () => 'access-token-for-test',
+  setItemAsync: async () => {},
+  deleteItemAsync: async () => {},
 }));
 mock.module('../data/file-bytes', () => ({
   readFileBytes: async () => new TextEncoder().encode('private camera bytes'),
