@@ -884,6 +884,7 @@ export default {
     drop_e2ee_confirm: 'Add anyway',
     camera_failed_title: 'Camera unavailable',
     camera_failed_body: 'The camera could not be turned on for this call.',
+    no_camera_body: 'This device has no camera, so you are joining without video.',
     camera_permission: 'ZwoSocial needs camera access to turn on video. Grant it in your phone settings.',
     someone: 'Someone',
     incoming_voice: 'Incoming call',
