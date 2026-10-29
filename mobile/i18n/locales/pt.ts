@@ -843,6 +843,7 @@ export default {
     end_title: 'Terminar a emissão?',
     end_body: 'Quem está a ver sai.',
     end_confirm: 'Terminar',
+    end_failed: 'A emissão continua activa. Verifica a ligação e tenta outra vez.',
     mic_failed: 'Microfone indisponível',
     not_e2ee: 'Uma emissão não é cifrada ponta a ponta — o servidor retransmite-a.',
     go_live: 'Ir para direto',
