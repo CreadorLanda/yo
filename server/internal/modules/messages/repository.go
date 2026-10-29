@@ -702,7 +702,8 @@ func (r *Repository) NonGhostParticipantIDs(ctx context.Context, chatID uuid.UUI
 		SELECT cp.user_id
 		FROM chat_participants cp
 		JOIN users u ON u.id = cp.user_id
-		WHERE cp.chat_id = $1 AND NOT u.ghost_mode
+		WHERE cp.chat_id = $1
+		  AND NOT (u.ghost_mode AND u.ghost_mode_expires_at > NOW())
 	`, chatID)
 	if err != nil {
 		return nil, err

@@ -595,11 +595,33 @@ func (s *Service) SetReceipts(ctx context.Context, chatID, userID uuid.UUID, req
 	//
 	// Groups are exempt because a group read receipt is about a room rather
 	// than about you, and hiding one person's would make the rest wrong.
+	chat, err := s.repo.ChatForUser(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	isDirect := chat.Type == ChatDirect
 	if req.Status == ReceiptRead {
-		if chat, err := s.repo.ChatForUser(ctx, chatID, userID); err == nil && chat.Type == ChatDirect {
-			if u, err := s.users.ByID(ctx, userID); err == nil && (!u.ReadReceipts || u.GhostMode) {
+		if isDirect {
+			u, err := s.users.ByID(ctx, userID)
+			if err != nil {
+				return err
+			}
+			if !u.ReadReceipts || u.GhostMode {
 				req.Status = ReceiptDelivered
 			}
+		}
+	}
+	var receiptRecipients []uuid.UUID
+	if s.hub != nil {
+		if isDirect {
+			// Ghost mode is reciprocal for read receipts too: a ghost participant
+			// must not receive the live receipt event emitted by another participant.
+			receiptRecipients, err = s.repo.NonGhostParticipantIDs(ctx, chatID)
+		} else {
+			receiptRecipients, err = s.repo.ParticipantIDs(ctx, chatID)
+		}
+		if err != nil {
+			return err
 		}
 	}
 	ids, err := s.repo.MessageIDsInChat(ctx, chatID, req.MessageIDs)
@@ -622,11 +644,13 @@ func (s *Service) SetReceipts(ctx context.Context, chatID, userID uuid.UUID, req
 		if id > maxID {
 			maxID = id
 		}
-		s.broadcast(ctx, chatID, "receipt", Receipt{
-			MessageID: id,
-			UserID:    userID,
-			Status:    req.Status,
-		})
+		if len(receiptRecipients) > 0 {
+			s.hub.PublishJSON(receiptRecipients, "receipt", chatID.String(), Receipt{
+				MessageID: id,
+				UserID:    userID,
+				Status:    req.Status,
+			})
+		}
 	}
 	if req.Status == ReceiptRead && maxID > 0 {
 		_ = s.repo.SetLastRead(ctx, chatID, userID, maxID)

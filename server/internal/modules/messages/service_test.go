@@ -60,6 +60,21 @@ func newTestService(pool *pgxpool.Pool) *Service {
 		WithBlocks(blocks.NewRepo(pool))
 }
 
+type recordedEvent struct {
+	recipients []uuid.UUID
+	typ        string
+}
+
+type recordingBroadcaster struct {
+	events []recordedEvent
+}
+
+func (b *recordingBroadcaster) PublishJSON(userIDs []uuid.UUID, typ, _ string, _ any) {
+	b.events = append(b.events, recordedEvent{recipients: append([]uuid.UUID(nil), userIDs...), typ: typ})
+}
+
+func (b *recordingBroadcaster) Online(uuid.UUID) bool { return true }
+
 // TestDirectChatFriendRequestFlow exercises the whole pending → accept
 // lifecycle: a fresh direct chat is a "friend request" that caps the
 // requester at one message until the recipient accepts, after which the
@@ -1149,6 +1164,8 @@ func TestGhostModeIsReciprocal(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
 	svc := newTestService(pool)
+	hub := &recordingBroadcaster{}
+	svc.hub = hub
 	usersRepo := users.NewRepository(pool)
 
 	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
@@ -1193,8 +1210,7 @@ func TestGhostModeIsReciprocal(t *testing.T) {
 
 	// Alice goes ghost. Note she never touched read_receipts — the wider
 	// switch has to cover the narrower one on its own.
-	on := true
-	if _, err := usersRepo.Patch(ctx, alice, users.PatchRequest{GhostMode: &on}); err != nil {
+	if _, err := users.NewService(usersRepo).ActivateGhostMode(ctx, alice); err != nil {
 		t.Fatalf("patch alice: %v", err)
 	}
 
@@ -1203,6 +1219,22 @@ func TestGhostModeIsReciprocal(t *testing.T) {
 	}
 	if got := readBy(bob, sent.ID); got != 1 {
 		t.Fatalf("bob lost a receipt he did not opt out of: %d", got)
+	}
+	hub.events = nil
+	if err := svc.SetReceipts(ctx, chat.ID, bob, ReceiptRequest{
+		MessageIDs: []int64{sent.ID}, Status: ReceiptRead,
+	}); err != nil {
+		t.Fatalf("SetReceipts(bob after ghost): %v", err)
+	}
+	for _, event := range hub.events {
+		if event.typ != "receipt" {
+			continue
+		}
+		for _, recipient := range event.recipients {
+			if recipient == alice {
+				t.Fatal("ghost alice received a live receipt event")
+			}
+		}
 	}
 
 	// And her own reads stop being recorded as reads.
@@ -1235,5 +1267,21 @@ func TestGhostModeIsReciprocal(t *testing.T) {
 	}
 	if len(ids) != 1 || ids[0] != bob {
 		t.Fatalf("typing recipients wrong: %v", ids)
+	}
+
+	// Expiry must restore delivery without requiring a client-side toggle.
+	if _, err := pool.Exec(ctx, `
+		UPDATE users
+		SET ghost_mode_expires_at = NOW() - INTERVAL '1 second'
+		WHERE id = $1
+	`, alice); err != nil {
+		t.Fatalf("expire alice ghost session: %v", err)
+	}
+	ids, err = svc.repo.NonGhostParticipantIDs(ctx, chat.ID)
+	if err != nil {
+		t.Fatalf("NonGhostParticipantIDs after expiry: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expired ghost recipients = %v, want both participants", ids)
 	}
 }
