@@ -46,6 +46,17 @@ func (c *Controller) LoadOnboardingPreferences(ctx *gin.Context) {
 	})
 }
 
+func (c *Controller) PatchMe(ctx *gin.Context) {
+	var req PatchRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+	u, err := c.svc.Patch(ctx.Request.Context(), middleware.UserIDFrom(ctx), req)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
 func (c *Controller) GetMe(ctx *gin.Context) {
 	u, err := c.svc.Me(ctx.Request.Context(), middleware.UserIDFrom(ctx))
 	if err != nil {
