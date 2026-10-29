@@ -551,6 +551,8 @@ export type ChannelPost = {
   text: string;
   mediaUri?: string;
   timestamp: string;
+  /** Server timestamp used as the first key when replaying channel events. */
+  createdAt?: string;
   views: number;
   reactions?: ChannelReaction[];
   myReaction?: string | null;

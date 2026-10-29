@@ -146,6 +146,7 @@ export function mapPostDTO(p: ChannelPostDTO): ChannelPost {
     text: p.text,
     mediaUri: p.media_url ? mediaFileURL(p.media_url) : undefined,
     timestamp: relative(p.created_at),
+    createdAt: p.created_at,
     views: p.views,
     reactions,
     myReaction: p.my_emoji || null,

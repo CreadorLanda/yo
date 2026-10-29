@@ -9,6 +9,84 @@ import (
 	"github.com/google/uuid"
 )
 
+type recordingBroadcaster struct {
+	users   []uuid.UUID
+	typ     string
+	chatID  string
+	payload any
+}
+
+func (r *recordingBroadcaster) PublishJSON(users []uuid.UUID, typ, chatID string, payload any) {
+	r.users = append([]uuid.UUID(nil), users...)
+	r.typ, r.chatID, r.payload = typ, chatID, payload
+}
+
+func TestGamePostBroadcastsOnlyAfterPersistence(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	broadcast := &recordingBroadcaster{}
+	svc := NewService(NewRepository(pool)).WithBroadcaster(broadcast)
+	owner := createUser(t, pool, "broadcast_owner_"+uuid.NewString()[:8])
+	viewer := createUser(t, pool, "broadcast_viewer_"+uuid.NewString()[:8])
+	ch, err := svc.Create(ctx, owner, CreateChannelRequest{
+		Name: "Broadcast channel", Handle: "broadcast_" + uuid.NewString()[:8], WhoCanPost: PostAdmins,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	join(t, svc, ch.ID, viewer)
+	payload, _ := json.Marshal(map[string]any{
+		"kind": "game", "game": "truth-or-dare", "action": "start",
+		"seed": "stable-seed", "maxRounds": 5, "playerId": owner.String(),
+	})
+	post, err := svc.CreatePost(ctx, ch.ID, owner, CreatePostRequest{PostType: PostGame, GamePayload: payload})
+	if err != nil {
+		t.Fatalf("CreatePost: %v", err)
+	}
+	if broadcast.typ != "channel.post.new" || broadcast.chatID != ch.ID.String() {
+		t.Fatalf("unexpected event: type=%q channel=%q", broadcast.typ, broadcast.chatID)
+	}
+	hasOwner, hasViewer := false, false
+	for _, id := range broadcast.users {
+		hasOwner = hasOwner || id == owner
+		hasViewer = hasViewer || id == viewer
+	}
+	if len(broadcast.users) != 2 || !hasOwner || !hasViewer {
+		t.Fatalf("event audience does not include owner and viewer: %+v", broadcast.users)
+	}
+	eventPost, ok := broadcast.payload.(Post)
+	if !ok || eventPost.ID != post.ID || eventPost.PostType != PostGame {
+		t.Fatalf("event payload was not the persisted post: %#v", broadcast.payload)
+	}
+}
+
+func TestGamePostsAreImmutable(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := NewService(NewRepository(pool))
+	owner := createUser(t, pool, "immutable_owner_"+uuid.NewString()[:8])
+	ch, err := svc.Create(ctx, owner, CreateChannelRequest{
+		Name: "Immutable games", Handle: "immutable_" + uuid.NewString()[:8], WhoCanPost: PostAdmins,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"kind": "game", "game": "truth-or-dare", "action": "start",
+		"seed": "immutable-seed", "maxRounds": 5, "playerId": owner.String(),
+	})
+	post, err := svc.CreatePost(ctx, ch.ID, owner, CreatePostRequest{PostType: PostGame, GamePayload: payload})
+	if err != nil {
+		t.Fatalf("CreatePost: %v", err)
+	}
+	if err := svc.EditPost(ctx, post.ID, owner, "changed"); !errors.Is(err, ErrImmutableGame) {
+		t.Fatalf("EditPost: got %v, want ErrImmutableGame", err)
+	}
+	if err := svc.DeletePost(ctx, post.ID, owner); !errors.Is(err, ErrImmutableGame) {
+		t.Fatalf("DeletePost: got %v, want ErrImmutableGame", err)
+	}
+}
+
 func TestGamePostUsesChannelPostPermission(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()

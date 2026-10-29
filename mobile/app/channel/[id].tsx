@@ -29,9 +29,9 @@ import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { Palette, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { CachedImage } from '@/components/ui/cached-image';
 import { appAlert, appPrompt } from '@/data/dialog-store';
-import { deleteChannelPost, editChannelPost } from '@/data/api/channels';
+import { deleteChannelPost, editChannelPost, type ChannelPostDTO } from '@/data/api/channels';
 import { ForwardPicker } from '@/components/chat/forward-picker';
-import { sendMessage as apiSendMessage } from '@/data/api/messages';
+import { connectRealtime, sendMessage as apiSendMessage } from '@/data/api/messages';
 import { refreshChats, useChats } from '@/data/chat-store';
 import { getGroup, type GroupMemberDTO } from '@/data/api/groups';
 import {
@@ -55,12 +55,16 @@ import {
   addCommentToPost,
   canManage,
   canPublish,
+  comparePostsNewestFirst,
   loadPostComments,
+  mergeChannelPost,
+  publishChannelPost,
   refreshChannel,
   setPostReaction,
   toggleFollow,
   useChannel,
   useIsFollowing,
+  type AddPostInput,
 } from '@/data/channel-store';
 import { type ChannelComment, type ChannelPost } from '@/data/mock';
 import { newSeed, parseGamePayload, type GameMessagePayload } from '@/data/game';
@@ -156,17 +160,54 @@ export default function ChannelScreen() {
     void refreshRunningLives();
   }, [id]);
 
+  // Channel posts use the same authenticated user-scoped socket as chats.
+  // The server emits only after the insert commits, so every participant
+  // replays the same append-only game stream instead of relying on a reload.
+  useEffect(() => {
+    if (!id || !meId) return;
+    let closed = false;
+    let socket: WebSocket | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      connectRealtime((event) => {
+        if (event.type !== 'channel.post.new' || event.chat_id !== id || !event.payload) return;
+        mergeChannelPost(id, event.payload as ChannelPostDTO);
+      }, () => {
+        if (!closed) retry = setTimeout(connect, 2500);
+      }).then((next) => {
+        if (closed) {
+          next?.close();
+          return;
+        }
+        socket = next;
+      }).catch(() => {
+        if (!closed) retry = setTimeout(connect, 2500);
+      });
+    };
+    connect();
+    return () => {
+      closed = true;
+      if (retry) clearTimeout(retry);
+      socket?.close();
+    };
+  }, [id, meId]);
+
   useEffect(() => {
     setPosts(channel?.posts ?? []);
   }, [channel, channel?.posts]);
 
+  const chronologicalPosts = useMemo(
+    () => [...posts].sort(comparePostsNewestFirst).reverse(),
+    [posts],
+  );
   const gamePayloads = useMemo<GameMessagePayload[]>(
     () =>
-      posts.slice().reverse().flatMap((post) => {
+      chronologicalPosts.flatMap((post) => {
         const gameEvent = parseGamePayload(post.gamePayload);
         return gameEvent ? [gameEvent] : [];
       }),
-    [posts],
+    [chronologicalPosts],
   );
   const gamePlayers = useMemo<GamePlayer[]>(() => {
     const ids = new Set<string>();
@@ -199,8 +240,8 @@ export default function ChannelScreen() {
   // The store and the API both work newest-first; only the view is
   // chronological, so nothing else has to care about the direction.
   const orderedPosts = useMemo(
-    () => [...posts].reverse().filter((post) => post.type !== 'game' || post.gamePayload?.action === 'start'),
-    [posts],
+    () => chronologicalPosts.filter((post) => post.type !== 'game' || post.gamePayload?.action === 'start'),
+    [chronologicalPosts],
   );
   const listRef = useRef<FlatList<ChannelPost>>(null);
 
@@ -227,7 +268,7 @@ export default function ChannelScreen() {
    * Offering an action the server will refuse is worse than not offering it.
    */
   const canMutatePost = (post: ChannelPost) =>
-    (!!meId && post.authorId === meId) || manageOk;
+    post.type !== 'game' && ((!!meId && post.authorId === meId) || manageOk);
 
   const mutationFailed = () =>
     appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
@@ -1010,7 +1051,7 @@ export default function ChannelScreen() {
                     }
                   }
 
-                  const post = addChannelPost(channel.id, {
+                  const input: AddPostInput = {
                     text: postDraft.trim() || defaults[postKind] || t('channel_create.post_placeholder'),
                     type: postKind,
                     mediaUri,
@@ -1027,9 +1068,20 @@ export default function ChannelScreen() {
                             playerIds: [meId],
                           }
                         : undefined,
-                  });
-                  if (post) {
-                    setPosts((prev) => [post, ...prev]);
+                  };
+                  let post: ChannelPost | undefined;
+                  if (postKind === 'game') {
+                    try {
+                      await publishChannelPost(channel.id, input);
+                    } catch {
+                      mutationFailed();
+                      return;
+                    }
+                  } else {
+                    post = addChannelPost(channel.id, input);
+                  }
+                  if (post || postKind === 'game') {
+                    if (post) setPosts((prev) => [post, ...prev]);
                     setPostDraft('');
                     setPostKind('text');
                     setComposerOpen(false);
@@ -1552,12 +1604,12 @@ export default function ChannelScreen() {
           canPlay={publishOk}
           onSend={(payload) => {
             if (channel) {
-              addChannelPost(channel.id, {
+              void publishChannelPost(channel.id, {
                 text: '',
                 type: 'game',
                 gameKind: 'truth_or_dare',
                 gamePayload: payload,
-              });
+              }).catch(mutationFailed);
             }
           }}
           chat={[]}

@@ -16,6 +16,7 @@ import {
   unfollowChannel as apiUnfollow,
   type ChannelCommentDTO,
   type ChannelDTO,
+  type ChannelPostDTO,
 } from '@/data/api/channels';
 import {
   type Channel,
@@ -24,6 +25,9 @@ import {
   type ChannelPost,
 } from './mock';
 import type { GameMessagePayload } from '@/data/game';
+import { comparePostsNewestFirst } from './channel-post-order';
+
+export { comparePostsNewestFirst } from './channel-post-order';
 
 function isUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -165,6 +169,19 @@ export async function refreshChannel(id: string): Promise<ManagedChannel | undef
   } catch {
     return getChannel(id);
   }
+}
+
+/** Merge a server-announced post without a second fetch. */
+export function mergeChannelPost(channelId: string, dto: ChannelPostDTO): void {
+  if (dto.channel_id !== channelId) return;
+  const mapped = mapPostDTO(dto);
+  channels = channels.map((c) => {
+    if (c.id !== channelId) return c;
+    const posts = [mapped, ...c.posts.filter((p) => p.id !== mapped.id)];
+    posts.sort(comparePostsNewestFirst);
+    return { ...c, posts };
+  });
+  emit();
 }
 
 function mergeDTO(dto: ChannelDTO) {
@@ -397,6 +414,27 @@ export type AddPostInput = {
   gameKind?: ChannelPost['gameKind'];
   gamePayload?: GameMessagePayload;
 };
+
+/** Publish an event without optimistic state; game events are append-only. */
+export async function publishChannelPost(
+  channelId: string,
+  input: AddPostInput,
+): Promise<ChannelPost> {
+  if (!isUUID(channelId)) throw new Error('channel_not_persisted');
+  let mediaUrl = input.mediaUri;
+  if (mediaUrl?.includes('/api/media/')) {
+    mediaUrl = mediaUrl.slice(mediaUrl.indexOf('/api/media/'));
+  }
+  const dto = await apiCreatePost(channelId, {
+    text: input.text.trim(),
+    post_type: input.type,
+    media_url: mediaUrl,
+    game_payload: input.gamePayload,
+  });
+  const mapped = mapPostDTO(dto);
+  mergeChannelPost(channelId, dto);
+  return mapped;
+}
 
 export function addChannelPost(
   channelId: string,

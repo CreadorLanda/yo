@@ -26,15 +26,28 @@ var (
 	ErrCommentsOff       = errors.New("comments_disabled")
 	ErrReactionsOff      = errors.New("reactions_disabled")
 	ErrInvalidGame       = errors.New("invalid_game_payload")
+	ErrImmutableGame     = errors.New("game_post_immutable")
 )
 
 var handleRe = regexp.MustCompile(`^[a-z0-9_]{2,24}$`)
 
 type Service struct {
-	repo *Repository
+	repo        *Repository
+	broadcaster Broadcaster
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
+
+// Broadcaster is deliberately small so channels does not depend on the
+// websocket implementation. The server wires its realtime hub here.
+type Broadcaster interface {
+	PublishJSON(userIDs []uuid.UUID, typ, chatID string, payload any)
+}
+
+func (s *Service) WithBroadcaster(b Broadcaster) *Service {
+	s.broadcaster = b
+	return s
+}
 
 func (s *Service) toChannel(c channelRow) Channel {
 	avatar, cover := "", ""
@@ -310,10 +323,24 @@ func (s *Service) CreatePost(ctx context.Context, channelID, user uuid.UUID, req
 	}
 	for _, p := range posts {
 		if p.ID == id {
+			s.announcePost(ctx, channelID, p)
 			return p, nil
 		}
 	}
-	return Post{ID: id, ChannelID: channelID, AuthorID: user, Text: text, PostType: ptype, MediaURL: req.MediaURL, GamePayload: req.GamePayload}, nil
+	p := Post{ID: id, ChannelID: channelID, AuthorID: user, Text: text, PostType: ptype, MediaURL: req.MediaURL, GamePayload: req.GamePayload}
+	s.announcePost(ctx, channelID, p)
+	return p, nil
+}
+
+func (s *Service) announcePost(ctx context.Context, channelID uuid.UUID, post Post) {
+	if s.broadcaster == nil {
+		return
+	}
+	users, err := s.repo.MemberIDs(ctx, channelID)
+	if err != nil || len(users) == 0 {
+		return
+	}
+	s.broadcaster.PublishJSON(users, "channel.post.new", channelID.String(), post)
 }
 
 // validateGamePayload keeps channel events append-only and attributable. The

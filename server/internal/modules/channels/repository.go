@@ -226,7 +226,7 @@ func (r *Repository) ListPosts(ctx context.Context, channelID, viewer uuid.UUID,
 		       COALESCE((SELECT r.emoji FROM channel_post_reactions r WHERE r.post_id = p.id AND r.user_id = $2), '')
 		FROM channel_posts p
 		WHERE p.channel_id = $1
-		ORDER BY p.created_at DESC
+		ORDER BY p.created_at DESC, p.id DESC
 		LIMIT $3
 	`, channelID, viewer, limit)
 	if err != nil {
