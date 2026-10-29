@@ -94,9 +94,17 @@ export function applyRealtimeEvent(type: string): void {
 /** Optimistically clear a chat's unread badge (called when opening it). */
 export function markChatRead(chatId: string): void {
   const i = chats.findIndex((c) => c.id === chatId);
-  if (i === -1 || chats[i].unread_count === 0) return;
-  chats[i] = { ...chats[i], unread_count: 0 };
-  emit();
+  if (i !== -1 && chats[i].unread_count !== 0) {
+    chats[i] = { ...chats[i], unread_count: 0 };
+    emit();
+  }
+  const j = archived.findIndex((c) => c.id === chatId);
+  if (j !== -1 && archived[j].unread_count !== 0) {
+    archived[j] = { ...archived[j], unread_count: 0 };
+    // ensure emit updates identity
+    archived = [...archived];
+    emit();
+  }
 }
 
 export async function setChatSettings(chatId: string, settings: ChatSettings): Promise<void> {
@@ -183,7 +191,7 @@ export async function removeChat(chatId: string): Promise<void> {
  * fall back to fetching, or every drain tick would cost a request.
  */
 export function getCachedChat(chatId: string): ChatDTO | undefined {
-  return chats.find((c) => c.id === chatId);
+  return chats.find((c) => c.id === chatId) ?? archived.find((c) => c.id === chatId);
 }
 
 /** Make a newly opened chat available before the next list refresh. */
