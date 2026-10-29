@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	platformreactions "github.com/CreadorLanda/zwosocial/server/internal/platform/reactions"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -17,7 +18,6 @@ var (
 	ErrInvalidVis   = errors.New("invalid_visibility")
 	ErrNeedMedia    = errors.New("media_required")
 	ErrEmptyCaption = errors.New("empty_caption")
-	ErrInvalidEmoji = errors.New("invalid_emoji")
 )
 
 type Service struct {
@@ -257,6 +257,7 @@ func (s *Service) ReactionCatalogue() ReactionCatalogue {
 	return ReactionCatalogue{
 		Standard: append([]string(nil), StandardReactions...),
 		Extended: append([]string(nil), ExtendedReactions...),
+		All:      platformreactions.Catalogue(),
 	}
 }
 

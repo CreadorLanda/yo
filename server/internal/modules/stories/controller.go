@@ -126,7 +126,7 @@ func writeErr(ctx *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidKind), errors.Is(err, ErrInvalidVis),
 		errors.Is(err, ErrNeedMedia), errors.Is(err, ErrEmptyCaption),
 		errors.Is(err, ErrEmptyBody), errors.Is(err, ErrOwnStory),
-		errors.Is(err, ErrInvalidEmoji),
+		errors.Is(err, ErrInvalidEmoji), errors.Is(err, ErrTooManyReactions),
 		errors.Is(err, ErrCommentsDisabled), errors.Is(err, ErrAnonNotAllowed):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
@@ -298,6 +298,40 @@ func (c *Controller) DeleteComment(ctx *gin.Context) {
 		return
 	}
 	if err := c.svc.DeleteComment(ctx.Request.Context(), id, middleware.UserIDFrom(ctx)); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
+func (c *Controller) PostCommentReact(ctx *gin.Context) {
+	var id int64
+	if _, err := fmt.Sscanf(ctx.Param("cid"), "%d", &id); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	var req ReactRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_payload"})
+		return
+	}
+	if req.Reactions == nil {
+		req.Reactions = &[]string{req.Emoji}
+	}
+	if err := c.svc.ReactComment(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), *req.Reactions, false); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
+func (c *Controller) DeleteCommentReact(ctx *gin.Context) {
+	var id int64
+	if _, err := fmt.Sscanf(ctx.Param("cid"), "%d", &id); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	if err := c.svc.ReactComment(ctx.Request.Context(), id, middleware.UserIDFrom(ctx), nil, true); err != nil {
 		writeErr(ctx, err)
 		return
 	}

@@ -454,7 +454,8 @@ func writeErr(ctx *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidReceipt), errors.Is(err, ErrInvalidReport),
 		errors.Is(err, ErrInvalidTTL), errors.Is(err, ErrUnencryptedMessage),
 		errors.Is(err, ErrInvalidMessageType), errors.Is(err, ErrInvalidEnvelopeChat),
-		errors.Is(err, ErrInvalidMediaReference), errors.Is(err, ErrInvalidPrivacy):
+		errors.Is(err, ErrInvalidMediaReference), errors.Is(err, ErrInvalidEmoji),
+		errors.Is(err, ErrTooManyReactions), errors.Is(err, ErrInvalidPrivacy):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrForwardingDisabled), errors.Is(err, ErrMessagingRestricted),
 		errors.Is(err, ErrMessageTypeNotAllowed):

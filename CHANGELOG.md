@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista
 
+#### Reacções
+- Catálogo Unicode pesquisável para mensagens, stories, posts e comentários, com tons de pele e sequências actuais
+- Limite uniforme de duas reacções por pessoa e item, aplicado no servidor e no cliente; formatos antigos de uma reacção continuam válidos
+- Reacções persistentes adicionadas a comentários de stories e canais
 #### Privacidade das conversas
 - Controlos de privacidade avançada por conversa: bloquear reencaminhamento, proteger capturas de ecrã quando a plataforma suporta, confirmar abertura de links, restringir mensagens/chamadas a administradores em grupos e limitar tipos de mensagem. As regras são persistidas e aplicadas no servidor; a proteção de captura é explicitamente best-effort no Android e não é prometida no iOS/web.
 #### Privacidade

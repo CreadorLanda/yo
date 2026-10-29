@@ -100,7 +100,7 @@ export function reactStory(id: string, emojis: readonly string[]) {
  * server rather than to render from.
  */
 export function storyReactionCatalogue() {
-  return api.get<{ standard: string[]; extended: string[] }>('/api/stories/reactions');
+	return api.get<{ standard: string[]; extended: string[]; all?: string[] }>('/api/stories/reactions');
 }
 
 export function deleteStory(id: string) {
@@ -244,6 +244,8 @@ export type StoryCommentDTO = {
   /** True for your own, including your own anonymous ones. */
   is_mine: boolean;
   created_at: string;
+  reactions?: StoryReactionCount[];
+  my_reactions?: string[];
 };
 
 export function listComments(storyId: string) {
@@ -265,4 +267,8 @@ export function addComment(
 /** Own comment, or any comment on your own story. */
 export function deleteComment(commentId: number) {
   return api.del<void>(`/api/story-comments/${commentId}`);
+}
+
+export function setStoryCommentReactions(commentId: number, emojis: readonly string[]) {
+  return api.post<void>(`/api/story-comments/${commentId}/react`, { reactions: emojis });
 }

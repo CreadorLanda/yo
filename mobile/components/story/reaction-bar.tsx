@@ -9,14 +9,14 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-import { Text } from '@/components/ui/text';
+import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import {
-  ALL_REACTIONS,
   countOf,
   reactionBarEmojis,
   type StoryReactionCount,
 } from '@/data/story-reactions';
+import { searchEmojiCatalogue } from '@/data/reactions';
 import { t } from '@/i18n';
 
 /**
@@ -43,6 +43,7 @@ export function ReactionBar({
   onSheetOpenChange?: (open: boolean) => void;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [query, setQuery] = useState('');
 
   const openSheet = (open: boolean) => {
     setSheetOpen(open);
@@ -98,8 +99,17 @@ export function ReactionBar({
             {/* The sheet stays open on a tap: picking three emoji should not
                 cost three trips through it. */}
             <Text style={styles.sheetHint}>{t('stories.reactions_hint')}</Text>
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search emoji"
+              placeholderTextColor="rgba(255,255,255,0.45)"
+              style={styles.search}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
             <ScrollView contentContainerStyle={styles.grid}>
-              {ALL_REACTIONS.map((emoji) => (
+              {searchEmojiCatalogue(query).map(({ emoji }) => (
                 <ReactionChip
                   key={emoji}
                   emoji={emoji}
@@ -228,6 +238,14 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: 'rgba(255,255,255,0.6)',
     marginTop: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  search: {
+    height: 42,
+    borderRadius: Radii.md,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    color: '#FFF',
+    paddingHorizontal: Spacing.md,
     marginBottom: Spacing.md,
   },
   grid: {
