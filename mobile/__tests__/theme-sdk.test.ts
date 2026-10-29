@@ -59,3 +59,20 @@ test('formato desconhecido, versão futura e CSS inválido são rejeitados', () 
   });
   expect(invalid.ok).toBe(false);
 });
+
+test('o SDK rejeita estrutura, cores e referências externas inválidas', () => {
+  const invalid = serializeThemeDesign({
+    ...theme,
+    tokens: { light: { primary: 'url(https://evil.example/color)' } },
+    swatches: ['rgb(999, 0, 0)'],
+    layout: { bubbleRadius: 999 },
+    icons: { send: 'https://evil.example/send.png' },
+  });
+
+  expect(invalid.ok).toBe(false);
+  if (invalid.ok) return;
+  expect(invalid.errors.some((error) => error.includes('tokens.light.primary'))).toBe(true);
+  expect(invalid.errors.some((error) => error.includes('swatches'))).toBe(true);
+  expect(invalid.errors.some((error) => error.includes('bubbleRadius'))).toBe(true);
+  expect(invalid.errors.some((error) => error.includes('icons.send'))).toBe(true);
+});
