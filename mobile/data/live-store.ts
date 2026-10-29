@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
 import { runningLives, type Live } from '@/data/api/lives';
+import { getCurrentUser } from '@/data/auth-store';
+import { closeRoom, dismissLiveInvite, handleLiveRoomEvent } from '@/data/live-room';
 
 /**
  * What is on air, and how many people are watching.
@@ -85,6 +87,8 @@ export function liveFor(where: { channelId?: string; chatId?: string }): Live | 
 export function resetLives(): void {
   running = [];
   viewers.clear();
+  closeRoom();
+  dismissLiveInvite();
   emit();
 }
 
@@ -96,6 +100,9 @@ export function resetLives(): void {
  */
 export function handleLiveEvent(type: string, payload: unknown): boolean {
   const p = payload as Record<string, unknown> | null | undefined;
+
+  // What happens inside a live, and invitations into one, belong to the room.
+  if (handleLiveRoomEvent(getCurrentUser()?.id, type, payload)) return true;
 
   if (type === 'live.started') {
     const live = p?.live as Live | undefined;

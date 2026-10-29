@@ -829,6 +829,12 @@ export default {
     role_member: 'Member',
   },
   live: {
+    cohost_invite_title: '{{name}} wants to go live with you',
+    cohost_invite_body: 'A joint live: you both host and moderate it. If you choose not now, you can still join later.',
+    join: 'Join',
+    not_now: 'Not now',
+    watch_invite: '{{name}} invited you to a live',
+    watch: 'Watch',
     watching: '{count} watching',
     ended_already: 'This broadcast has ended',
     badge: 'LIVE',

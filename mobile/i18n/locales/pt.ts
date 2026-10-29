@@ -829,6 +829,12 @@ export default {
     role_member: 'Membro',
   },
   live: {
+    cohost_invite_title: '{{name}} quer fazer uma Live contigo',
+    cohost_invite_body: 'Uma Live conjunta: vocês os dois apresentam e moderam. Se escolheres agora não, podes entrar mais tarde.',
+    join: 'Entrar',
+    not_now: 'Agora não',
+    watch_invite: '{{name}} convidou-te para uma Live',
+    watch: 'Ver',
     watching: '{count} a ver',
     ended_already: 'Esta emissão terminou',
     badge: 'AO VIVO',
