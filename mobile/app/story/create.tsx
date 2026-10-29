@@ -11,7 +11,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
   Modal,
@@ -41,8 +41,6 @@ import type { FilterId } from '@/data/photo-filters';
 import { FilteredPhoto } from '@/components/media/filtered-photo';
 import { FilterStrip } from '@/components/media/filter-strip';
 import { FilteredCamera, type FilteredCameraHandle } from '@/components/media/filtered-camera';
-import { bootstrapChannels, canPublish, useChannels } from '@/data/channel-store';
-import { refreshChats, useChats } from '@/data/chat-store';
 import type { StoryVisibility } from '@/data/mock';
 import { useProfile } from '@/data/profile-store';
 import { queueStoryPublish } from '@/data/story-store';
@@ -69,18 +67,12 @@ const BOOMERANG_SECONDS = 3;
 const HANDSFREE_SECONDS = 15;
 type EditTool = 'text' | 'sticker' | 'draw' | 'music' | 'filter' | null;
 type StickerKind = 'poll' | 'question' | 'mention' | null;
-type LiveAudience = {
-  kind: 'chat' | 'channel';
-  id: string;
-  label: string;
-  hint: string;
-};
 
 const { width: W, height: H } = Dimensions.get('window');
 // The brand violet leads; the rest are the user's own choices, so blue
 // stays available as one of them rather than as the product's colour.
 const ACCENTS = ['#4F46E5', '#111827', '#10B981', '#FF6FB5', '#F59E0B', '#2D5BFF', '#EF4444', '#FFFFFF'];
-/** All creatable modes. Live uses the existing broadcast room. */
+/** All creatable modes. Live opens its own setup screen. */
 const CAPTURE_MODES: CaptureMode[] = ['type', 'normal', 'boomerang', 'handsfree', 'audio', 'live'];
 
 /**
@@ -88,10 +80,6 @@ const CAPTURE_MODES: CaptureMode[] = ['type', 'normal', 'boomerang', 'handsfree'
  * see StoryTTLMinHours / StoryTTLMaxHours in the stories module.
  */
 const TTL_CHOICES = [1, 3, 6, 12, 24, 36, 48, 72] as const;
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-}
 
 export default function CreateStoryScreen() {
   // Prefill from a forward. The composer is the same screen either way — a
@@ -105,8 +93,6 @@ export default function CreateStoryScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const { chats } = useChats();
-  const channels = useChannels();
 
   // A forward arrives with its content already chosen, so it starts in the
   // editor. Opening the camera would ask for something the person just
@@ -142,7 +128,6 @@ export default function CreateStoryScreen() {
   const audioStart = useRef(0);
   const publishLock = useRef(false);
   const [filter, setFilter] = useState<FilterId>('none');
-  const [liveAudience, setLiveAudience] = useState<LiveAudience | null>(null);
 
   /**
    * The camera itself.
@@ -167,31 +152,6 @@ export default function CreateStoryScreen() {
    */
   const [noCamera, setNoCamera] = useState(false);
   const [zoom, setZoom] = useState(0);
-
-  const liveAudiences = useMemo<LiveAudience[]>(
-    () => [
-      ...chats
-        .filter((chat) => chat.status !== 'blocked' && chat.status !== 'pending')
-        .map((chat) => ({
-          kind: 'chat' as const,
-          id: chat.id,
-          label:
-            chat.title ||
-            chat.peer_username ||
-            (chat.type === 'direct' ? t('stories.live_direct') : t('stories.live_group')),
-          hint: chat.type === 'direct' ? t('stories.live_direct_hint') : t('stories.live_group_hint'),
-        })),
-      ...channels
-        .filter((channel) => canPublish(channel) && isUuid(channel.id))
-        .map((channel) => ({
-          kind: 'channel' as const,
-          id: channel.id,
-          label: channel.name,
-          hint: channel.handle || t('stories.live_channel_hint'),
-        })),
-    ],
-    [chats, channels],
-  );
 
   const shutterScale = useSharedValue(1);
   const shutterStyle = useAnimatedStyle(() => ({ transform: [{ scale: shutterScale.value }] }));
@@ -233,22 +193,13 @@ export default function CreateStoryScreen() {
     }
   }, [captureMode, phase]);
 
-  useEffect(() => {
-    if (captureMode !== 'live') return;
-    void refreshChats();
-    void bootstrapChannels();
-  }, [captureMode]);
-
-  useEffect(() => {
-    if (captureMode !== 'live') return;
-    setLiveAudience((current) =>
-      current && liveAudiences.some((item) => item.kind === current.kind && item.id === current.id)
-        ? current
-        : liveAudiences[0] ?? null,
-    );
-  }, [captureMode, liveAudiences]);
-
   const selectCaptureMode = (mode: CaptureMode) => {
+    // Going live has its own screen, where the audience is chosen. It is a
+    // mode in the carousel because that is where people look for it.
+    if (mode === 'live') {
+      router.push(caption.trim() ? `/live/setup?title=${encodeURIComponent(caption.trim())}` : '/live/setup');
+      return;
+    }
     setCaptureMode(mode);
   };
 
@@ -459,11 +410,6 @@ export default function CreateStoryScreen() {
   const publish = async () => {
     if (publishLock.current) return;
 
-    if (captureMode === 'live') {
-      startStoryLive();
-      return;
-    }
-
     let kind: 'image' | 'video' | 'text' | 'audio' | 'poll' | 'question' = 'text';
 
     if (sticker === 'poll') {
@@ -532,37 +478,8 @@ export default function CreateStoryScreen() {
     router.back();
   };
 
-  const startStoryLive = () => {
-    if (!liveAudience) {
-      appAlert(t('stories.go_live'), t('stories.live_choose_audience'));
-      return;
-    }
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const target = `${liveAudience.kind}=${encodeURIComponent(liveAudience.id)}`;
-    const liveTitle = caption.trim();
-    const title = liveTitle ? `&title=${encodeURIComponent(liveTitle)}` : '';
-    router.push(`/live/new?${target}${title}`);
-  };
-
   // ── CAPTURE ──────────────────────────────────────────────────────────────
   if (phase === 'capture') {
-    if (captureMode === 'live') {
-      return (
-        <LiveSetup
-          profileAvatar={profile.avatarUri}
-          title={caption}
-          onTitleChange={setCaption}
-          audiences={liveAudiences}
-          selected={liveAudience}
-          onSelect={setLiveAudience}
-          onBack={() => setCaptureMode('normal')}
-          onClose={() => router.back()}
-          onStart={startStoryLive}
-        />
-      );
-    }
-
     return (
       <View style={styles.root}>
         <StatusBar style="light" />
@@ -1119,129 +1036,6 @@ function Waveform({ live }: { live?: boolean }) {
           ]}
         />
       ))}
-    </View>
-  );
-}
-
-function LiveSetup({
-  profileAvatar,
-  title,
-  onTitleChange,
-  audiences,
-  selected,
-  onSelect,
-  onBack,
-  onClose,
-  onStart,
-}: {
-  profileAvatar?: string;
-  title: string;
-  onTitleChange: (value: string) => void;
-  audiences: LiveAudience[];
-  selected: LiveAudience | null;
-  onSelect: (audience: LiveAudience) => void;
-  onBack: () => void;
-  onClose: () => void;
-  onStart: () => void;
-}) {
-  return (
-    <View style={styles.root}>
-      <StatusBar style="light" />
-      <View style={styles.liveSetupBg} />
-      <View style={styles.livePulseRing} />
-      <SafeAreaView style={styles.captureChrome} edges={['top']}>
-        <View style={[styles.topBar, { paddingTop: Spacing.xs }]}>
-          <RoundBtn onPress={onClose} icon="close" />
-          <RoundBtn onPress={onBack} icon="arrow-back" />
-        </View>
-      </SafeAreaView>
-
-      <ScrollView
-        contentContainerStyle={styles.liveSetupScroll}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.liveSetupCard}>
-          <View style={styles.liveBadgeBig}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveBadgeBigText}>{t('stories.live_now')}</Text>
-          </View>
-          {profileAvatar ? <Image source={{ uri: profileAvatar }} style={styles.liveAvatar} /> : null}
-          <Text style={styles.liveTitle}>{t('stories.live_starting')}</Text>
-          <Text style={styles.liveHint}>{t('stories.live_hint')}</Text>
-          <TextInput
-            value={title}
-            onChangeText={onTitleChange}
-            placeholder={t('stories.live_title_placeholder')}
-            placeholderTextColor="rgba(255,255,255,0.4)"
-            maxLength={100}
-            style={styles.liveTitleInput}
-          />
-
-          <Text style={styles.liveAudienceHeading}>{t('stories.live_audience')}</Text>
-          {audiences.length === 0 ? (
-            <View style={styles.liveEmptyAudience}>
-              <Ionicons name="people-outline" size={22} color="rgba(255,255,255,0.55)" />
-              <Text style={styles.liveEmptyAudienceText}>{t('stories.live_no_audience')}</Text>
-            </View>
-          ) : (
-            <View style={styles.liveAudienceList}>
-              {audiences.map((item) => {
-                const active = selected?.kind === item.kind && selected.id === item.id;
-                return (
-                  <Pressable
-                    key={`${item.kind}:${item.id}`}
-                    onPress={() => onSelect(item)}
-                    style={[styles.liveAudienceRow, active && styles.liveAudienceRowActive]}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: active }}
-                  >
-                    <View style={[styles.liveAudienceIcon, active && { backgroundColor: '#EF4444' }]}>
-                      <Ionicons
-                        name={item.kind === 'channel' ? 'megaphone-outline' : 'people-outline'}
-                        size={18}
-                        color="#FFF"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.liveAudienceLabel} numberOfLines={1}>
-                        {item.label}
-                      </Text>
-                      <Text style={styles.liveAudienceHint} numberOfLines={1}>
-                        {item.hint}
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name={active ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={22}
-                      color={active ? '#EF4444' : 'rgba(255,255,255,0.32)'}
-                    />
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          <View style={styles.livePermissionNote}>
-            <Ionicons name="information-circle-outline" size={15} color="rgba(255,255,255,0.55)" />
-            <Text style={styles.liveHint}>{t('stories.live_permission_note')}</Text>
-          </View>
-
-          <Pressable
-            onPress={onStart}
-            disabled={!selected}
-            style={({ pressed }) => [
-              styles.liveStartButton,
-              { backgroundColor: selected ? '#EF4444' : 'rgba(255,255,255,0.16)' },
-              pressed && selected && { opacity: 0.88 },
-            ]}
-          >
-            <Ionicons name="radio" size={18} color={selected ? '#FFF' : 'rgba(255,255,255,0.4)'} />
-            <Text style={[styles.liveStartButtonText, { color: selected ? '#FFF' : 'rgba(255,255,255,0.4)' }]}>
-              {t('stories.go_live')}
-            </Text>
-          </Pressable>
-        </View>
-      </ScrollView>
     </View>
   );
 }
@@ -1852,135 +1646,4 @@ const styles = StyleSheet.create({
   },
   privacyRowText: { ...Typography.bodyStrong, color: '#FFF' },
   privacyRowHint: { ...Typography.micro, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
-  liveSetupBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0A0B0F',
-  },
-  livePulseRing: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '28%',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    borderWidth: 2,
-    borderColor: 'rgba(239,68,68,0.35)',
-  },
-  liveSetupCard: {
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-  },
-  liveBadgeBig: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: Radii.pill,
-    backgroundColor: '#EF4444',
-  },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FFF' },
-  liveBadgeBigText: { ...Typography.caption, color: '#FFF', fontWeight: '800', letterSpacing: 1 },
-  liveAvatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 3,
-    borderColor: '#EF4444',
-  },
-  liveTitle: { ...Typography.h3, color: '#FFF', textAlign: 'center' },
-  liveHint: {
-    ...Typography.caption,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-  },
-  liveTitleInput: {
-    width: '100%',
-    marginTop: Spacing.sm,
-    ...Typography.bodyStrong,
-    color: '#FFF',
-    textAlign: 'center',
-    paddingVertical: Spacing.md,
-    borderRadius: Radii.xl,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  liveSetupScroll: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: 90,
-    paddingBottom: Spacing.xxl,
-  },
-  liveAudienceHeading: {
-    alignSelf: 'stretch',
-    ...Typography.micro,
-    color: 'rgba(255,255,255,0.58)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginTop: Spacing.md,
-  },
-  liveAudienceList: { width: '100%', gap: Spacing.xs },
-  liveAudienceRow: {
-    minHeight: 58,
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radii.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  liveAudienceRowActive: {
-    borderColor: '#EF4444',
-    backgroundColor: 'rgba(239,68,68,0.12)',
-  },
-  liveAudienceIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  liveAudienceLabel: { ...Typography.bodyStrong, color: '#FFF' },
-  liveAudienceHint: { ...Typography.micro, color: 'rgba(255,255,255,0.52)', marginTop: 2 },
-  liveEmptyAudience: {
-    width: '100%',
-    minHeight: 70,
-    borderRadius: Radii.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-  },
-  liveEmptyAudienceText: {
-    ...Typography.caption,
-    color: 'rgba(255,255,255,0.62)',
-    textAlign: 'center',
-  },
-  livePermissionNote: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    marginTop: Spacing.sm,
-  },
-  liveStartButton: {
-    minHeight: 52,
-    width: '100%',
-    borderRadius: Radii.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    marginTop: Spacing.lg,
-  },
-  liveStartButtonText: { ...Typography.bodyStrong, fontSize: 16 },
 });
