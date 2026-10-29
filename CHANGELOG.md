@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Os desafios de email e telefone guardam apenas hashes dos códigos, expiram, são de uso único e enviam notificações de segurança após alterações concluídas
 
 #### Web
-- O app corre no browser (`bun run web`): entrar, ver conversas e fazer ou atender chamadas de voz e vídeo, com a mesma cifragem de ponta a ponta das chamadas no telemóvel. Câmara, base de dados local e Lives ainda não existem na web; o tema Liquid mostra só a cor de fundo
+- Lives no browser ao estilo TikTok: palco vertical, quem está a emitir e o número de espectadores no topo, comentários e corações em tempo real, e controlos de microfone, câmara e terminar para quem emite. Os comentários não ficam guardados nem são moderados
+- O app corre no browser (`bun run web`): entrar, ver conversas e fazer ou atender chamadas de voz e vídeo, com a mesma cifragem de ponta a ponta das chamadas no telemóvel. Câmara e base de dados local ainda não existem na web; o tema Liquid mostra só a cor de fundo
 - A API aceita pedidos de browsers só das origens listadas em `CORS_ALLOWED_ORIGINS`; vazio por omissão, as apps nativas não precisam dela
 
 #### Stories

@@ -829,10 +829,10 @@ export default {
     role_member: 'Member',
   },
   live: {
-    web_unavailable: 'Live broadcasts are not available in the browser yet. Open the app on your phone.',
     watching: '{count} watching',
     ended_already: 'This broadcast has ended',
     badge: 'LIVE',
+    comment_placeholder: 'Say something…',
     starting: 'Going live…',
     connecting: 'Joining…',
     failed: 'This broadcast is not available.',
