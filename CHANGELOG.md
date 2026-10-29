@@ -61,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed (Corrigido)
 
+#### Lives
+- Iniciar uma Live num chat ou canal onde já há uma a decorrer entra nessa Live em vez de dizer que alguém já está em direto. Quem a iniciou volta como emissor (útil quando a app fechou a meio), os outros entram como espectadores
+
 #### Câmara
 - O botão de filtros do visor das Stories agora abre os filtros reais para fotos; os filtros ficam fora do vídeo porque a gravação ainda não incorpora a sobreposição do preview
 - A primeira captura após conceder a permissão espera a montagem da câmara, e dispositivos sem câmara retornam uma falha explícita em vez de capturar silenciosamente
