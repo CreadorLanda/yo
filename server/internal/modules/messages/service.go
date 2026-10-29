@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/users"
+	platformreactions "github.com/CreadorLanda/zwosocial/server/internal/platform/reactions"
 )
 
 var (
@@ -28,6 +29,8 @@ var (
 	ErrInvalidEnvelopeChat   = errors.New("invalid_e2ee_envelope_for_chat")
 	ErrInvalidMediaReference = errors.New("invalid_media_reference")
 	ErrGroupPermission       = errors.New("group_permission_denied")
+	ErrInvalidEmoji          = platformreactions.ErrInvalidEmoji
+	ErrTooManyReactions      = platformreactions.ErrTooMany
 )
 
 // Broadcaster is satisfied by *realtime.Hub. Kept as an interface so the
@@ -602,6 +605,10 @@ func (s *Service) Typing(ctx context.Context, chatID, userID uuid.UUID, typing b
 
 // React toggles an emoji reaction on a message.
 func (s *Service) React(ctx context.Context, chatID, userID uuid.UUID, msgID int64, emoji string, remove bool) ([]Reaction, error) {
+	normalized, err := platformreactions.Normalize(emoji)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.requireParticipant(ctx, chatID, userID); err != nil {
 		return nil, err
 	}
@@ -612,11 +619,11 @@ func (s *Service) React(ctx context.Context, chatID, userID uuid.UUID, msgID int
 		return nil, err
 	}
 	if remove {
-		if err := s.repo.RemoveReaction(ctx, msgID, userID, emoji); err != nil {
+		if err := s.repo.RemoveReaction(ctx, msgID, userID, normalized); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := s.repo.AddReaction(ctx, msgID, userID, emoji); err != nil {
+		if err := s.repo.AddReaction(ctx, msgID, userID, normalized); err != nil {
 			return nil, err
 		}
 	}
@@ -627,7 +634,7 @@ func (s *Service) React(ctx context.Context, chatID, userID uuid.UUID, msgID int
 	s.broadcast(ctx, chatID, "message.reaction", map[string]any{
 		"message_id": msgID,
 		"user_id":    userID,
-		"emoji":      emoji,
+		"emoji":      normalized,
 		"removed":    remove,
 		"reactions":  list,
 	})

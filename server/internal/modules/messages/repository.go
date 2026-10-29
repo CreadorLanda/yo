@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/CreadorLanda/zwosocial/server/internal/crypto"
+	platformreactions "github.com/CreadorLanda/zwosocial/server/internal/platform/reactions"
 )
 
 type Repository struct {
@@ -892,12 +894,35 @@ func (r *Repository) MessageIDsInChat(ctx context.Context, chatID uuid.UUID, ids
 }
 
 func (r *Repository) AddReaction(ctx context.Context, messageID int64, userID uuid.UUID, emoji string) error {
-	_, err := r.db.Exec(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, fmt.Sprintf("message-reaction:%d:%s", messageID, userID)); err != nil {
+		return err
+	}
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM message_reactions WHERE message_id = $1 AND user_id = $2`, messageID, userID).Scan(&count); err != nil {
+		return err
+	}
+	if count >= platformreactions.MaxPerUser {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3)`, messageID, userID, emoji).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return platformreactions.ErrTooMany
+		}
+	}
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO message_reactions (message_id, user_id, emoji)
 		VALUES ($1, $2, $3)
 		ON CONFLICT DO NOTHING
-	`, messageID, userID, emoji)
-	return err
+	`, messageID, userID, emoji); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) RemoveReaction(ctx context.Context, messageID int64, userID uuid.UUID, emoji string) error {

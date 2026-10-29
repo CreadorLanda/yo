@@ -424,6 +424,8 @@ export type StoryComment = {
   isMine?: boolean;
   /** Nested replies on the public comment thread. */
   replies?: StoryComment[];
+  reactions?: { emoji: string; count: number }[];
+  myReactions?: string[];
 };
 
 export type Story = {
@@ -553,6 +555,7 @@ export type ChannelPost = {
   views: number;
   reactions?: ChannelReaction[];
   myReaction?: string | null;
+  myReactions?: string[];
   comments?: ChannelComment[];
   /** Post kind — defaults to text/image based on mediaUri when omitted. */
   type?: ChannelPostType;
@@ -574,6 +577,8 @@ export type ChannelComment = {
   pending?: boolean;
   likes?: number;
   liked?: boolean;
+  reactions?: ChannelReaction[];
+  myReactions?: string[];
   replies?: ChannelComment[];
 };
 

@@ -76,6 +76,7 @@ import type { StickerDTO } from '@/data/api/stickers';
 import { noteStickerUsed, refreshStickerPacks, useStickerPacks } from '@/data/sticker-store';
 import { removeSticker, saveSticker } from '@/data/api/stickers';
 import { showToast } from '@/data/toast-store';
+import { MAX_REACTIONS_PER_ITEM, searchEmojiCatalogue } from '@/data/reactions';
 import { refreshGroup, useGroup } from '@/data/group-store';
 import {
   encodeMediaContent,
@@ -1149,20 +1150,22 @@ export default function ChatScreen() {
   const handleReact = (msgId: string, emoji: string) => {
     const mid = serverMessageId(msgId);
     const existing = reactionsMap[msgId] ?? [];
-    const mine = existing.find((r) => r.mine);
-    const removing = mine?.emoji === emoji;
+	const mine = existing.filter((r) => r.mine).map((r) => r.emoji);
+	const removing = mine.includes(emoji);
+	if (!removing && mine.length >= MAX_REACTIONS_PER_ITEM) {
+	  appAlert(t('stories.reactions'), t('stories.reaction_limit'));
+	  return;
+	}
 
     // Optimistic UI
     setReactionsMap((prev) => {
       const list = [...(prev[msgId] ?? [])];
-      const mineIdx = list.findIndex((r) => r.mine);
-      const myEmoji = mineIdx >= 0 ? list[mineIdx].emoji : null;
-
-      if (mineIdx >= 0) {
-        if (list[mineIdx].count <= 1) list.splice(mineIdx, 1);
-        else list[mineIdx] = { ...list[mineIdx], count: list[mineIdx].count - 1, mine: false };
-      }
-      if (myEmoji === emoji) return { ...prev, [msgId]: list };
+	  const mineIdx = list.findIndex((r) => r.mine && r.emoji === emoji);
+	  if (mineIdx >= 0) {
+	    if (list[mineIdx].count <= 1) list.splice(mineIdx, 1);
+	    else list[mineIdx] = { ...list[mineIdx], count: list[mineIdx].count - 1, mine: false };
+	    return { ...prev, [msgId]: list };
+	  }
 
       const idx = list.findIndex((r) => r.emoji === emoji);
       if (idx >= 0) list[idx] = { ...list[idx], count: list[idx].count + 1, mine: true };
@@ -4277,6 +4280,8 @@ function ReactionMenu({
   const { msg, rect, mine } = target;
 
   const [visible, setVisible] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -4316,7 +4321,7 @@ function ReactionMenu({
     Number(showDelete);
   const menuH = menuItems * MENU_ITEM_HEIGHT;
   const menuW = 230;
-  const barW = CHAT_REACTIONS.length * 46 + 14;
+  const barW = (CHAT_REACTIONS.length + 1) * 46 + 14;
 
   // Vertical placement — shift the bubble so the bar and menu stay on-screen.
   const topSafe = insets.top + 8;
@@ -4355,7 +4360,7 @@ function ReactionMenu({
     ],
   }));
 
-  const myEmoji = reactions.find((r) => r.mine)?.emoji ?? null;
+  const myEmojis = new Set(reactions.filter((r) => r.mine).map((r) => r.emoji));
 
   return (
     <Modal transparent statusBarTranslucent animationType="fade" visible={visible} onRequestClose={close}>
@@ -4384,7 +4389,7 @@ function ReactionMenu({
         ]}
       >
         {CHAT_REACTIONS.map((emoji) => {
-          const active = myEmoji === emoji;
+          const active = myEmojis.has(emoji);
           return (
             <Pressable
               key={emoji}
@@ -4402,7 +4407,41 @@ function ReactionMenu({
             </Pressable>
           );
         })}
+        <Pressable onPress={() => setPickerOpen(true)} style={styles.menuBarBtn} accessibilityLabel="More reactions">
+          <Ionicons name="add" size={22} color={colors.text} />
+        </Pressable>
       </Animated.View>
+
+      <Modal transparent visible={pickerOpen} animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.emojiPickerScrim} onPress={() => setPickerOpen(false)}>
+          <Pressable style={[styles.emojiPicker, { backgroundColor: colors.surface }]} onPress={() => {}}>
+            <Text style={[styles.emojiPickerTitle, { color: colors.text }]}>Reactions</Text>
+            <TextInput
+              value={pickerQuery}
+              onChangeText={setPickerQuery}
+              placeholder="Search emoji"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.emojiPickerSearch, { color: colors.text, borderColor: colors.border }]}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <ScrollView contentContainerStyle={styles.emojiPickerGrid}>
+              {searchEmojiCatalogue(pickerQuery).map(({ emoji }) => (
+                <Pressable
+                  key={emoji}
+                  onPress={() => {
+                    onReact(emoji);
+                    if (!myEmojis.has(emoji)) setPickerOpen(false);
+                  }}
+                  style={[styles.emojiPickerCell, myEmojis.has(emoji) && { backgroundColor: `${colors.primary}22` }]}
+                >
+                  <Text style={styles.emojiPickerEmoji}>{emoji}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Cloned message bubble — stays crisp above the blur */}
       <Animated.View
@@ -4829,6 +4868,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   menuBarEmoji: { fontSize: 27 },
+	 emojiPickerScrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+	 emojiPicker: { maxHeight: '70%', borderTopLeftRadius: Radii.xl, borderTopRightRadius: Radii.xl, padding: Spacing.lg },
+	 emojiPickerTitle: { ...Typography.h3, marginBottom: Spacing.sm },
+	 emojiPickerSearch: { height: 42, borderWidth: 1, borderRadius: Radii.md, paddingHorizontal: Spacing.md, marginBottom: Spacing.md },
+	 emojiPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, paddingBottom: Spacing.xl },
+	 emojiPickerCell: { width: 44, height: 44, borderRadius: Radii.sm, alignItems: 'center', justifyContent: 'center' },
+	 emojiPickerEmoji: { fontSize: 25 },
 
   menuCard: {
     position: 'absolute',

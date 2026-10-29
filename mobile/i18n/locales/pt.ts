@@ -977,6 +977,7 @@ export default {
     reactions: 'Reacções',
     reactions_hint: 'Toca para adicionar, toca outra vez para retirar',
     more_reactions: 'Mais reacções',
+    reaction_limit: 'Podes manter até duas reacções em cada item',
     hold_to_pause: 'Segura para pausar',
     mode_type: 'Texto',
     mode_normal: 'Normal',

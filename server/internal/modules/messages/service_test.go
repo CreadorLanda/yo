@@ -1020,6 +1020,46 @@ func TestReactionsSurviveReload(t *testing.T) {
 	}
 }
 
+func TestMessageReactionsCapAndRemoval(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+	alice := createTestUser(t, pool, "alice_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_"+uuid.NewString()[:8])
+	chat, err := svc.CreateDirectChat(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("CreateDirectChat: %v", err)
+	}
+	if _, err := svc.AcceptChat(ctx, chat.ID, bob); err != nil {
+		t.Fatalf("AcceptChat: %v", err)
+	}
+	sent, err := svc.SendMessage(ctx, chat.ID, alice, SendMessageRequest{Content: testDirectEnvelope("reactions")})
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	for _, emoji := range []string{"🔥", "👍🏽"} {
+		if _, err := svc.React(ctx, chat.ID, bob, sent.ID, emoji, false); err != nil {
+			t.Fatalf("React(%s): %v", emoji, err)
+		}
+	}
+	if _, err := svc.React(ctx, chat.ID, bob, sent.ID, "🎉", false); !errors.Is(err, ErrTooManyReactions) {
+		t.Fatalf("third reaction: got %v, want ErrTooManyReactions", err)
+	}
+	if _, err := svc.React(ctx, chat.ID, bob, sent.ID, "🔥", true); err != nil {
+		t.Fatalf("RemoveReaction: %v", err)
+	}
+	if _, err := svc.React(ctx, chat.ID, bob, sent.ID, "🎉", false); err != nil {
+		t.Fatalf("replacement after removal: %v", err)
+	}
+	rows, err := svc.repo.ListReactions(ctx, sent.ID)
+	if err != nil {
+		t.Fatalf("ListReactions: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("stored reactions = %d, want 2: %+v", len(rows), rows)
+	}
+}
+
 // TestGhostModeIsReciprocal holds ghost mode to the same bargain read
 // receipts have been on since 0029: with it on you neither send these
 // signals nor see anyone else's.

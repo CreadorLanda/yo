@@ -977,6 +977,7 @@ export default {
     reactions: 'Reactions',
     reactions_hint: 'Tap to add, tap again to take it back',
     more_reactions: 'More reactions',
+    reaction_limit: 'You can keep up to two reactions on each item',
     hold_to_pause: 'Hold to pause',
     mode_type: 'Type',
     mode_normal: 'Normal',
