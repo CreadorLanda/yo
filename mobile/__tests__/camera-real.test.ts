@@ -11,6 +11,8 @@ import { expect, test } from 'bun:test';
  */
 const screen = await Bun.file('app/story/create.tsx').text();
 const camera = await Bun.file('components/media/filtered-camera.tsx').text();
+const chat = await Bun.file('app/chat/[id].tsx').text();
+const storyStore = await Bun.file('data/story-store.ts').text();
 
 test('o visor mostra a camara, nao um retangulo', () => {
   // Asserted as a property rather than as a library: the camera moved from
@@ -249,4 +251,50 @@ test('a falha da camara fica registada ate mudar a lente ou o filtro', () => {
   // shutter went back to asking a dead session for photos.
   expect(camera).toContain('onFail={() => setFailedKey(treeKey)}');
   expect(camera).toContain('availabilityRef.current?.(!!device && !failed)');
+});
+
+test('a permissao concedida no primeiro toque nao falha silenciosamente', () => {
+  const start = screen.indexOf('const takePhoto = async () =>');
+  const end = screen.indexOf('const buildInteractiveCaption', start);
+  const capture = screen.slice(start, end);
+  expect(capture).toContain('let cameraGranted = hasCam');
+  expect(capture).toContain('cameraGranted = await askCam()');
+  expect(capture).toContain('waitForCameraHandle()');
+  expect(capture).toContain("t('stories.camera_not_ready')");
+  expect(capture).not.toMatch(/if \(!cam\) return;/);
+});
+
+test('a recusa da camera oferece a galeria no chat', () => {
+  const start = chat.indexOf('const openCamera = async () =>');
+  const end = chat.indexOf('\n  };', start) + 5;
+  const capture = chat.slice(start, end);
+  expect(capture).toContain('if (!perm.granted)');
+  expect(capture).toContain('await pickFromLibrary()');
+});
+
+test('a captura do chat preserva o caminho de media cifrada', () => {
+  const start = chat.indexOf('const addAsset = async (');
+  const end = chat.indexOf('\n  };', start) + 5;
+  const send = chat.slice(start, end);
+  expect(send).toContain('uploadEncryptedMedia');
+  expect(send).toContain('await encryptBody(body)');
+  expect(send).toContain('mediaIds: [uploaded.id]');
+});
+
+test('o filtro do visor e selecionavel e nao e oferecido para video', () => {
+  expect(screen).toContain("import { FILTERS, type FilterId } from '@/data/photo-filters'");
+  expect(screen).toContain('<LiveFilterStrip value={filter} onChange={setFilter} />');
+  expect(screen).toContain("captureMode !== 'audio' && !isVideoMode");
+  expect(screen).not.toContain('filters_soon');
+});
+
+test('a story envia a audiencia escolhida ate ao pedido de publicacao', () => {
+  expect(screen).toContain('visibility: audience');
+  expect(storyStore).toContain('visibility: input.visibility');
+  expect(storyStore).toContain('createStory({');
+});
+
+test('o handle nao tenta capturar sem dispositivo nativo', () => {
+  expect(camera).toContain('if (!device || failed) return null;');
+  expect(camera).toContain("throw new Error('camera_unavailable')");
 });

@@ -890,9 +890,9 @@ export default {
   },
   stories: {
     creator_need_name: 'Add a name to your profile first.',
-    filters_soon: 'Filters are coming in the next update.',
     capture_failed_title: 'Could not capture',
     capture_failed_body: 'The camera did not return anything. Try again.',
+    camera_not_ready: 'The camera is still starting. Try again.',
     torch: 'Flash',
     delete_comment_title: 'Delete comment?',
     delete_comment_body: 'It will be removed for everyone.',

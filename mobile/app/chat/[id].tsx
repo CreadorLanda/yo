@@ -1705,7 +1705,12 @@ export default function ChatScreen() {
 
   const openCamera = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
+    if (!perm.granted) {
+      // Camera denial must not discard the attachment flow. The gallery is a
+      // safe, explicit fallback and keeps the same encrypted send path.
+      await pickFromLibrary();
+      return;
+    }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images', 'videos'],
       quality: 0.8,

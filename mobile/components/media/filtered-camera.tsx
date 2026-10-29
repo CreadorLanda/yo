@@ -164,6 +164,7 @@ export const FilteredCamera = forwardRef<
     ref,
     () => ({
       async takePhoto() {
+        if (!device || failed) return null;
         const photo = await photoOutput.capturePhoto({}, {});
         try {
           return await photo.saveToTemporaryFileAsync();
@@ -172,6 +173,7 @@ export const FilteredCamera = forwardRef<
         }
       },
       async startRecording(onDone) {
+        if (!device || failed) throw new Error('camera_unavailable');
         const rec = await videoOutput.createRecorder({});
         recorderRef.current = rec;
         await rec.startRecording(
@@ -190,7 +192,7 @@ export const FilteredCamera = forwardRef<
         await rec?.stopRecording();
       },
     }),
-    [photoOutput, videoOutput],
+    [device, failed, photoOutput, videoOutput],
   );
 
   // Still just a blank here: what to say about a missing camera is the

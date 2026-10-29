@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🐛 Fixed (Corrigido)
 
 #### Câmara
+- O botão de filtros do visor das Stories agora abre os filtros reais para fotos; os filtros ficam fora do vídeo porque a gravação ainda não incorpora a sobreposição do preview
+- A primeira captura após conceder a permissão espera a montagem da câmara, e dispositivos sem câmara retornam uma falha explícita em vez de capturar silenciosamente
+- Recusar a câmara num chat abre a galeria como fallback, mantendo o envio no caminho de multimédia cifrada
 - Abrir a câmara dos stories já não passa pelo pipeline de fotogramas (worklets + Skia), a causa provável do crash ao abrir: só é criado quando há um filtro escolhido. Uma falha na árvore da câmara passa a mostrar "sem câmara" (o obturador abre a galeria) em vez de derrubar o ecrã
 - O pinch-to-zoom funciona: o zoom é convertido de 0–1 para o intervalo da lente (`minZoom`–`maxZoom`); antes a câmara abria em zoom 0 e cada gesto era rejeitado
 - O limite de duração do boomerang e do mãos-livres volta a parar a gravação, e um temporizador antigo já não dispara na gravação seguinte
