@@ -40,15 +40,15 @@ func TestCommentParentValidation(t *testing.T) {
 
 	// unknown parent
 	unknown := uuid.New()
-	if _, err := svc.Comment(ctx, post.ID, owner, CommentRequest{Text: "x", ParentID: &unknown}); !errIs(err, ErrInvalidParent) {
+	if _, err := svc.Comment(ctx, post.ID, owner, CommentRequest{Text: "x", ParentID: &unknown}); !errors.Is(err, ErrInvalidParent) {
 		t.Fatalf("unknown parent: got %v", err)
 	}
 	// parent from another post
-	if _, err := svc.Comment(ctx, otherPost.ID, owner, CommentRequest{Text: "x", ParentID: &top.ID}); !errIs(err, ErrInvalidParent) {
+	if _, err := svc.Comment(ctx, otherPost.ID, owner, CommentRequest{Text: "x", ParentID: &top.ID}); !errors.Is(err, ErrInvalidParent) {
 		t.Fatalf("cross-post parent: got %v", err)
 	}
 	// reply to a reply (second level) rejected
-	if _, err := svc.Comment(ctx, post.ID, owner, CommentRequest{Text: "deep", ParentID: &reply.ID}); !errIs(err, ErrInvalidParent) {
+	if _, err := svc.Comment(ctx, post.ID, owner, CommentRequest{Text: "deep", ParentID: &reply.ID}); !errors.Is(err, ErrInvalidParent) {
 		t.Fatalf("nested reply: got %v", err)
 	}
 	// valid top-level stays ok
