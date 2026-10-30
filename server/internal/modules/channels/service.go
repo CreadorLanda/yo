@@ -480,11 +480,11 @@ func (s *Service) Comment(ctx context.Context, postID, user uuid.UUID, req Comme
 		author = &user
 		req.Anonymous = false
 	}
-	id, err := s.repo.AddComment(ctx, postID, author, text, req.Anonymous)
+	id, err := s.repo.AddComment(ctx, postID, author, text, req.Anonymous, req.ParentID)
 	if err != nil {
 		return Comment{}, err
 	}
-	return Comment{ID: id, PostID: postID, AuthorID: author, Text: text, Anonymous: req.Anonymous}, nil
+	return Comment{ID: id, PostID: postID, ParentID: req.ParentID, AuthorID: author, Text: text, Anonymous: req.Anonymous}, nil
 }
 
 func (s *Service) ListComments(ctx context.Context, postID, user uuid.UUID) ([]Comment, error) {

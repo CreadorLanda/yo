@@ -579,6 +579,7 @@ export type ChannelReaction = {
 
 export type ChannelComment = {
   id: string;
+  parentId?: string;
   text: string;
   timestamp: string;
   anonymous: boolean;
