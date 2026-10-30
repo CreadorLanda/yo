@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✏️ Changed (Alterado)
 
+#### Chamadas
+- Novo ecrã de chamada de vídeo no estilo do WhatsApp: a outra pessoa em ecrã inteiro, a tua câmara numa janela pequena que se arrasta para qualquer canto e troca com um toque, e um painel de controlos (altifalante, câmara, microfone, virar câmara e desligar) que desaparece ao fim de uns segundos e volta com um toque. O nome e o estado ficam no topo, com a linha de cifragem que mostra a impressão digital ao tocar. O aviso de chamada não cifrada mantém-se. Também no browser
+
 #### Marca
 - Yo passa a chamar-se ZwoSocial: nome da app, textos em inglês e português, documentação e notificações
 - Novo logo — um Z num balão de conversa — no ícone, no splash, no ícone temático do Android e nos ícones alternativos (Sunset, Phosphor, Sakura, Void)

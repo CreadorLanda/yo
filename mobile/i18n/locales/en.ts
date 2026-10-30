@@ -989,6 +989,8 @@ export default {
     title: 'Filters',
   },
   call: {
+    flip_camera: 'Flip camera',
+    camera_off_peer: 'Their camera is off',
     ongoing_title: 'Call in progress',
     ongoing_body: 'Tap to return to the call',
     unmute: 'Unmute',

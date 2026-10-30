@@ -989,6 +989,8 @@ export default {
     title: 'Filtros',
   },
   call: {
+    flip_camera: 'Virar câmara',
+    camera_off_peer: 'A câmara dela está desligada',
     ongoing_title: 'Chamada a decorrer',
     ongoing_body: 'Toca para voltar à chamada',
     unmute: 'Ativar som',
