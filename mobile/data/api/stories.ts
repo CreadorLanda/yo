@@ -8,7 +8,7 @@ export type StoryVisibility = 'public' | 'contacts' | 'close';
 
 export interface StoryDTO {
   id: string;
-  author_id: string;
+  author_id?: string;
   author_name?: string;
   author_username?: string;
   author_avatar?: string;

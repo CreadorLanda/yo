@@ -46,12 +46,14 @@ func (s *Service) toStory(x row, me uuid.UUID) Story {
 		media = *x.MediaURL
 	}
 	name, user, avatar := x.AuthorName, x.AuthorUser, x.AuthorAvatar
+	authorID := x.AuthorID
 	if x.IsAnonymous && x.AuthorID != me {
 		name, user, avatar = "Anonymous", "", ""
+		authorID = uuid.Nil
 	}
 	return Story{
 		ID:                    x.ID,
-		AuthorID:              x.AuthorID,
+		AuthorID:              authorID,
 		AuthorName:            name,
 		AuthorUser:            user,
 		AuthorAvatar:          avatar,
