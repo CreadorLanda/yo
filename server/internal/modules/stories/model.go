@@ -27,7 +27,7 @@ const (
 
 type Story struct {
 	ID           uuid.UUID  `json:"id"`
-	AuthorID     uuid.UUID  `json:"author_id"`
+	AuthorID     uuid.UUID  `json:"author_id,omitempty"`
 	AuthorName   string     `json:"author_name,omitempty"`
 	AuthorUser   string     `json:"author_username,omitempty"`
 	AuthorAvatar string     `json:"author_avatar,omitempty"`

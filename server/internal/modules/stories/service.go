@@ -46,12 +46,14 @@ func (s *Service) toStory(x row, me uuid.UUID) Story {
 		media = *x.MediaURL
 	}
 	name, user, avatar := x.AuthorName, x.AuthorUser, x.AuthorAvatar
+	authorID := x.AuthorID
 	if x.IsAnonymous && x.AuthorID != me {
 		name, user, avatar = "Anonymous", "", ""
+		authorID = uuid.Nil
 	}
 	return Story{
 		ID:                    x.ID,
-		AuthorID:              x.AuthorID,
+		AuthorID:              authorID,
 		AuthorName:            name,
 		AuthorUser:            user,
 		AuthorAvatar:          avatar,
@@ -209,7 +211,7 @@ func (s *Service) View(ctx context.Context, id, viewer uuid.UUID) (Story, error)
 	if err != nil {
 		return Story{}, err
 	}
-	if st.AuthorID != viewer {
+	if !st.IsOwn {
 		_ = s.repo.MarkViewed(ctx, id, viewer)
 		st, _ = s.Get(ctx, id, viewer)
 	}
@@ -269,7 +271,7 @@ func (s *Service) Viewers(ctx context.Context, id, user uuid.UUID) ([]Viewer, er
 	if err != nil {
 		return nil, err
 	}
-	if story.AuthorID != user {
+	if !story.IsOwn {
 		return nil, ErrNotAuthor
 	}
 	return s.repo.Viewers(ctx, id)
