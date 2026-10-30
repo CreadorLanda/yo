@@ -39,9 +39,8 @@ mock.module('@/data/api/keys', () => ({
   myKeyCount: async () => ({ one_time_remaining: 40 }),
   uploadKeys: async () => ({ one_time_remaining: 40 }),
 }));
-mock.module('@/data/api/client', () => ({
-  ApiError: class ApiError extends Error {},
-}));
+const realClient = require('../data/api/client');
+mock.module('@/data/api/client', () => ({ ...realClient }));
 
 encryptedSecrets.set(
   `e2ee.device_keys.v1.${userId}`,

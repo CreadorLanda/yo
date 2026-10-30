@@ -35,6 +35,7 @@ function isUUID(id: string): boolean {
 function mapCommentDTO(c: ChannelCommentDTO): ChannelComment {
   return {
     id: c.id,
+    parentId: c.parent_id,
     text: c.text,
     timestamp: 'now',
     anonymous: c.anonymous,
