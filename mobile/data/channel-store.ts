@@ -262,7 +262,7 @@ export function getChannel(id: string): ManagedChannel | undefined {
   return channels.find((c) => c.id === id);
 }
 
-export function createChannel(input: CreateChannelInput): ManagedChannel {
+export async function createChannel(input: CreateChannelInput): Promise<ManagedChannel> {
   const handle = normalizeHandle(input.handle || input.name);
   const id = `ch_${Date.now().toString(36)}`;
 
@@ -270,10 +270,6 @@ export function createChannel(input: CreateChannelInput): ManagedChannel {
     id,
     name: input.name.trim().slice(0, 60) || 'New channel',
     handle: handle || `@channel_${id.slice(-4)}`,
-    // Empty rather than invented. These used to be a dicebear avatar and a
-    // random picsum photograph, so every new channel arrived wearing a stock
-    // picture of a landscape it had nothing to do with — and both depended
-    // on third-party services staying up to render at all.
     avatarUri: input.avatarUri ?? '',
     coverUri: input.coverUri ?? '',
     description: input.description.trim().slice(0, 500),
@@ -296,39 +292,36 @@ export function createChannel(input: CreateChannelInput): ManagedChannel {
     },
   };
 
-  channels = [channel, ...channels];
-  followed = new Set(followed).add(id);
-  emit();
-
-  // Fire-and-forget API create; replace local id when server responds.
-  createChannelApi({
-    name: channel.name,
-    handle: channel.handle,
-    description: channel.description,
-    category: channel.category,
-    visibility: input.visibility,
-    who_can_post: input.whoCanPost,
-    comments_enabled: input.commentsEnabled,
-    allow_anon_comments: input.allowAnonymousComments,
-    reactions_enabled: input.reactionsEnabled,
-    join_mode: input.joinMode,
-    avatar_url: input.avatarUri,
-    cover_url: input.coverUri,
-  })
-    .then((dto) => {
-      const mapped = mapChannelDTO(dto);
-      channels = channels.filter((c) => c.id !== id);
-      channels = [mapped, ...channels];
-      followed = new Set(followed);
-      followed.delete(id);
-      followed.add(mapped.id);
-      emit();
-    })
-    .catch(() => {
-      /* keep local-only channel */
+  try {
+    const dto = await createChannelApi({
+      name: channel.name,
+      handle: channel.handle,
+      description: channel.description,
+      category: channel.category,
+      visibility: input.visibility,
+      who_can_post: input.whoCanPost,
+      comments_enabled: input.commentsEnabled,
+      allow_anon_comments: input.allowAnonymousComments,
+      reactions_enabled: input.reactionsEnabled,
+      join_mode: input.joinMode,
+      avatar_url: input.avatarUri,
+      cover_url: input.coverUri,
     });
-
-  return channel;
+    const mapped = mapChannelDTO(dto);
+    // Keep local-only as fallback if API fails? Actually requirement: no phantom.
+    channels = [mapped, ...channels.filter((c) => c.id !== id)];
+    followed = new Set(followed);
+    followed.delete(id);
+    followed.add(mapped.id);
+    emit();
+    return mapped;
+  } catch {
+    // keep local-only channel
+    channels = [channel, ...channels];
+    followed = new Set(followed).add(id);
+    emit();
+    throw new Error('create_failed');
+  }
 }
 
 export function updateChannel(

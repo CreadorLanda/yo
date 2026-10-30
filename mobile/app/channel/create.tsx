@@ -157,21 +157,25 @@ export default function CreateChannelScreen() {
       setUploading(false);
     }
 
-    const channel = createChannel({
-      name,
-      avatarUri: avatarUrl,
-      coverUri: coverUrl,
-      handle: previewHandle,
-      description,
-      category,
-      visibility,
-      whoCanPost,
-      commentsEnabled,
-      allowAnonymousComments,
-      reactionsEnabled,
-      joinMode,
-    });
-    router.replace(`/channel/${channel.id}`);
+    try {
+      const channel = await createChannel({
+        name,
+        avatarUri: avatarUrl,
+        coverUri: coverUrl,
+        handle: previewHandle,
+        description,
+        category,
+        visibility,
+        whoCanPost,
+        commentsEnabled,
+        allowAnonymousComments,
+        reactionsEnabled,
+        joinMode,
+      });
+      router.replace(`/channel/${channel.id}`);
+    } catch {
+      appAlert(t('chats.action_failed_title'), t('channel_create.create_failed'));
+    }
   };
 
   return (
