@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
