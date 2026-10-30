@@ -1,12 +1,10 @@
-import * as SecureStore from 'expo-secure-store';
-
-import { ACCESS_KEY, ApiError, getBaseUrl } from './client';
+import { api, getBaseUrl } from './client';
 import {
   encryptMediaBytes,
   generateMediaKey,
   type MediaKey,
 } from '../crypto/media-crypto';
-import { readFileBytes, writeTempFile } from '../file-bytes';
+import { deleteTempFile, readFileBytes, writeTempFile } from '../file-bytes';
 
 export type MediaKind = 'image' | 'video' | 'audio' | 'document' | 'other';
 
@@ -79,14 +77,18 @@ export async function uploadEncryptedMedia(
   const plain = await readFileBytes(opts.uri);
   const cipher = encryptMediaBytes(plain, key);
   const tmp = await writeTempFile(`enc-${Date.now()}.bin`, cipher);
-  const object = await uploadMedia({
-    ...opts,
-    uri: tmp,
-    // The server must not infer a type from opaque bytes.
-    mimeType: 'application/octet-stream',
-    originalMime: opts.mimeType,
-  });
-  return { object, key };
+  try {
+    const object = await uploadMedia({
+      ...opts,
+      uri: tmp,
+      // The server must not infer a type from opaque bytes.
+      mimeType: 'application/octet-stream',
+      originalMime: opts.mimeType,
+    });
+    return { object, key };
+  } finally {
+    deleteTempFile(tmp);
+  }
 }
 
 export async function uploadMedia(opts: UploadOpts): Promise<MediaObject> {
@@ -103,40 +105,12 @@ export async function uploadMedia(opts: UploadOpts): Promise<MediaObject> {
   if (opts.height != null) form.append('height', String(opts.height));
   if (opts.durationMs != null) form.append('duration_ms', String(opts.durationMs));
 
-  const access = await SecureStore.getItemAsync(ACCESS_KEY);
-  const headers: Record<string, string> = {};
-  if (access) headers.Authorization = `Bearer ${access}`;
-  // Do NOT set Content-Type — fetch will add multipart boundary.
-
-  const res = await fetch(`${getBaseUrl()}/api/media/upload`, {
-    method: 'POST',
-    headers,
-    body: form,
-  });
-
-  if (!res.ok) {
-    let body: { error?: string; detail?: string } = {};
-    try {
-      body = (await res.json()) as typeof body;
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.error);
-  }
-  return (await res.json()) as MediaObject;
+  // Do NOT set Content-Type — the shared client/fetch supplies the multipart boundary.
+  return api.upload<MediaObject>('/api/media/upload', form);
 }
 
 export async function deleteMedia(id: string): Promise<void> {
-  const access = await SecureStore.getItemAsync(ACCESS_KEY);
-  const headers: Record<string, string> = {};
-  if (access) headers.Authorization = `Bearer ${access}`;
-  const res = await fetch(`${getBaseUrl()}/api/media/${id}`, {
-    method: 'DELETE',
-    headers,
-  });
-  if (!res.ok && res.status !== 204) {
-    throw new ApiError(res.status, `http_${res.status}`);
-  }
+  await api.del<void>(`/api/media/${id}`);
 }
 
 function guessName(uri: string, mime?: string): string {

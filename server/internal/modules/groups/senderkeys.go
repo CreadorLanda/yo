@@ -23,7 +23,10 @@ import (
 // cannot open, addressed to a user it does not decrypt for. The only thing
 // it decides is who is allowed to read which row.
 
-var ErrEmptyDistribute = errors.New("no_entries")
+var (
+	ErrEmptyDistribute = errors.New("no_entries")
+	ErrStaleKeyEpoch   = errors.New("stale_key_epoch")
+)
 
 // SenderKeyEntry is one member's copy of one sender key.
 type SenderKeyEntry struct {
@@ -78,7 +81,33 @@ func (r *Repository) SaveSenderKeys(ctx context.Context, chatID, sender uuid.UUI
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
+	var currentEpoch int
+	if err := tx.QueryRow(ctx, `SELECT key_epoch FROM chats WHERE id = $1 FOR UPDATE`, chatID).Scan(&currentEpoch); err != nil {
+		return err
+	}
+	if epoch != currentEpoch {
+		return ErrStaleKeyEpoch
+	}
+	var senderMember bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM chat_participants WHERE chat_id = $1 AND user_id = $2)
+	`, chatID, sender).Scan(&senderMember); err != nil {
+		return err
+	}
+	if !senderMember {
+		return ErrNotMember
+	}
+
 	for _, e := range entries {
+		var recipientMember bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM chat_participants WHERE chat_id = $1 AND user_id = $2)
+		`, chatID, e.UserID).Scan(&recipientMember); err != nil {
+			return err
+		}
+		if !recipientMember || e.UserID == sender {
+			return ErrNotMember
+		}
 		// Idempotent: a client that redistributes after a dropped response
 		// must not fail, and re-sealing the same key is harmless.
 		if _, err := tx.Exec(ctx, `

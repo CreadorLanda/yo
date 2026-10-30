@@ -189,6 +189,10 @@ export default function ThemeCreatorScreen() {
     // wallpaper survives until the OS reclaims the directory and the theme
     // comes back with a grey rectangle where the photo was.
     const stored = await persistThemeImage(result.assets[0].uri);
+    if (!stored) {
+      appAlert(t('themes.creator_title'), t('themes.image_copy_failed'));
+      return;
+    }
     setChat((p) => ({ ...p, wallpaperImage: stored }));
   };
 
@@ -202,6 +206,10 @@ export default function ThemeCreatorScreen() {
     if (result.canceled || !result.assets[0]) return;
     Haptics.selectionAsync().catch(() => {});
     const stored = await persistThemeImage(result.assets[0].uri);
+    if (!stored) {
+      appAlert(t('themes.creator_title'), t('themes.image_copy_failed'));
+      return;
+    }
     setIcons((prev) => ({ ...prev, [slot]: stored }));
   };
 

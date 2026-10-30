@@ -240,7 +240,7 @@ func writeErr(ctx *gin.Context, err error) {
 		errors.Is(err, ErrInvalidRole), errors.Is(err, ErrInvalidHistory), errors.Is(err, ErrInvalidPermission),
 		errors.Is(err, ErrInvalidAchievement), errors.Is(err, ErrInvalidAchievementEvidence):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	case errors.Is(err, ErrAchievementAlreadyAwarded):
+	case errors.Is(err, ErrAchievementAlreadyAwarded), errors.Is(err, ErrStaleKeyEpoch):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})

@@ -85,15 +85,21 @@ func validateEnvelopeForChat(content string, senderID uuid.UUID, chatType ChatTy
 	if chatType != ChatGroup {
 		return true
 	}
+	header, ok := groupEnvelopeHeaderOf(content)
+	return ok && header.Sender == senderID.String()
+}
+
+func groupEnvelopeHeaderOf(content string) (groupEnvelopeHeader, bool) {
+	var header groupEnvelopeHeader
 	parts := strings.Split(strings.TrimPrefix(content, groupEnvelopePrefix), ".")
 	if len(parts) != 2 {
-		return false
+		return header, false
 	}
-	var header groupEnvelopeHeader
-	if b, err := base64.RawURLEncoding.DecodeString(parts[0]); err != nil || json.Unmarshal(b, &header) != nil {
-		return false
+	b, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil || json.Unmarshal(b, &header) != nil {
+		return header, false
 	}
-	return header.Sender == senderID.String()
+	return header, true
 }
 
 func envelopeError(content string) error {

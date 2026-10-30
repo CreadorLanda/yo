@@ -1395,6 +1395,7 @@ export default {
     creator_title: 'Create theme',
     creator_lead: 'Pick colors and see a live preview. Save applies it across the app.',
     creator_need_name: 'Give your theme a name (at least 2 characters).',
+    image_copy_failed: 'The image could not be saved. Choose it again and retry.',
     field_name: 'Name',
     field_name_ph: 'e.g. Sunset lounge',
     field_desc: 'Description',

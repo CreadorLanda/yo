@@ -614,6 +614,36 @@ func (r *Repository) InsertMessage(ctx context.Context, chatID, senderID uuid.UU
 	}
 	defer tx.Rollback(ctx)
 
+	// The authorization read and durable insert share this boundary. Group
+	// administration takes the same chat-row lock before changing membership
+	// or key_epoch, so a removal cannot commit between a membership check and
+	// this write.
+	var chatType ChatType
+	var keyEpoch int64
+	if err := tx.QueryRow(ctx, `
+		SELECT type, key_epoch FROM chats WHERE id = $1 FOR UPDATE
+	`, chatID).Scan(&chatType, &keyEpoch); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, ErrChatNotFound
+		}
+		return 0, err
+	}
+	var participant bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM chat_participants WHERE chat_id = $1 AND user_id = $2)
+	`, chatID, senderID).Scan(&participant); err != nil {
+		return 0, err
+	}
+	if !participant {
+		return 0, ErrNotParticipant
+	}
+	if chatType == ChatGroup && msgType != MsgSystem && msgType != MsgCall {
+		header, ok := groupEnvelopeHeaderOf(content)
+		if !ok || header.Epoch != keyEpoch {
+			return 0, ErrStaleGroupEpoch
+		}
+	}
+
 	ids := make([]string, 0, len(mediaIDs))
 	seen := make(map[uuid.UUID]struct{}, len(mediaIDs))
 	for _, mediaID := range mediaIDs {

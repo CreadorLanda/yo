@@ -2,6 +2,7 @@ import { AppState } from 'react-native';
 
 import { sendMessage as apiSendMessage, type MessageDTO } from '@/data/api/messages';
 import { getGroup } from '@/data/api/groups';
+import { ApiError } from '@/data/api/client';
 import { getCachedChat } from '@/data/chat-store';
 import {
   E2EEUnavailable,
@@ -9,6 +10,7 @@ import {
   encryptForPeerOrFail,
   ensureKeysPublished,
   groupEpoch,
+  invalidateGroupEpoch,
 } from '@/data/crypto';
 import {
   insertPendingMessage,
@@ -140,19 +142,25 @@ function scheduleRetry(chatId: string) {
 }
 
 async function attemptSend(next: PendingSend): Promise<OutboxEvent> {
-  let payload: string;
-  try {
-    payload = await encryptForChat(next.chatId, next.text);
-  } catch (err) {
-    return recordFailure(next, err);
-  }
-  try {
-    const replyTo = next.replyToId != null ? Number(next.replyToId) : undefined;
-    const dto = await apiSendMessage(next.chatId, payload, 'text', replyTo);
-    await markSendSucceeded(next.id, dto);
-    return { messageId: next.id, outcome: 'sent', dto };
-  } catch (err) {
-    return recordFailure(next, err);
+  let retriedEpoch = false;
+  for (;;) {
+    try {
+      const payload = await encryptForChat(next.chatId, next.text);
+      const replyTo = next.replyToId != null ? Number(next.replyToId) : undefined;
+      const dto = await apiSendMessage(next.chatId, payload, 'text', replyTo);
+      await markSendSucceeded(next.id, dto);
+      return { messageId: next.id, outcome: 'sent', dto };
+    } catch (err) {
+      const staleEpoch = getCachedChat(next.chatId)?.type === 'group' &&
+        err instanceof ApiError &&
+        (err.code === 'stale_group_epoch' || err.code === 'stale_key_epoch');
+      if (staleEpoch && !retriedEpoch) {
+        retriedEpoch = true;
+        invalidateGroupEpoch(next.chatId);
+        continue;
+      }
+      return recordFailure(next, err);
+    }
   }
 }
 

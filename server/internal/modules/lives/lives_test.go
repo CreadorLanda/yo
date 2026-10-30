@@ -362,6 +362,12 @@ func TestViewerCountIsReal(t *testing.T) {
 	if err := svc.End(ctx, live, host); err != nil {
 		t.Fatalf("End: %v", err)
 	}
+	if err := svc.End(ctx, live, host); err != nil {
+		t.Fatalf("repeated End: %v", err)
+	}
+	if ann.ended != 1 {
+		t.Fatalf("ended notifications = %d, want exactly one", ann.ended)
+	}
 	after, err := NewRepo(pool).Get(ctx, live)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -422,6 +428,77 @@ func TestJoiningAnEndedBroadcastFails(t *testing.T) {
 	// And ending frees the place for the next one.
 	if _, err := svc.Start(ctx, StartInput{ChatID: &chat}, host); err != nil {
 		t.Fatalf("Start after End: %v", err)
+	}
+}
+
+func TestWatchRejectsEndedBroadcastInsideTransaction(t *testing.T) {
+	pool := liveDB(t)
+	ctx := context.Background()
+	host, viewer := mkUser(t, pool), mkUser(t, pool)
+	chat := mkChat(t, pool, host, viewer)
+	svc := newSvc(pool, fakeAudience{
+		inChat:  map[uuid.UUID]bool{host: true, viewer: true},
+		members: []uuid.UUID{host, viewer},
+	}, &fakeAnnouncer{})
+	grant, err := svc.Start(ctx, StartInput{ChatID: &chat}, host)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := svc.End(ctx, grant.Live.ID, host); err != nil {
+		t.Fatalf("end: %v", err)
+	}
+
+	repo := NewRepo(pool)
+	if _, err := repo.Watch(ctx, grant.Live.ID, viewer); !errors.Is(err, ErrNoLive) {
+		t.Fatalf("watch after end = %v, want ErrNoLive", err)
+	}
+	if count, err := repo.ViewerCount(ctx, grant.Live.ID); err != nil || count != 0 {
+		t.Fatalf("viewer count after rejected watch = %d, err=%v; want zero", count, err)
+	}
+}
+
+func TestViewerLeaseExpiresWithoutHeartbeat(t *testing.T) {
+	pool := liveDB(t)
+	ctx := context.Background()
+	host, viewer := mkUser(t, pool), mkUser(t, pool)
+	chat := mkChat(t, pool, host, viewer)
+	svc := newSvc(pool, fakeAudience{
+		inChat:  map[uuid.UUID]bool{host: true, viewer: true},
+		members: []uuid.UUID{host, viewer},
+	}, &fakeAnnouncer{})
+	grant, err := svc.Start(ctx, StartInput{ChatID: &chat}, host)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if _, err := svc.Join(ctx, grant.Live.ID, viewer); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	if err := svc.Heartbeat(ctx, grant.Live.ID, viewer); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE live_viewers SET last_seen_at = NOW() - INTERVAL '1 minute'
+		WHERE live_id = $1 AND user_id = $2
+	`, grant.Live.ID, viewer); err != nil {
+		t.Fatalf("age lease: %v", err)
+	}
+	if err := svc.Heartbeat(ctx, grant.Live.ID, viewer); err != nil {
+		t.Fatalf("refresh aged lease: %v", err)
+	}
+	if expired, err := NewRepo(pool).SweepStaleViewers(ctx, 30*time.Second); err != nil || expired != 0 {
+		t.Fatalf("heartbeat-protected leases = %d, err=%v; want zero", expired, err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE live_viewers SET last_seen_at = NOW() - INTERVAL '1 minute'
+		WHERE live_id = $1 AND user_id = $2
+	`, grant.Live.ID, viewer); err != nil {
+		t.Fatalf("age lease again: %v", err)
+	}
+	if expired, err := NewRepo(pool).SweepStaleViewers(ctx, 30*time.Second); err != nil || expired != 1 {
+		t.Fatalf("expired leases = %d, err=%v; want one", expired, err)
+	}
+	if count, err := NewRepo(pool).ViewerCount(ctx, grant.Live.ID); err != nil || count != 0 {
+		t.Fatalf("viewer count after lease expiry = %d, err=%v; want zero", count, err)
 	}
 }
 

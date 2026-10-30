@@ -224,33 +224,108 @@ func (r *Repo) RunningFor(ctx context.Context, userID uuid.UUID) ([]Live, error)
 // connection dropped and came back is one viewer, not two, and a counter that
 // only goes up is a counter nobody can trust.
 func (r *Repo) Watch(ctx context.Context, liveID, userID uuid.UUID) (int, error) {
-	if _, err := r.db.Exec(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var endedAt *time.Time
+	if err := tx.QueryRow(ctx, `
+		SELECT ended_at FROM lives WHERE id = $1 FOR UPDATE
+	`, liveID).Scan(&endedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, ErrNoLive
+		}
+		return 0, err
+	}
+	if endedAt != nil {
+		return 0, ErrNoLive
+	}
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO live_viewers (live_id, user_id) VALUES ($1, $2)
 		ON CONFLICT (live_id, user_id)
-		DO UPDATE SET left_at = NULL, joined_at = COALESCE(live_viewers.joined_at, NOW())
+		DO UPDATE SET left_at = NULL, last_seen_at = NOW(), joined_at = COALESCE(live_viewers.joined_at, NOW())
 	`, liveID, userID); err != nil {
 		return 0, err
 	}
-	n, err := r.ViewerCount(ctx, liveID)
-	if err != nil {
+	var n int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM live_viewers WHERE live_id = $1 AND left_at IS NULL`, liveID).Scan(&n); err != nil {
 		return 0, err
 	}
 	// The peak is the number worth keeping: the live count vanishes with the
 	// broadcast, and "42 people watched" is what remains of it.
-	_, _ = r.db.Exec(ctx,
-		`UPDATE lives SET peak_viewers = $2 WHERE id = $1 AND peak_viewers < $2`, liveID, n)
+	if _, err := tx.Exec(ctx,
+		`UPDATE lives SET peak_viewers = $2 WHERE id = $1 AND peak_viewers < $2`, liveID, n); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
 	return n, nil
+}
+
+// Heartbeat refreshes a viewer lease. A missing or ended live is not a
+// successful heartbeat: the client must leave the room instead of keeping a
+// stale audience row alive.
+func (r *Repo) Heartbeat(ctx context.Context, liveID, userID uuid.UUID) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var endedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT ended_at FROM lives WHERE id = $1 FOR UPDATE`, liveID).Scan(&endedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNoLive
+		}
+		return err
+	}
+	if endedAt != nil {
+		return ErrNoLive
+	}
+	result, err := tx.Exec(ctx, `
+		UPDATE live_viewers SET last_seen_at = NOW()
+		WHERE live_id = $1 AND user_id = $2 AND left_at IS NULL
+	`, liveID, userID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNoLive
+	}
+	return tx.Commit(ctx)
 }
 
 // Unwatch takes someone out and returns the new count.
 func (r *Repo) Unwatch(ctx context.Context, liveID, userID uuid.UUID) (int, error) {
-	if _, err := r.db.Exec(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var endedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT ended_at FROM lives WHERE id = $1 FOR UPDATE`, liveID).Scan(&endedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, ErrNoLive
+		}
+		return 0, err
+	}
+	if _, err := tx.Exec(ctx, `
 		UPDATE live_viewers SET left_at = NOW()
 		WHERE live_id = $1 AND user_id = $2 AND left_at IS NULL
 	`, liveID, userID); err != nil {
 		return 0, err
 	}
-	return r.ViewerCount(ctx, liveID)
+	var n int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM live_viewers WHERE live_id = $1 AND left_at IS NULL`, liveID).Scan(&n); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (r *Repo) ViewerCount(ctx context.Context, liveID uuid.UUID) (int, error) {
@@ -284,23 +359,35 @@ func (r *Repo) Watching(ctx context.Context, liveID uuid.UUID) ([]uuid.UUID, err
 //
 // The viewers are marked as gone in the same statement, or a live that ended
 // would keep reporting the people who were watching when it did.
-func (r *Repo) End(ctx context.Context, liveID uuid.UUID) error {
+func (r *Repo) End(ctx context.Context, liveID uuid.UUID) (bool, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	if _, err := tx.Exec(ctx,
-		`UPDATE lives SET ended_at = NOW() WHERE id = $1 AND ended_at IS NULL`, liveID); err != nil {
-		return err
+	var endedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT ended_at FROM lives WHERE id = $1 FOR UPDATE`, liveID).Scan(&endedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, ErrNoLive
+		}
+		return false, err
+	}
+	if endedAt != nil {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, `UPDATE lives SET ended_at = NOW() WHERE id = $1`, liveID); err != nil {
+		return false, err
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE live_viewers SET left_at = NOW() WHERE live_id = $1 AND left_at IS NULL`,
 		liveID); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // SweepStale closes broadcasts nobody can still be in.
@@ -310,21 +397,60 @@ func (r *Repo) End(ctx context.Context, liveID uuid.UUID) error {
 // forever and the audience is offered a room with nothing in it — the same
 // fault calls had, for the same reason.
 func (r *Repo) SweepStale(ctx context.Context, olderThan time.Duration) (int64, error) {
-	tag, err := r.db.Exec(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	rows, err := tx.Query(ctx, `
 		UPDATE lives SET ended_at = NOW()
 		WHERE ended_at IS NULL AND started_at < NOW() - $1::interval
+		RETURNING id
 	`, olderThan.String())
 	if err != nil {
 		return 0, err
 	}
-	if tag.RowsAffected() > 0 {
-		_, _ = r.db.Exec(ctx, `
-			UPDATE live_viewers v SET left_at = NOW()
-			FROM lives l
-			WHERE v.live_id = l.id AND v.left_at IS NULL AND l.ended_at IS NOT NULL
-		`)
+	var ended []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ended = append(ended, id)
 	}
-	return tag.RowsAffected(), nil
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+	if len(ended) > 0 {
+		endedStrings := make([]string, len(ended))
+		for i, id := range ended {
+			endedStrings[i] = id.String()
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE live_viewers SET left_at = NOW()
+			WHERE live_id = ANY($1::uuid[]) AND left_at IS NULL
+		`, endedStrings); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return int64(len(ended)), nil
+}
+
+// SweepStaleViewers closes audience leases that stopped heartbeating. It
+// deliberately runs independently from the live age sweep: a long broadcast
+// may have a dead viewer while the host remains healthy.
+func (r *Repo) SweepStaleViewers(ctx context.Context, olderThan time.Duration) (int64, error) {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE live_viewers SET left_at = NOW()
+		WHERE left_at IS NULL AND last_seen_at < NOW() - $1::interval
+	`, olderThan.String())
+	return tag.RowsAffected(), err
 }
 
 func isUniqueViolation(err error) bool {

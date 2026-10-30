@@ -1395,6 +1395,7 @@ export default {
     creator_title: 'Criar tema',
     creator_lead: 'Escolhe cores e vê o preview ao vivo. Guardar aplica em toda a app.',
     creator_need_name: 'Dá um nome ao tema (pelo menos 2 caracteres).',
+    image_copy_failed: 'Não foi possível guardar a imagem. Tenta escolhê-la novamente.',
     field_name: 'Nome',
     field_name_ph: 'ex. Sunset lounge',
     field_desc: 'Descrição',

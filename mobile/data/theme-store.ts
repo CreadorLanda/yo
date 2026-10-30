@@ -79,6 +79,11 @@ const EMPTY_CSS_LAYER: ParsedThemeCss = {
   valid: true,
 };
 
+function newThemeId(): string {
+  const randomUUID = globalThis.crypto?.randomUUID?.();
+  return `theme_${randomUUID ?? `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`}`;
+}
+
 /**
  * Theme marketplace + GB-style creator.
  *
@@ -2121,7 +2126,7 @@ export function createThemePack(input: CreateThemeInput): ThemePack {
     }
   }
 
-  const id = `theme_${Date.now().toString(36)}`;
+  const id = newThemeId();
   const theme = pack({
     id,
     name: input.name.trim().slice(0, 40) || 'My theme',
@@ -2157,7 +2162,7 @@ export function createThemePack(input: CreateThemeInput): ThemePack {
 export function forkTheme(id: string, nameSuffix = ' (edit)'): ThemePack | null {
   const source = catalog.find((c) => c.id === id);
   if (!source) return null;
-  const newId = `theme_${Date.now().toString(36)}`;
+  const newId = newThemeId();
   const forked = pack({
     id: newId,
     name: `${source.name}${nameSuffix}`.slice(0, 40),
@@ -2252,8 +2257,13 @@ export function exportThemeDesign(id: string): ReturnType<typeof serializeThemeD
 export function importThemeDesign(raw: string): ThemePack | null {
   const parsed = parseThemeDesign(raw);
   if (!parsed.ok) return null;
-  const imported = parsed.value.theme;
-  const id = `theme_${Date.now().toString(36)}`;
+  const imported = { ...parsed.value.theme };
+  // Marketplace provenance belongs to the exporter. An imported design is a
+  // new local owned pack and must not inherit official/published state.
+  delete imported.isOfficial;
+  delete imported.isPublished;
+  delete imported.isOwned;
+  const id = newThemeId();
   const theme = pack({
     ...imported,
     id,
