@@ -53,10 +53,10 @@ export function testPush() {
   return api.post<{ queued: boolean }>('/api/notifications/test');
 }
 
-export function apiSaveOnboardingChoices(data: { notifications: boolean; contacts_visible: boolean }) {
+export function apiSaveOnboardingChoices(data: { contacts_visible: boolean }) {
   return api.post<{ success: boolean }>('/api/users/onboarding/preferences', data);
 }
 
 export function apiLoadOnboardingChoices() {
-  return api.get<{ notifications: boolean; contacts_visible: boolean }>('/api/users/onboarding/preferences');
+  return api.get<{ contacts_visible: boolean }>('/api/users/onboarding/preferences');
 }

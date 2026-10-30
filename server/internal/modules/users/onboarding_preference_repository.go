@@ -33,11 +33,10 @@ func (r *OnboardingPreferenceRepository) Save(ctx context.Context, prefs *Onboar
 
 	_, err = r.db.Exec(ctx, `
 		UPDATE users SET
-			notifications = $2,
-			contacts_visible = $3,
+			contacts_visible = $2,
 			updated_at = NOW()
 		WHERE id = $1`,
-		prefs.UserID, prefs.Notifications, prefs.ContactsVisible)
+		prefs.UserID, prefs.ContactsVisible)
 	return err
 }
 
@@ -45,15 +44,14 @@ func (r *OnboardingPreferenceRepository) Save(ctx context.Context, prefs *Onboar
 func (r *OnboardingPreferenceRepository) Load(ctx context.Context, userID uuid.UUID) (*OnboardingPreferences, error) {
 	var prefs OnboardingPreferences
 	err := r.db.QueryRow(ctx, `
-		SELECT notifications, contacts_visible, updated_at
+		SELECT contacts_visible, updated_at
 		FROM users WHERE id = $1`, userID).Scan(
-		&prefs.Notifications, &prefs.ContactsVisible, &prefs.UpdatedAt)
+		&prefs.ContactsVisible, &prefs.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			// Return default preferences if user not found
 			return &OnboardingPreferences{
 				UserID:          userID,
-				Notifications:   true,
 				ContactsVisible: true,
 			}, nil
 		}

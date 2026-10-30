@@ -18,10 +18,9 @@ func NewOnboardingService(repo *OnboardingPreferenceRepository) *OnboardingServi
 }
 
 // SavePreferences persists the onboarding preferences.
-func (s *OnboardingService) SavePreferences(ctx context.Context, userID uuid.UUID, notifications bool, contactsVisible bool) error {
+func (s *OnboardingService) SavePreferences(ctx context.Context, userID uuid.UUID, contactsVisible bool) error {
 	prefs := &OnboardingPreferences{
 		UserID:          userID,
-		Notifications:   notifications,
 		ContactsVisible: contactsVisible,
 		UpdatedAt:       time.Now(),
 	}
@@ -35,10 +34,9 @@ func (s *OnboardingService) GetPreferences(ctx context.Context, userID uuid.UUID
 
 // MarkOnboardingCompleted marks onboarding as completed.
 func (s *OnboardingService) MarkOnboardingCompleted(ctx context.Context, userID uuid.UUID) error {
-	// Set both preferences to true as part of completing onboarding
+	// Keep contact discovery enabled by default for accounts completing onboarding.
 	return s.repo.Save(ctx, &OnboardingPreferences{
 		UserID:          userID,
-		Notifications:   true,
 		ContactsVisible: true,
 		UpdatedAt:       time.Now(),
 	})

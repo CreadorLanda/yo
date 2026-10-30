@@ -9,10 +9,11 @@ import { PrimaryButton } from '@/components/ui/primary-button';
 import { StepHeader } from '@/components/ui/step-header';
 import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
-import { t } from '@/i18n';
+import { appAlert } from '@/data/dialog-store';
 import { apiSaveOnboardingChoices, patchNotifPrefs } from '@/data/api/notifications';
 import { registerPushWithServer, unregisterPushWithServer } from '@/data/push';
+import { useTheme } from '@/hooks/use-theme';
+import { t } from '@/i18n';
 import { useRegistration } from '@/store/registration';
 
 type Toggle = {
@@ -58,21 +59,22 @@ export default function PermissionsScreen() {
         await unregisterPushWithServer().catch(() => {});
       }
       await apiSaveOnboardingChoices({
-        notifications: finalNotifications,
         contacts_visible: contacts,
-      }).catch(() => {});
+      });
       await patchNotifPrefs({
         messages: finalNotifications,
         groups: finalNotifications,
         calls: finalNotifications,
         stories: finalNotifications,
-      }).catch(() => {});
+      });
       set('notificationsGranted', finalNotifications);
-    } finally {
       // Last step of onboarding — clear the wizard state before entering the app.
       reset();
-      setBusy(false);
       router.replace('/(tabs)');
+    } catch {
+      appAlert(t('auth.permissions.save_failed_title'), t('auth.permissions.save_failed_body'));
+    } finally {
+      setBusy(false);
     }
   };
 

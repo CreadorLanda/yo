@@ -20,14 +20,13 @@ func NewController(svc *Service, onboardingSvc *OnboardingService) *Controller {
 
 func (c *Controller) SaveOnboardingPreferences(ctx *gin.Context) {
 	var req struct {
-		Notifications   bool `json:"notifications"`
 		ContactsVisible bool `json:"contacts_visible"`
 	}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
 		return
 	}
-	if err := c.onboardingSvc.SavePreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx), req.Notifications, req.ContactsVisible); err != nil {
+	if err := c.onboardingSvc.SavePreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx), req.ContactsVisible); err != nil {
 		writeErr(ctx, err)
 		return
 	}
@@ -41,7 +40,6 @@ func (c *Controller) LoadOnboardingPreferences(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{
-		"notifications":    prefs.Notifications,
 		"contacts_visible": prefs.ContactsVisible,
 	})
 }
