@@ -85,3 +85,11 @@ test('as chaves que a tela de chamada precisa existem', async () => {
     expect(en.has(key), `${key} em falta`).toBe(true);
   }
 });
+test('locale strings use double-brace placeholders', async () => {
+  for (const locale of ['en', 'pt']) {
+    const src = await Bun.file(`i18n/locales/${locale}.ts`).text();
+    const bad = [...src.matchAll(/'[^']*\\{[^{}]+\\}[^']*'/g)].filter((m) => !m[0].includes('{{'));
+    expect(bad, `single-brace placeholder in ${locale}`).toHaveLength(0);
+  }
+});
+
