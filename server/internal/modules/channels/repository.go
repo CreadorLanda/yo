@@ -380,7 +380,6 @@ func (r *Repository) GetComment(ctx context.Context, id uuid.UUID) (uuid.UUID, *
 	return postID, parentID, err
 }
 
-
 func (r *Repository) ListComments(ctx context.Context, postID, viewer uuid.UUID) ([]Comment, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT c.id, c.post_id, c.parent_id, c.author_id, c.text, c.anonymous, c.created_at,
