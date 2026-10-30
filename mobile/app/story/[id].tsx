@@ -52,6 +52,12 @@ import {
   writeAnon,
   type StoryCommentDTO,
 } from '@/data/api/stories';
+import {
+  createChat,
+  sendMessage as apiSendMessage,
+} from '@/data/api/messages';
+import { upsertChat } from '@/data/chat-store';
+import { encryptForPeerOrFail, ensureKeysPublished } from '@/data/crypto';
 import type { Story, StoryComment } from '@/data/mock';
 import { toggleReaction } from '@/data/story-reactions';
 import { MAX_REACTIONS_PER_ITEM } from '@/data/reactions';
@@ -403,7 +409,7 @@ export default function StoryViewerScreen() {
     void setStoryReactions(story.id, toggleReaction(mine, emoji));
   };
 
-  const sendReply = () => {
+  const sendReply = async () => {
     const text = reply.trim();
     if (!text || !story) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -411,15 +417,27 @@ export default function StoryViewerScreen() {
 
     if (replyMode === 'private') {
       setReply('');
-      // An anonymous story cannot take an ordinary private reply: opening a
-      // chat names both people, so the first reply would undo exactly the
-      // anonymity the author was promised. It goes through the blind
-      // channel instead.
       if (story.isAnonymous && /^[0-9a-f-]{36}$/i.test(story.id)) {
-        writeAnon(story.id, text).catch(() => {});
-        setToast(t('anon.sent'));
+        try {
+          await writeAnon(story.id, text);
+          setToast(t('anon.sent'));
+        } catch {
+          appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+        }
       } else {
-        setToast(t('stories.private_reply_sent'));
+        try {
+          if (!story.authorId) throw new Error('no_author');
+          const { chat_id, chat } = await createChat(story.authorId);
+          upsertChat(chat);
+          await ensureKeysPublished();
+          const payload = await encryptForPeerOrFail(story.authorId, text, {
+            peerUsername: story.username.replace(/^@/, ''),
+          });
+          await apiSendMessage(chat_id, payload, 'text');
+          setToast(t('stories.private_reply_sent'));
+        } catch {
+          appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+        }
       }
       setTimeout(() => setToast(null), 1400);
       return;
