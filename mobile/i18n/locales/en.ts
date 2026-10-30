@@ -108,6 +108,7 @@ export default {
     timeout_immediately: 'Immediately',
     timeout_minutes: '{{n}} min',
     biometrics: 'Face ID / fingerprint',
+    device_passcode: 'Device passcode',
     biometrics_unavailable: 'Not set up on this device',
     code_hint: 'The same code that unlocks your locked chats.',
     code_placeholder: 'Code',
