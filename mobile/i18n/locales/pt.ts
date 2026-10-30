@@ -73,6 +73,8 @@ export default {
       label: 'Nome a mostrar',
       placeholder: 'ex.: Alex Landa',
       hint: '2–40 caracteres. Visível para quem conversar contigo.',
+      save_failed_title: 'Não foi possível guardar o perfil',
+      save_failed_body: 'A tua foto ou detalhes não foram enviados. Verifica a ligação e tenta de novo. A tua escolha continua aqui.',
     },
     username: {
       title: 'Escolhe um nome de utilizador',
@@ -1236,6 +1238,8 @@ export default {
     empty_stories: 'Ainda sem stories',
     empty_notes: 'Ainda sem notas',
     share_message: 'Encontra-me no ZwoSocial: {{link}}',
+    save_failed_title: 'Não foi possível guardar o perfil',
+    save_failed_body: 'A tua foto ou detalhes não foram enviados. Verifica a ligação e tenta de novo.',
   },
   settings: {
     blocked: 'Pessoas bloqueadas',
