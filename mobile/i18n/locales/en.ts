@@ -73,6 +73,8 @@ export default {
       label: 'Display name',
       placeholder: 'e.g. Alex Landa',
       hint: '2–40 characters. Visible to everyone you chat with.',
+      save_failed_title: 'Could not save profile',
+      save_failed_body: 'Your photo or details did not upload. Check your connection and try again. Your selection is still here.',
     },
     username: {
       title: 'Pick a username',
@@ -1235,6 +1237,8 @@ export default {
     empty_stories: 'No stories yet',
     empty_notes: 'No notes yet',
     share_message: 'Find me on ZwoSocial: {{link}}',
+    save_failed_title: 'Could not save profile',
+    save_failed_body: 'Your photo or details did not upload. Check your connection and try again.',
   },
   settings: {
     blocked: 'Blocked people',
