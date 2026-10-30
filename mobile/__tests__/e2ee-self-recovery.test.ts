@@ -41,6 +41,7 @@ mock.module('@/data/api/keys', () => ({
 }));
 mock.module('@/data/api/client', () => ({
   ApiError: class ApiError extends Error {},
+  ACCESS_KEY: 'auth.access',
 }));
 
 encryptedSecrets.set(
