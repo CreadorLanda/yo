@@ -56,5 +56,3 @@ func TestCommentParentValidation(t *testing.T) {
 		t.Fatalf("plain comment: %v", err)
 	}
 }
-
-
