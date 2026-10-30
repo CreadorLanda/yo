@@ -211,7 +211,7 @@ func (s *Service) View(ctx context.Context, id, viewer uuid.UUID) (Story, error)
 	if err != nil {
 		return Story{}, err
 	}
-	if st.AuthorID != viewer {
+	if !st.IsOwn {
 		_ = s.repo.MarkViewed(ctx, id, viewer)
 		st, _ = s.Get(ctx, id, viewer)
 	}
@@ -271,7 +271,7 @@ func (s *Service) Viewers(ctx context.Context, id, user uuid.UUID) ([]Viewer, er
 	if err != nil {
 		return nil, err
 	}
-	if story.AuthorID != user {
+	if !story.IsOwn {
 		return nil, ErrNotAuthor
 	}
 	return s.repo.Viewers(ctx, id)
