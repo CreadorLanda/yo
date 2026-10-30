@@ -85,6 +85,7 @@ type React struct {
 type Comment struct {
 	ID         uuid.UUID  `json:"id"`
 	PostID     uuid.UUID  `json:"post_id"`
+	ParentID   *uuid.UUID `json:"parent_id,omitempty"`
 	AuthorID   *uuid.UUID `json:"author_id,omitempty"`
 	AuthorName string     `json:"author_name,omitempty"`
 	Text       string     `json:"text"`
@@ -137,6 +138,7 @@ type ReactRequest struct {
 }
 
 type CommentRequest struct {
-	Text      string `json:"text" binding:"required"`
-	Anonymous bool   `json:"anonymous"`
+	Text      string     `json:"text" binding:"required"`
+	Anonymous bool       `json:"anonymous"`
+	ParentID  *uuid.UUID `json:"parent_id"`
 }

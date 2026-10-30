@@ -358,12 +358,12 @@ func (r *Repository) MyReactions(ctx context.Context, postID, userID uuid.UUID) 
 	return out, rows.Err()
 }
 
-func (r *Repository) AddComment(ctx context.Context, postID uuid.UUID, author *uuid.UUID, text string, anon bool) (uuid.UUID, error) {
+func (r *Repository) AddComment(ctx context.Context, postID uuid.UUID, author *uuid.UUID, text string, anon bool, parentID *uuid.UUID) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO channel_comments (post_id, author_id, text, anonymous)
-		VALUES ($1,$2,$3,$4) RETURNING id
-	`, postID, author, text, anon).Scan(&id)
+		INSERT INTO channel_comments (post_id, author_id, text, anonymous, parent_id)
+		VALUES ($1,$2,$3,$4,$5) RETURNING id
+	`, postID, author, text, anon, parentID).Scan(&id)
 	return id, err
 }
 
@@ -375,7 +375,7 @@ func (r *Repository) CommentPost(ctx context.Context, commentID uuid.UUID) (uuid
 
 func (r *Repository) ListComments(ctx context.Context, postID, viewer uuid.UUID) ([]Comment, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT c.id, c.post_id, c.author_id, c.text, c.anonymous, c.created_at,
+		SELECT c.id, c.post_id, c.parent_id, c.author_id, c.text, c.anonymous, c.created_at,
 		       COALESCE(u.display_name, '')
 		FROM channel_comments c
 		LEFT JOIN users u ON u.id = c.author_id
@@ -391,7 +391,7 @@ func (r *Repository) ListComments(ctx context.Context, postID, viewer uuid.UUID)
 	for rows.Next() {
 		var c Comment
 		var name string
-		if err := rows.Scan(&c.ID, &c.PostID, &c.AuthorID, &c.Text, &c.Anonymous, &c.CreatedAt, &name); err != nil {
+		if err := rows.Scan(&c.ID, &c.PostID, &c.ParentID, &c.AuthorID, &c.Text, &c.Anonymous, &c.CreatedAt, &name); err != nil {
 			return nil, err
 		}
 		if !c.Anonymous {
