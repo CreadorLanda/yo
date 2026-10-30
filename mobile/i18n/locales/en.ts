@@ -970,8 +970,8 @@ export default {
     unblock_action: 'Unblock',
     unblock_title: 'Unblock {name}?',
     unblock_body: 'They will be able to message and call you again. If they blocked you too, that stays.',
-    in_group_one: '{name} is in this group and you blocked them.',
-    in_group_many: '{count} people here are blocked by you.',
+    in_group_one: '{{name}} is in this group and you blocked them.',
+    in_group_many: '{{count}} people here are blocked by you.',
   },
   filters: {
     none: 'Original',
