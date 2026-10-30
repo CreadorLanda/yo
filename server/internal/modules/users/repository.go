@@ -246,6 +246,7 @@ func (r *Repository) Search(ctx context.Context, query string, callerID uuid.UUI
 		WHERE (username ILIKE '%' || $1 || '%' OR display_name ILIKE '%' || $1 || '%')
 		  AND id <> $2
 		  AND username_public = TRUE
+		  AND contacts_visible = TRUE
 		ORDER BY
 			CASE WHEN username ILIKE $1 || '%' THEN 0
 			     WHEN display_name ILIKE $1 || '%' THEN 1

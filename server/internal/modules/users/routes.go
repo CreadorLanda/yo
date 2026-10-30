@@ -14,4 +14,6 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	g.GET("/availability", c.GetAvailability)
 	g.GET("/search", c.GetSearch)
 	g.GET("/by-username/:username", c.GetByUsername)
+	g.GET("/onboarding/preferences", c.LoadOnboardingPreferences)
+	g.POST("/onboarding/preferences", c.SaveOnboardingPreferences)
 }

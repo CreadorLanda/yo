@@ -40,6 +40,8 @@ import { hasLockCode, isValidCode, setLockCode } from '@/data/chat-lock';
 import { resetAllStores } from '@/data/reset';
 
 import {
+  apiLoadOnboardingChoices,
+  apiSaveOnboardingChoices,
   getNotifPrefs,
   patchNotifPrefs,
 } from '@/data/api/notifications';
@@ -381,10 +383,21 @@ export default function SettingsScreen() {
   const [notifCalls, setNotifCalls] = useState(false);
   const [notifStories, setNotifStories] = useState(true);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [contactsVisible, setContactsVisible] = useState(true);
+  const [contactsPrefsLoaded, setContactsPrefsLoaded] = useState(false);
 
   // Load notification prefs + register Expo/FCM push token with the API.
   useEffect(() => {
     let cancelled = false;
+    apiLoadOnboardingChoices()
+      .then((prefs) => {
+        if (cancelled) return;
+        setContactsVisible(prefs.contacts_visible);
+        setContactsPrefsLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setContactsPrefsLoaded(true);
+      });
     getNotifPrefs()
       .then((p) => {
         if (cancelled) return;
@@ -393,17 +406,28 @@ export default function SettingsScreen() {
         setNotifCalls(p.calls);
         setNotifStories(p.stories);
         setPrefsLoaded(true);
+        if (p.messages || p.groups || p.calls || p.stories) {
+          registerPushWithServer().catch(() => {
+            /* permission denied / simulator / offline */
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) setPrefsLoaded(true);
       });
-    registerPushWithServer().catch(() => {
-      /* permission denied / simulator / offline */
-    });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const saveContactsVisibility = useCallback((visible: boolean) => {
+    setContactsVisible(visible);
+    if (!contactsPrefsLoaded) return;
+    apiSaveOnboardingChoices({ contacts_visible: visible }).catch(() => {
+      setContactsVisible(!visible);
+      appAlert(t('settings.privacy_failed_title'), t('settings.privacy_failed_body'));
+    });
+  }, [contactsPrefsLoaded]);
 
   const saveNotif = useCallback(
     (patch: {
@@ -673,6 +697,20 @@ export default function SettingsScreen() {
             label={t('settings.profile_photo')}
             value={visibilityLabel(profilePhoto)}
             onPress={() => pickVisibility(t('settings.profile_photo'), profilePhoto, setProfilePhoto, 'photo_visibility')}
+          />
+          <Row
+            icon="people-outline"
+            label={t('settings.contacts_discovery')}
+            below={<Text style={[styles.rowHint, { color: colors.textSecondary }]}>{t('settings.contacts_discovery_hint')}</Text>}
+            control={
+              <Switch
+                value={contactsVisible}
+                disabled={!contactsPrefsLoaded}
+                onValueChange={saveContactsVisibility}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            }
           />
           <Row
             icon="ban-outline"

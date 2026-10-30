@@ -10,20 +10,38 @@ import (
 )
 
 type Controller struct {
-	svc *Service
+	svc           *Service
+	onboardingSvc *OnboardingService
 }
 
-func NewController(svc *Service) *Controller {
-	return &Controller{svc: svc}
+func NewController(svc *Service, onboardingSvc *OnboardingService) *Controller {
+	return &Controller{svc: svc, onboardingSvc: onboardingSvc}
 }
 
-func (c *Controller) GetMe(ctx *gin.Context) {
-	u, err := c.svc.Me(ctx.Request.Context(), middleware.UserIDFrom(ctx))
+func (c *Controller) SaveOnboardingPreferences(ctx *gin.Context) {
+	var req struct {
+		ContactsVisible bool `json:"contacts_visible"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+	if err := c.onboardingSvc.SavePreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx), req.ContactsVisible); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (c *Controller) LoadOnboardingPreferences(ctx *gin.Context) {
+	prefs, err := c.onboardingSvc.GetPreferences(ctx.Request.Context(), middleware.UserIDFrom(ctx))
 	if err != nil {
 		writeErr(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, u)
+	ctx.JSON(http.StatusOK, gin.H{
+		"contacts_visible": prefs.ContactsVisible,
+	})
 }
 
 func (c *Controller) PatchMe(ctx *gin.Context) {
@@ -33,6 +51,15 @@ func (c *Controller) PatchMe(ctx *gin.Context) {
 		return
 	}
 	u, err := c.svc.Patch(ctx.Request.Context(), middleware.UserIDFrom(ctx), req)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, u)
+}
+
+func (c *Controller) GetMe(ctx *gin.Context) {
+	u, err := c.svc.Me(ctx.Request.Context(), middleware.UserIDFrom(ctx))
 	if err != nil {
 		writeErr(ctx, err)
 		return

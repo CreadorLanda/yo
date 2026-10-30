@@ -34,7 +34,7 @@ func TestGhostModeHTTPContract(t *testing.T) {
 	router := gin.New()
 	api := router.Group("/api")
 	api.Use(middleware.Auth(secret))
-	Register(api, NewController(NewService(NewRepository(pool))))
+	Register(api, NewController(NewService(NewRepository(pool)), nil))
 
 	request := func(method string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, "/api/users/me/ghost-mode", nil)

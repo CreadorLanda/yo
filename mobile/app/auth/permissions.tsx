@@ -9,6 +9,9 @@ import { PrimaryButton } from '@/components/ui/primary-button';
 import { StepHeader } from '@/components/ui/step-header';
 import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
+import { appAlert } from '@/data/dialog-store';
+import { apiSaveOnboardingChoices, patchNotifPrefs } from '@/data/api/notifications';
+import { registerPushWithServer, unregisterPushWithServer } from '@/data/push';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 import { useRegistration } from '@/store/registration';
@@ -39,14 +42,40 @@ export default function PermissionsScreen() {
   const { data, set, reset } = useRegistration();
   const [contacts, setContacts] = useState(data.contactsGranted);
   const [notifications, setNotifications] = useState(data.notificationsGranted);
+  const [busy, setBusy] = useState(false);
   const { colors } = useTheme();
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    if (busy) return;
+    setBusy(true);
     set('contactsGranted', contacts);
     set('notificationsGranted', notifications);
-    // Last step of onboarding — clear the wizard state before entering the app.
-    reset();
-    router.replace('/(tabs)');
+    try {
+      let finalNotifications = notifications;
+      if (notifications) {
+        const token = await registerPushWithServer();
+        if (!token) finalNotifications = false;
+      } else {
+        await unregisterPushWithServer().catch(() => {});
+      }
+      await apiSaveOnboardingChoices({
+        contacts_visible: contacts,
+      });
+      await patchNotifPrefs({
+        messages: finalNotifications,
+        groups: finalNotifications,
+        calls: finalNotifications,
+        stories: finalNotifications,
+      });
+      set('notificationsGranted', finalNotifications);
+      // Last step of onboarding — clear the wizard state before entering the app.
+      reset();
+      router.replace('/(tabs)');
+    } catch {
+      appAlert(t('auth.permissions.save_failed_title'), t('auth.permissions.save_failed_body'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -101,7 +130,7 @@ export default function PermissionsScreen() {
       </View>
 
       <View style={styles.footer}>
-        <PrimaryButton label={t('auth.permissions.cta')} onPress={handleFinish} />
+        <PrimaryButton label={busy ? t('auth.saving') : t('auth.permissions.cta')} onPress={handleFinish} disabled={busy} />
       </View>
     </SafeAreaView>
   );
