@@ -32,11 +32,12 @@ import {
 
 const PREFS_KEY = 'app.lock.v1';
 
-type Prefs = { enabled: boolean; biometrics: boolean; timeoutMs: LockTimeoutMs };
+type Prefs = { enabled: boolean; biometrics: boolean; devicePasscode: boolean; timeoutMs: LockTimeoutMs };
 
 const DEFAULTS: Prefs = {
   enabled: false,
   biometrics: false,
+  devicePasscode: false,
   timeoutMs: DEFAULT_LOCK_TIMEOUT_MS,
 };
 
@@ -87,6 +88,7 @@ export async function bootstrapAppLock(): Promise<void> {
     prefs = {
       enabled: typeof stored.enabled === 'boolean' ? stored.enabled : DEFAULTS.enabled,
       biometrics: typeof stored.biometrics === 'boolean' ? stored.biometrics : DEFAULTS.biometrics,
+      devicePasscode: typeof stored.devicePasscode === 'boolean' ? stored.devicePasscode : DEFAULTS.devicePasscode,
       timeoutMs: sanitizeTimeout(stored.timeoutMs),
     };
     // A lock with no code behind it cannot be entered, and would strand the
@@ -143,6 +145,12 @@ export async function setAppLockBiometrics(on: boolean): Promise<void> {
   emit();
 }
 
+export async function setAppLockDevicePasscode(on: boolean): Promise<void> {
+  prefs = { ...prefs, devicePasscode: on };
+  await persist();
+  emit();
+}
+
 export async function setAppLockTimeout(timeoutMs: LockTimeoutMs): Promise<void> {
   prefs = { ...prefs, timeoutMs: sanitizeTimeout(timeoutMs) };
   await persist();
@@ -157,6 +165,15 @@ export async function biometricsAvailable(): Promise<boolean> {
       LocalAuthentication.isEnrolledAsync(),
     ]);
     return hardware && enrolled;
+  } catch {
+    return false;
+  }
+}
+
+export async function devicePasscodeAvailable(): Promise<boolean> {
+  try {
+    const level = await LocalAuthentication.getEnrolledLevelAsync();
+    return level >= LocalAuthentication.SecurityLevel.SECRET;
   } catch {
     return false;
   }
@@ -177,11 +194,11 @@ export async function unlockWithAppCode(code: string): Promise<boolean> {
  * ZwoSocial. The way past a failed fingerprint is the code on our own screen.
  */
 export async function unlockWithBiometrics(prompt: string): Promise<boolean> {
-  if (!prefs.biometrics) return false;
+  if (!prefs.biometrics && !prefs.devicePasscode) return false;
   try {
     const res = await LocalAuthentication.authenticateAsync({
       promptMessage: prompt,
-      disableDeviceFallback: true,
+      disableDeviceFallback: !prefs.devicePasscode,
       cancelLabel: undefined,
     });
     if (!res.success) return false;

@@ -29,7 +29,9 @@ import {
 } from '@/data/api/users';
 import {
   biometricsAvailable,
+  devicePasscodeAvailable,
   setAppLockBiometrics,
+  setAppLockDevicePasscode,
   setAppLockEnabled,
   setAppLockTimeout,
   useAppLockPrefs,
@@ -434,11 +436,15 @@ export default function SettingsScreen() {
   // ── App lock ──────────────────────────────────────────────────────────
   const appLock = useAppLockPrefs();
   const [bioAvailable, setBioAvailable] = useState(false);
+  const [devicePasscodeAvail, setDevicePasscodeAvail] = useState(false);
 
   useEffect(() => {
     let alive = true;
     biometricsAvailable().then((ok) => {
       if (alive) setBioAvailable(ok);
+    });
+    devicePasscodeAvailable().then((ok) => {
+      if (alive) setDevicePasscodeAvail(ok);
     });
     return () => {
       alive = false;
@@ -769,6 +775,22 @@ export default function SettingsScreen() {
                   last
                 />
               )}
+              {devicePasscodeAvail ? (
+                <Row
+                  icon="keypad-outline"
+                  label={t('app_lock.device_passcode')}
+                  value={appLock.devicePasscode ? undefined : t('app_lock.off')}
+                  control={
+                    <Switch
+                      value={appLock.devicePasscode}
+                      onValueChange={(v) => void setAppLockDevicePasscode(v)}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor="#FFFFFF"
+                    />
+                  }
+                  last
+                />
+              ) : null}
             </>
           ) : null}
         </Group>

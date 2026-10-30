@@ -110,6 +110,8 @@ export default {
     timeout_immediately: 'Imediatamente',
     timeout_minutes: '{{n}} min',
     biometrics: 'Face ID / impressão digital',
+    device_passcode: 'Codigo do dispositivo',
+
     biometrics_unavailable: 'Não configurado neste aparelho',
     code_hint: 'O mesmo código que abre as conversas bloqueadas.',
     code_placeholder: 'Código',
