@@ -86,6 +86,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed (Corrigido)
 
+#### Mensagens
+- Ao pressionar uma mensagem, a conversa por trás passa a ficar mesmo desfocada, como no iPhone, com só um escurecimento leve por cima. No Android o desfoque nem estava ligado, e uma camada preta forte escondia o que restava
+
 #### Lives
 - Iniciar uma Live num chat ou canal onde já há uma a decorrer entra nessa Live em vez de dizer que alguém já está em direto. Quem a iniciou volta como emissor (útil quando a app fechou a meio), os outros entram como espectadores
 
