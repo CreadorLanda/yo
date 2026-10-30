@@ -667,6 +667,8 @@ export default {
     change_cover: 'Change cover',
     art_hint: 'If you skip this, we generate the art from the channel name.',
     image_failed: 'Could not upload the image',
+    create_failed_title: 'Could not create channel',
+    create_failed_body: 'Please try again.',
     handle_checking: 'Checking…',
     title: 'Create channel',
     lead: 'Broadcast to followers. You control who posts, who joins, and how people interact.',

@@ -667,6 +667,9 @@ export default {
     change_cover: 'Mudar capa',
     art_hint: 'Se não escolheres, geramos a arte a partir do nome do canal.',
     image_failed: 'Não foi possível enviar a imagem',
+    create_failed_title: 'Nao foi possivel criar o canal',
+    create_failed_body: 'Tenta novamente.',
+
     handle_checking: 'A verificar…',
     title: 'Criar canal',
     lead: 'Emite para seguidores. Tu defines quem publica, quem entra e como interagem.',
