@@ -437,6 +437,7 @@ export type Story = {
   id: string;
   user: string;
   username: string;
+  authorId?: string;
   avatarUri: string;
   coverUri: string;
   kind: StoryKind;

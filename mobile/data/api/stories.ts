@@ -120,6 +120,7 @@ export function mapStoryDTO(s: StoryDTO): import('@/data/mock').Story {
     id: s.id,
     user: s.is_own ? 'You' : s.author_name || 'Someone',
     username: s.author_username ? `@${s.author_username.replace(/^@/, '')}` : '',
+    authorId: s.author_id,
     avatarUri: s.author_avatar || '',
     coverUri: cover,
     kind: s.kind,
