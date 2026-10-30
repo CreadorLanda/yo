@@ -172,8 +172,8 @@ export async function biometricsAvailable(): Promise<boolean> {
 
 export async function devicePasscodeAvailable(): Promise<boolean> {
   try {
-    const enrolled = await LocalAuthentication.isEnrolledAsync();
-    return enrolled;
+    const level = await LocalAuthentication.getEnrolledLevelAsync();
+    return level >= LocalAuthentication.SecurityLevel.SECRET;
   } catch {
     return false;
   }
