@@ -55,4 +55,18 @@ func TestCommentParentValidation(t *testing.T) {
 	if _, err := svc.Comment(ctx, post.ID, owner, CommentRequest{Text: "another"}); err != nil {
 		t.Fatalf("plain comment: %v", err)
 	}
+
+	t.Run("deleting a parent cascades to replies", func(t *testing.T) {
+		if _, err := pool.Exec(ctx, `DELETE FROM channel_comments WHERE id = $1`, top.ID); err != nil {
+			t.Fatalf("delete parent: %v", err)
+		}
+
+		var remaining int
+		if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM channel_comments WHERE id = $1`, reply.ID).Scan(&remaining); err != nil {
+			t.Fatalf("count reply: %v", err)
+		}
+		if remaining != 0 {
+			t.Fatalf("reply count after parent deletion = %d, want 0", remaining)
+		}
+	})
 }
