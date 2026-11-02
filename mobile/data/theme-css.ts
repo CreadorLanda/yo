@@ -7,6 +7,7 @@ import type {
   ThemeLayout,
   ThemeTokens,
 } from './theme-model';
+import { THEME_LAYOUT_RANGES } from './theme-model';
 
 export type ThemeCssDiagnostic = {
   line: number;
@@ -245,19 +246,24 @@ export function parseThemeCss(css: string): ParsedThemeCss {
       continue;
     }
 
-    const numeric: Record<string, [keyof ThemeLayout, number, number]> = {
-      'bubble-radius': ['bubbleRadius', 4, 28],
-      'font-scale': ['fontScale', 0.85, 1.35],
-      'bubble-max-width': ['bubbleMaxWidth', 60, 94],
-      'wallpaper-dim': ['wallpaperDim', 0, 80],
-      'bubble-padding-h': ['bubblePaddingH', 6, 22],
-      'bubble-padding-v': ['bubblePaddingV', 4, 18],
-      'emoji-scale': ['emojiScale', 0.8, 1.6],
-      'letter-spacing': ['letterSpacing', -0.5, 1.5],
+    const numeric: Record<string, keyof ThemeLayout> = {
+      'bubble-radius': 'bubbleRadius',
+      'font-scale': 'fontScale',
+      'bubble-max-width': 'bubbleMaxWidth',
+      'wallpaper-dim': 'wallpaperDim',
+      'bubble-padding-h': 'bubblePaddingH',
+      'bubble-padding-v': 'bubblePaddingV',
+      'emoji-scale': 'emojiScale',
+      'letter-spacing': 'letterSpacing',
     };
-    const numericSpec = numeric[property];
-    if (numericSpec) {
-      const [target, min, max] = numericSpec;
+    const target = numeric[property];
+    if (target) {
+      const range = THEME_LAYOUT_RANGES[target];
+      if (!range) {
+        addError(errors, css, offset, 'Numeric property has no shared range.', property);
+        continue;
+      }
+      const [min, max] = range;
       const parsed = numberInRange(raw, min, max);
       if (parsed === null) {
         addError(errors, css, offset, `Expected a number between ${min} and ${max}.`, property);

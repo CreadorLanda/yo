@@ -138,6 +138,11 @@ export function leaveLive(liveId: string) {
   return api.post<void>(`/api/lives/${liveId}/leave`, {});
 }
 
+/** Keep the server-side viewer lease alive while the SFU room is open. */
+export function heartbeatLive(liveId: string) {
+  return api.post<void>(`/api/lives/${liveId}/heartbeat`, {});
+}
+
 /** End the broadcast. Only the host may. */
 export function endLive(liveId: string) {
   return api.post<void>(`/api/lives/${liveId}/end`, {});

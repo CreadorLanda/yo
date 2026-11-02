@@ -182,7 +182,7 @@ func (s *Service) Patch(ctx context.Context, groupID, userID uuid.UUID, req Patc
 	if req.Permissions != nil && !validPermissions(*req.Permissions) {
 		return Group{}, ErrInvalidPermission
 	}
-	if err := s.repo.Patch(ctx, groupID, title, desc, avatar, req.HistoryEnabled, req.HistoryMode, req.HistoryLimit, req.Permissions); err != nil {
+	if err := s.repo.Patch(ctx, groupID, userID, title, desc, avatar, req.HistoryEnabled, req.HistoryMode, req.HistoryLimit, req.Permissions); err != nil {
 		return Group{}, err
 	}
 	return s.load(ctx, groupID)

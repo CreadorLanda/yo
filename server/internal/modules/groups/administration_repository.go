@@ -32,6 +32,14 @@ func (r *Repository) ApplyMemberChanges(ctx context.Context, chatID, actor uuid.
 		return uuid.Nil, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	selfLeave := action == "remove" && len(targets) == 1 && targets[0] == actor
+	if selfLeave {
+		if err := lockGroupMember(ctx, tx, chatID, actor); err != nil {
+			return uuid.Nil, err
+		}
+	} else if err := lockGroupAdmin(ctx, tx, chatID, actor); err != nil {
+		return uuid.Nil, err
+	}
 
 	rows, err := tx.Query(ctx, `
 		SELECT user_id, role
@@ -150,6 +158,9 @@ func (r *Repository) AddMembersWithHistoryAndRotate(ctx context.Context, chatID,
 		return nil, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockGroupAdmin(ctx, tx, chatID, actor); err != nil {
+		return nil, err
+	}
 	var from any
 	if !shareHistory {
 		from = time.Now()
@@ -195,6 +206,56 @@ func insertSystemTx(ctx context.Context, tx pgx.Tx, chatID, actor uuid.UUID, con
 	return err
 }
 
+// lockGroupAdmin is the authoritative authorization boundary for mutations.
+// The group row is locked first by every admin mutation, so a concurrent role
+// change cannot commit between the authorization decision and the write.
+func lockGroupAdmin(ctx context.Context, tx pgx.Tx, chatID, actor uuid.UUID) error {
+	if err := lockGroupRow(ctx, tx, chatID); err != nil {
+		return err
+	}
+	return lockGroupMemberRole(ctx, tx, chatID, actor, RoleAdmin)
+}
+
+func lockGroupMember(ctx context.Context, tx pgx.Tx, chatID, actor uuid.UUID) error {
+	if err := lockGroupRow(ctx, tx, chatID); err != nil {
+		return err
+	}
+	return lockGroupMemberRole(ctx, tx, chatID, actor, "")
+}
+
+func lockGroupRow(ctx context.Context, tx pgx.Tx, chatID uuid.UUID) error {
+	if err := tx.QueryRow(ctx, `
+		SELECT id FROM chats WHERE id = $1 AND type = 'group' FOR UPDATE
+	`, chatID).Scan(new(uuid.UUID)); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotAdmin
+		}
+		return err
+	}
+	return nil
+}
+
+func lockGroupMemberRole(ctx context.Context, tx pgx.Tx, chatID, actor uuid.UUID, required MemberRole) error {
+	var role string
+	if err := tx.QueryRow(ctx, `
+		SELECT role FROM chat_participants
+		WHERE chat_id = $1 AND user_id = $2
+		FOR UPDATE
+	`, chatID, actor).Scan(&role); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			if required == RoleAdmin {
+				return ErrNotAdmin
+			}
+			return ErrNotMember
+		}
+		return err
+	}
+	if required != "" && MemberRole(role) != required {
+		return ErrNotAdmin
+	}
+	return nil
+}
+
 func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {
 	out := make([]uuid.UUID, 0, len(ids))
 	seen := make(map[uuid.UUID]struct{}, len(ids))
@@ -226,6 +287,9 @@ func (r *Repository) CreateAchievement(ctx context.Context, chatID, actor uuid.U
 		return uuid.Nil, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockGroupAdmin(ctx, tx, chatID, actor); err != nil {
+		return uuid.Nil, err
+	}
 	var id uuid.UUID
 	err = tx.QueryRow(ctx, `
 		INSERT INTO group_achievements (chat_id, created_by, icon, name, criteria)
@@ -296,6 +360,9 @@ func (r *Repository) AwardAchievement(ctx context.Context, chatID, actor, achiev
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockGroupAdmin(ctx, tx, chatID, actor); err != nil {
+		return err
+	}
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM group_achievements WHERE id = $1 AND chat_id = $2)`, achievementID, chatID).Scan(&exists); err != nil {
 		return err

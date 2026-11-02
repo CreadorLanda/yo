@@ -52,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✏️ Changed (Alterado)
 
+#### Chamadas
+- Novo ecrã de chamada de vídeo no estilo do WhatsApp: a outra pessoa em ecrã inteiro, a tua câmara numa janela pequena que se arrasta para qualquer canto e troca com um toque, e um painel de controlos (altifalante, câmara, microfone, virar câmara e desligar) que desaparece ao fim de uns segundos e volta com um toque. O nome e o estado ficam no topo, com a linha de cifragem que mostra a impressão digital ao tocar. O aviso de chamada não cifrada mantém-se. Também no browser
+
 #### Marca
 - Yo passa a chamar-se ZwoSocial: nome da app, textos em inglês e português, documentação e notificações
 - Novo logo — um Z num balão de conversa — no ícone, no splash, no ícone temático do Android e nos ícones alternativos (Sunset, Phosphor, Sakura, Void)
@@ -87,8 +90,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed (Corrigido)
 
+#### Mensagens
+- Ao pressionar uma mensagem, a conversa por trás passa a ficar mesmo desfocada, como no iPhone, com só um escurecimento leve por cima. No Android o desfoque nem estava ligado, e uma camada preta forte escondia o que restava
+
 #### Lives
 - Iniciar uma Live num chat ou canal onde já há uma a decorrer entra nessa Live em vez de dizer que alguém já está em direto. Quem a iniciou volta como emissor (útil quando a app fechou a meio), os outros entram como espectadores
+
+#### Perfil
+- A foto de perfil escolhida no registo e na edição de perfil é agora enviada para o servidor e guardada antes de reportar sucesso; o URL devolvido pelo servidor é o que aparece no perfil, na lista de conversas e nas contas, também após reiniciar a app. Erros de upload/API deixam de ser silenciosos e mantêm a seleção para nova tentativa
 
 #### Câmara
 - O botão de filtros do visor das Stories agora abre os filtros reais para fotos; os filtros ficam fora do vídeo porque a gravação ainda não incorpora a sobreposição do preview

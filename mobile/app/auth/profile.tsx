@@ -12,6 +12,7 @@ import { PrimaryButton } from '@/components/ui/primary-button';
 import { StepHeader } from '@/components/ui/step-header';
 import { TextField } from '@/components/ui/text-field';
 import { Palette, Radii, Spacing } from '@/constants/theme';
+import { appAlert } from '@/data/dialog-store';
 import { me } from '@/data/api/users';
 import { setUser } from '@/data/auth-store';
 import { updateProfile } from '@/data/profile-store';
@@ -68,12 +69,15 @@ export default function ProfileScreen() {
       await updateProfile({ name: display, avatarUri: avatar ?? undefined });
       const updated = await me();
       await setUser(updated);
+      router.push('/auth/username');
     } catch {
-      // Non-fatal — the user can edit later from Settings. Move on.
+      // Upload/API errors must be visible and must not silently discard the
+      // selected photo: keep the user on this screen with their pick intact
+      // so they can retry or remove it, instead of pretending success.
+      appAlert(t('auth.profile.save_failed_title'), t('auth.profile.save_failed_body'));
     } finally {
       setBusy(false);
     }
-    router.push('/auth/username');
   };
 
   return (

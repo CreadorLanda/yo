@@ -12,6 +12,7 @@ import { StateTransition } from '@/components/ui/state-transition';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
+import { appAlert } from '@/data/dialog-store';
 import { updateProfile, useProfile } from '@/data/profile-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -33,14 +34,18 @@ export default function ProfileScreen() {
     setEditing(true);
   };
 
-  const save = () => {
-    updateProfile({
-      name: draftName.trim() || profile.name,
-      bio: draftBio.trim(),
-      username: draftUsername,
-      avatarUri: draftAvatarUri !== profile.avatarUri ? draftAvatarUri : undefined,
-    });
-    setEditing(false);
+  const save = async () => {
+    try {
+      await updateProfile({
+        name: draftName.trim() || profile.name,
+        bio: draftBio.trim(),
+        username: draftUsername,
+        avatarUri: draftAvatarUri !== profile.avatarUri ? draftAvatarUri : undefined,
+      });
+      setEditing(false);
+    } catch {
+      appAlert(t('profile.save_failed_title'), t('profile.save_failed_body'));
+    }
   };
 
   const shareProfile = () => {

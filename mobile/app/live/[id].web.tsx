@@ -17,6 +17,7 @@ import {
   banFromLive,
   deleteLiveComment,
   endLive,
+  heartbeatLive,
   joinLive,
   leaveLive,
   leaveStage,
@@ -32,6 +33,7 @@ import {
   type LiveGrant,
   type LiveStats,
 } from '@/data/api/lives';
+import { ApiError } from '@/data/api/client';
 import { getCurrentUser } from '@/data/auth-store';
 import { appAlert } from '@/data/dialog-store';
 import { addOwnComment, closeRoom, openRoom, patchRoom, useLiveRoom } from '@/data/live-room';
@@ -225,6 +227,21 @@ export default function LiveScreen() {
     }, 3000);
     return () => clearInterval(flush);
   }, [liveId]);
+
+  useEffect(() => {
+    if (isHost || !liveId) return;
+    const beat = () => {
+      void heartbeatLive(liveId).catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          patchRoom({ ended: true });
+          void roomRef.current?.disconnect();
+        }
+      });
+    };
+    beat();
+    const timer = setInterval(beat, 15_000);
+    return () => clearInterval(timer);
+  }, [isHost, liveId]);
 
   useEffect(() => {
     if (!grant?.host) return;

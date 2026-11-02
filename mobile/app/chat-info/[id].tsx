@@ -231,6 +231,10 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
     });
     if (result.canceled || !result.assets[0]) return;
     const imageUri = await persistThemeImage(result.assets[0].uri);
+    if (!imageUri) {
+      appAlert(t('themes.creator_title'), t('themes.image_copy_failed'));
+      return;
+    }
     setChatWallpaper(id, {
       color: wallpaper?.color,
       imageUri,

@@ -36,11 +36,10 @@ function extensionOf(uri: string): string {
 /**
  * Copy a picked image into app storage and return the URI to store.
  *
- * Returns the original URI if the copy fails: a wallpaper that might not
- * survive a restart is still better than a picker that appears to do nothing,
- * and the failure is visible the next time rather than immediately.
+ * Returns null if the copy fails. A temporary picker URI must never become a
+ * persisted preference: it is not app-owned and can disappear at any time.
  */
-export async function persistThemeImage(uri: string): Promise<string> {
+export async function persistThemeImage(uri: string): Promise<string | null> {
   if (!uri || isThemeAsset(uri)) return uri;
   try {
     const dir = assetDir();
@@ -50,7 +49,7 @@ export async function persistThemeImage(uri: string): Promise<string> {
     new File(uri).copy(target);
     return target.uri;
   } catch {
-    return uri;
+    return null;
   }
 }
 

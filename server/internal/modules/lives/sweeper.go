@@ -35,14 +35,18 @@ func (s *Sweeper) Start() {
 		// One pass at boot: a restart mid-broadcast would otherwise leave it
 		// live until the first tick.
 		s.sweep(ctx)
-		t := time.NewTicker(s.every)
-		defer t.Stop()
+		liveTicker := time.NewTicker(s.every)
+		viewerTicker := time.NewTicker(15 * time.Second)
+		defer liveTicker.Stop()
+		defer viewerTicker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-t.C:
-				s.sweep(ctx)
+			case <-liveTicker.C:
+				s.sweepLive(ctx)
+			case <-viewerTicker.C:
+				s.sweepViewers(ctx)
 			}
 		}
 	}()
@@ -55,8 +59,20 @@ func (s *Sweeper) Stop() {
 }
 
 func (s *Sweeper) sweep(ctx context.Context) {
+	s.sweepLive(ctx)
+	s.sweepViewers(ctx)
+}
+
+func (s *Sweeper) sweepLive(ctx context.Context) {
 	if s.repo == nil {
 		return
 	}
 	_, _ = s.repo.SweepStale(ctx, s.maxAge)
+}
+
+func (s *Sweeper) sweepViewers(ctx context.Context) {
+	if s.repo == nil {
+		return
+	}
+	_, _ = s.repo.SweepStaleViewers(ctx, 45*time.Second)
 }

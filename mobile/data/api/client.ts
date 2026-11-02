@@ -22,8 +22,6 @@ export function getBaseUrl(): string {
   return process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_BASE_URL;
 }
 
-const BASE_URL = getBaseUrl();
-
 export const ACCESS_KEY = 'auth.access';
 export const REFRESH_KEY = 'auth.refresh';
 
@@ -36,17 +34,18 @@ export class ApiError extends Error {
 type RequestOpts = Omit<RequestInit, 'body'> & {
   /** JSON body. Pass anything serializable; the client adds the header for you. */
   json?: unknown;
+  /** Multipart body. Fetch supplies the boundary; callers must not set it. */
+  form?: FormData;
   /** Defaults to true; set false for /auth/* endpoints. */
   auth?: boolean;
 };
-
 let inFlightRefresh: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
   const refresh = await SecureStore.getItemAsync(REFRESH_KEY);
   if (!refresh) return false;
   try {
-    const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+    const res = await fetch(`${getBaseUrl()}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refresh_token: refresh }),
@@ -62,21 +61,21 @@ async function tryRefresh(): Promise<boolean> {
   }
 }
 
-async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
-  const { json, auth = true, headers, method = 'GET', ...rest } = opts;
+async function requestResponse(path: string, opts: RequestOpts = {}): Promise<Response> {
+	const { json, form, auth = true, headers, method = 'GET', ...rest } = opts;
   const h: Record<string, string> = { ...(headers as Record<string, string> | undefined) };
-  if (json !== undefined) h['content-type'] = 'application/json';
+	if (json !== undefined) h['content-type'] = 'application/json';
   if (auth) {
     const access = await SecureStore.getItemAsync(ACCESS_KEY);
     if (access) h.Authorization = `Bearer ${access}`;
   }
 
   const send = async () =>
-    fetch(`${BASE_URL}${path}`, {
+    fetch(`${getBaseUrl()}${path}`, {
       ...rest,
       method,
       headers: h,
-      body: json !== undefined ? JSON.stringify(json) : (rest as RequestInit).body,
+      body: json !== undefined ? JSON.stringify(json) : form ?? (rest as RequestInit).body,
     });
 
   let res = await send();
@@ -95,7 +94,12 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
     }
   }
 
-  if (!res.ok) {
+	return res;
+}
+
+async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
+	const res = await requestResponse(path, opts);
+	if (!res.ok) {
     let body: { error?: string; detail?: string } = {};
     try {
       body = (await res.json()) as typeof body;
@@ -119,6 +123,7 @@ export const api = {
   put: <T>(path: string, json?: unknown, opts?: RequestOpts) =>
     request<T>(path, { ...opts, method: 'PUT', json }),
   del: <T>(path: string, opts?: RequestOpts) => request<T>(path, { ...opts, method: 'DELETE' }),
+  upload: <T>(path: string, form: FormData, opts?: Omit<RequestOpts, 'form' | 'json'>) =>
+    request<T>(path, { ...opts, method: 'POST', form }),
+  raw: (path: string, opts?: Omit<RequestOpts, 'json' | 'form'>) => requestResponse(path, opts),
 };
-
-export { BASE_URL };

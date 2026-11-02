@@ -195,6 +195,9 @@ func (s *Service) Start(ctx context.Context, in StartInput, host uuid.UUID) (Gra
 	name := s.nameOf(ctx, host)
 	token, _, err := s.signer.Sign(host.String(), name, live.ID.String(), livekit.Broadcaster)
 	if err != nil {
+		// The DB row is only useful while the host has a grant. Compensate the
+		// durable insert so a signer outage cannot publish an orphaned live.
+		_, _ = s.repo.End(ctx, live.ID)
 		return Grant{}, err
 	}
 	live.HostName = name
@@ -291,6 +294,10 @@ func (s *Service) Leave(ctx context.Context, liveID, userID uuid.UUID) error {
 	return nil
 }
 
+func (s *Service) Heartbeat(ctx context.Context, liveID, userID uuid.UUID) error {
+	return s.repo.Heartbeat(ctx, liveID, userID)
+}
+
 // End stops a broadcast. Only the host may.
 func (s *Service) End(ctx context.Context, liveID, userID uuid.UUID) error {
 	live, err := s.repo.Get(ctx, liveID)
@@ -304,8 +311,12 @@ func (s *Service) End(ctx context.Context, liveID, userID uuid.UUID) error {
 	if !acc.host && !acc.cohost {
 		return ErrNotAllowed
 	}
-	if err := s.repo.End(ctx, liveID); err != nil {
+	ended, err := s.repo.End(ctx, liveID)
+	if err != nil {
 		return err
+	}
+	if !ended {
+		return nil
 	}
 	if s.announce != nil {
 		// Everyone who was watching, plus everyone who was told it started —
@@ -531,6 +542,24 @@ func (c *Controller) PostLeave(ctx *gin.Context) {
 	ctx.Status(http.StatusNoContent)
 }
 
+// PostHeartbeat — POST /lives/:id/heartbeat
+func (c *Controller) PostHeartbeat(ctx *gin.Context) {
+	liveID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	if err := c.svc.Heartbeat(ctx.Request.Context(), liveID, middleware.UserIDFrom(ctx)); err != nil {
+		if errors.Is(err, ErrNoLive) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "no_live"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
 // PostEnd — POST /lives/:id/end
 func (c *Controller) PostEnd(ctx *gin.Context) {
 	liveID, err := uuid.Parse(ctx.Param("id"))
@@ -584,6 +613,7 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	rg.GET("/lives", c.GetRunning)
 	rg.POST("/lives/:id/join", c.PostJoin)
 	rg.POST("/lives/:id/leave", c.PostLeave)
+	rg.POST("/lives/:id/heartbeat", c.PostHeartbeat)
 	rg.POST("/lives/:id/end", c.PostEnd)
 	registerTools(rg, c)
 }

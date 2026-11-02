@@ -4496,17 +4496,23 @@ function ReactionMenu({
 
   return (
     <Modal transparent statusBarTranslucent animationType="fade" visible={visible} onRequestClose={close}>
-      {/* Frosted backdrop */}
+      {/* Frosted backdrop, as on iOS: the conversation behind is clearly
+          blurred and only lightly dimmed, and the pressed message stays sharp
+          above it. Android needs `dimezisBlurView` to blur at all; without it
+          expo-blur draws a flat translucent tint and a heavy black layer on
+          top was all that was left of the "blur". */}
       <Animated.View style={StyleSheet.absoluteFill} entering={FadeIn.duration(160)}>
         <BlurView
-          intensity={isDark ? 90 : 80}
+          intensity={100}
           tint={isDark ? 'dark' : 'light'}
+          experimentalBlurMethod="dimezisBlurView"
+          blurReductionFactor={2}
           style={StyleSheet.absoluteFill}
         />
         <View
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' },
+            { backgroundColor: isDark ? 'rgba(0,0,0,0.28)' : 'rgba(0,0,0,0.12)' },
           ]}
         />
       </Animated.View>

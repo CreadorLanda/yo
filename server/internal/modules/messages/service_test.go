@@ -784,6 +784,28 @@ func TestAdvancedPrivacyPersistsAndEnforces(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
+func TestGroupMessageRejectsEpochRotatedAfterAuthorization(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := newTestService(pool)
+	alice := createTestUser(t, pool, "alice_epoch_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_epoch_"+uuid.NewString()[:8])
+	groupID, err := groups.NewRepository(pool).Create(ctx, alice, "epoch", "", "", []uuid.UUID{bob})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM chats WHERE id = $1`, groupID) })
+	if _, err := pool.Exec(ctx, `UPDATE chats SET key_epoch = key_epoch + 1 WHERE id = $1`, groupID); err != nil {
+		t.Fatalf("rotate epoch: %v", err)
+	}
+	_, err = svc.SendMessage(ctx, groupID, alice, SendMessageRequest{
+		Content: testGroupEnvelope(alice.String(), 1, 0),
+	})
+	if !errors.Is(err, ErrStaleGroupEpoch) {
+		t.Fatalf("stale group message = %v, want ErrStaleGroupEpoch", err)
+	}
+}
+
 // TestReadReceiptsAreReciprocal is the rule that makes the setting honest:
 // turning yours off also stops you seeing anyone else's.
 //

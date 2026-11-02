@@ -27,6 +27,7 @@ var (
 	ErrUnencryptedMessage    = errors.New("message_must_be_e2ee_envelope")
 	ErrInvalidMessageType    = errors.New("invalid_message_type")
 	ErrInvalidEnvelopeChat   = errors.New("invalid_e2ee_envelope_for_chat")
+	ErrStaleGroupEpoch       = errors.New("stale_group_epoch")
 	ErrInvalidMediaReference = errors.New("invalid_media_reference")
 	ErrGroupPermission       = errors.New("group_permission_denied")
 	ErrInvalidEmoji          = platformreactions.ErrInvalidEmoji

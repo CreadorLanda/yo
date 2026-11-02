@@ -8,7 +8,7 @@ export type StoryVisibility = 'public' | 'contacts' | 'close';
 
 export interface StoryDTO {
   id: string;
-  author_id: string;
+  author_id?: string;
   author_name?: string;
   author_username?: string;
   author_avatar?: string;
@@ -120,6 +120,7 @@ export function mapStoryDTO(s: StoryDTO): import('@/data/mock').Story {
     id: s.id,
     user: s.is_own ? 'You' : s.author_name || 'Someone',
     username: s.author_username ? `@${s.author_username.replace(/^@/, '')}` : '',
+    authorId: s.author_id,
     avatarUri: s.author_avatar || '',
     coverUri: cover,
     kind: s.kind,

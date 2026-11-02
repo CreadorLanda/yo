@@ -85,6 +85,26 @@ export type ReplyStyle = 'quote' | 'bar' | 'minimal';
 export type SendButtonStyle = 'circle' | 'pill' | 'icon';
 export type SystemMsgStyle = 'pill' | 'plain' | 'banner';
 export type UnreadBadgeStyle = 'dot' | 'count' | 'none';
+
+export const THEME_LAYOUT_RANGES: Partial<Record<keyof ThemeLayout, readonly [number, number]>> = {
+  bubbleRadius: [4, 28],
+  fontScale: [0.85, 1.35],
+  iconScale: [0.8, 1.4],
+  glassIntensity: [10, 100],
+  bubbleMaxWidth: [60, 92],
+  bubblePaddingH: [6, 22],
+  bubblePaddingV: [4, 18],
+  emojiScale: [0.8, 1.6],
+  letterSpacing: [-0.5, 1.5],
+  lineHeightExtra: [0, 20],
+  bubbleShadowStrength: [0, 1],
+  inputRadius: [0, 32],
+  listAvatarSize: [20, 96],
+  wallpaperDim: [0, 80],
+  reactionScale: [0.8, 1.6],
+  metaSize: [10, 14],
+  gapAfterGroup: [0, 32],
+};
 /** What the chat wallpaper does when nobody is touching it. */
 export type WallpaperAnimation = 'none' | 'aurora' | 'drift' | 'pulse' | 'liquid';
 

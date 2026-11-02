@@ -76,3 +76,28 @@ test('o SDK rejeita estrutura, cores e referências externas inválidas', () => 
   expect(invalid.errors.some((error) => error.includes('bubbleRadius'))).toBe(true);
   expect(invalid.errors.some((error) => error.includes('icons.send'))).toBe(true);
 });
+
+test('o SDK rejeita enums importados fora do contrato nativo', () => {
+  const result = serializeThemeDesign({
+    ...theme,
+    layout: { bubbleShape: 'hexagon' as never, density: 'spacious' as never },
+  });
+
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.errors.some((error) => error.includes('bubbleShape'))).toBe(true);
+  expect(result.errors.some((error) => error.includes('density'))).toBe(true);
+});
+
+test('o SDK aplica limites a todos os knobs numéricos importáveis', () => {
+  const result = serializeThemeDesign({
+    ...theme,
+    layout: { reactionScale: 99, metaSize: 99, gapAfterGroup: 99 },
+  });
+
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.errors.some((error) => error.includes('reactionScale'))).toBe(true);
+  expect(result.errors.some((error) => error.includes('metaSize'))).toBe(true);
+  expect(result.errors.some((error) => error.includes('gapAfterGroup'))).toBe(true);
+});

@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
-import { ACCESS_KEY, api, BASE_URL } from './client';
+import { ACCESS_KEY, api, getBaseUrl } from './client';
 
 export type ChatStatus = 'active' | 'pending' | 'blocked';
 
@@ -392,7 +392,7 @@ export function openRealtimeWithToken(
   onEvent: (ev: RealtimeEvent) => void,
   onClose?: () => void,
 ): WebSocket {
-  const base = BASE_URL.replace(/^http/, 'ws');
+  const base = getBaseUrl().replace(/^http/, 'ws');
   // Put the access token in the WebSocket handshake protocol instead of the
   // URL. Query parameters are routinely captured by reverse-proxy and access
   // logs. The server accepts `yo-bearer.<jwt>` and never echoes it back.

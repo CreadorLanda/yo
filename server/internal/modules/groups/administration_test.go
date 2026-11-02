@@ -112,3 +112,50 @@ func TestGroupPermissionsApplyToRoleAndTemporaryReadOnlyWindow(t *testing.T) {
 		t.Fatalf("member audio allowed=%v err=%v; want allowed", allowed, err)
 	}
 }
+
+func TestAdminMutationRechecksRoleAfterConcurrentDemotion(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+	alice := createTestUser(t, pool, "alice_race_"+uuid.NewString()[:8])
+	bob := createTestUser(t, pool, "bob_race_"+uuid.NewString()[:8])
+	group, err := svc.Create(ctx, alice, CreateGroupRequest{Title: "race", MemberIDs: []uuid.UUID{bob}})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Hold the same group-row lock used by mutation authorization while
+	// demoting Alice. The repository call starts with a stale, externally
+	// observed admin decision but must re-check after the demotion commits.
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin demotion: %v", err)
+	}
+	if err := tx.QueryRow(ctx, `SELECT id FROM chats WHERE id = $1 FOR UPDATE`, group.ID).Scan(new(uuid.UUID)); err != nil {
+		t.Fatalf("lock group: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE chat_participants SET role = 'member' WHERE chat_id = $1 AND user_id = $2`, group.ID, alice); err != nil {
+		t.Fatalf("demote admin: %v", err)
+	}
+
+	lockCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	_, err = repo.ApplyMemberChanges(lockCtx, group.ID, alice, []uuid.UUID{bob}, "remove", "")
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("mutation while demotion lock is held = %v, want context deadline", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit demotion: %v", err)
+	}
+	if _, err := repo.ApplyMemberChanges(ctx, group.ID, alice, []uuid.UUID{bob}, "remove", ""); !errors.Is(err, ErrNotAdmin) {
+		t.Fatalf("mutation after demotion = %v, want ErrNotAdmin", err)
+	}
+
+	if _, err := repo.AddMembersWithHistoryAndRotate(ctx, group.ID, alice, []uuid.UUID{uuid.New()}, true); !errors.Is(err, ErrNotAdmin) {
+		t.Fatalf("add after demotion = %v, want ErrNotAdmin", err)
+	}
+	if err := repo.Patch(ctx, group.ID, alice, nil, nil, nil, nil, nil, nil, nil); !errors.Is(err, ErrNotAdmin) {
+		t.Fatalf("patch after demotion = %v, want ErrNotAdmin", err)
+	}
+}
