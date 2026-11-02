@@ -788,8 +788,7 @@ export default function SettingsScreen() {
                 value={timeoutLabel(appLock.timeoutMs)}
                 onPress={pickTimeout}
               />
-              {/* Only offered where the device has biometrics enrolled —
-                  a switch that cannot do anything is worse than no switch. */}
+              {/* Only offered where the device has biometrics enrolled. */}
               {bioAvailable ? (
                 <Row
                   icon="finger-print-outline"

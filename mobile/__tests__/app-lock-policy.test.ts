@@ -1,9 +1,11 @@
 import { expect, test } from 'bun:test';
 
 import {
+  canUseDeviceAuthentication,
   DEFAULT_LOCK_TIMEOUT_MS,
   LOCK_TIMEOUTS_MS,
   sanitizeTimeout,
+  shouldDisableDeviceFallback,
   shouldLock,
 } from '@/data/app-lock-policy';
 
@@ -16,6 +18,18 @@ import {
  */
 
 const MIN = 60_000;
+
+test('a autenticação do sistema depende de pelo menos uma preferência ativa', () => {
+  expect(canUseDeviceAuthentication({ biometrics: false, devicePasscode: false })).toBe(false);
+  expect(canUseDeviceAuthentication({ biometrics: true, devicePasscode: false })).toBe(true);
+  expect(canUseDeviceAuthentication({ biometrics: false, devicePasscode: true })).toBe(true);
+  expect(canUseDeviceAuthentication({ biometrics: true, devicePasscode: true })).toBe(true);
+});
+
+test('só permite o fallback do sistema quando o código do dispositivo está ativado', () => {
+  expect(shouldDisableDeviceFallback({ biometrics: true, devicePasscode: false })).toBe(true);
+  expect(shouldDisableDeviceFallback({ biometrics: false, devicePasscode: true })).toBe(false);
+});
 
 test('em primeiro plano não há nada a decidir', () => {
   expect(shouldLock(null, Date.now(), MIN)).toBe(false);

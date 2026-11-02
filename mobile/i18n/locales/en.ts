@@ -125,8 +125,8 @@ export default {
     subtitle: 'Enter your code to carry on.',
     unlock: 'Unlock',
     wrong: 'Wrong code.',
-    use_biometrics: 'Use Face ID or fingerprint',
-    biometric_prompt: 'Unlock ZwoSocial',
+    use_device_authentication: 'Use device passcode or biometrics',
+    biometric_prompt: 'Unlock ZwoSocial with your device',
   },
   tabs: {
     chats: 'Chats',

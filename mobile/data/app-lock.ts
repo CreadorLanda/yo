@@ -4,8 +4,10 @@ import { useSyncExternalStore } from 'react';
 
 import { hasLockCode, relockAll, verifyLockCode } from './chat-lock';
 import {
+  canUseDeviceAuthentication,
   DEFAULT_LOCK_TIMEOUT_MS,
   sanitizeTimeout,
+  shouldDisableDeviceFallback,
   shouldLock,
   type LockTimeoutMs,
 } from './app-lock-policy';
@@ -23,11 +25,10 @@ import {
  * `verifyLockCode`. Two codes to remember is how people end up choosing
  * `0000` for both.
  *
- * Biometrics sit *on top of* that code, never instead of it. The device
- * decides what that means — Face ID or Touch ID on iOS, whatever
- * `BiometricPrompt` offers on Android — and the app is only ever told yes or
- * no. No face or fingerprint data reaches this process, which is precisely
- * why this is the OS's job and not ours.
+ * System authentication sits alongside that code. The device decides what
+ * that means — biometrics or the device passcode — and the app is only ever
+ * told yes or no. No face, fingerprint or device passcode reaches this
+ * process, which is precisely why this is the OS's job and not ours.
  */
 
 const PREFS_KEY = 'app.lock.v1';
@@ -189,16 +190,15 @@ export async function unlockWithAppCode(code: string): Promise<boolean> {
 /**
  * Ask the OS to confirm the person, and unlock if it does.
  *
- * `disableDeviceFallback` on purpose: the system's own passcode sheet is not
- * this app's code, and letting it stand in would mean the phone's PIN opens
- * ZwoSocial. The way past a failed fingerprint is the code on our own screen.
+ * The system passcode is accepted only when its setting is enabled. If the
+ * prompt is cancelled or unavailable, the app code remains on screen.
  */
-export async function unlockWithBiometrics(prompt: string): Promise<boolean> {
-  if (!prefs.biometrics && !prefs.devicePasscode) return false;
+export async function unlockWithDeviceAuthentication(prompt: string): Promise<boolean> {
+  if (!canUseDeviceAuthentication(prefs)) return false;
   try {
     const res = await LocalAuthentication.authenticateAsync({
       promptMessage: prompt,
-      disableDeviceFallback: !prefs.devicePasscode,
+      disableDeviceFallback: shouldDisableDeviceFallback(prefs),
       cancelLabel: undefined,
     });
     if (!res.success) return false;
