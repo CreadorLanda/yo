@@ -112,6 +112,7 @@ export default {
     timeout_immediately: 'Imediatamente',
     timeout_minutes: '{{n}} min',
     biometrics: 'Face ID / impressão digital',
+    device_passcode: 'Código do dispositivo',
     biometrics_unavailable: 'Não configurado neste aparelho',
     code_hint: 'O mesmo código que abre as conversas bloqueadas.',
     code_placeholder: 'Código',
@@ -124,8 +125,8 @@ export default {
     subtitle: 'Introduz o teu código para continuar.',
     unlock: 'Desbloquear',
     wrong: 'Código errado.',
-    use_biometrics: 'Usar Face ID ou impressão digital',
-    biometric_prompt: 'Desbloquear o ZwoSocial',
+    use_device_authentication: 'Usar código do dispositivo ou biometria',
+    biometric_prompt: 'Desbloquear o ZwoSocial com o dispositivo',
   },
   tabs: {
     chats: 'Chats',

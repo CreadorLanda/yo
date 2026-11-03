@@ -112,6 +112,7 @@ export default {
     timeout_immediately: 'Immediately',
     timeout_minutes: '{{n}} min',
     biometrics: 'Face ID / fingerprint',
+    device_passcode: 'Device passcode',
     biometrics_unavailable: 'Not set up on this device',
     code_hint: 'The same code that unlocks your locked chats.',
     code_placeholder: 'Code',
@@ -124,8 +125,8 @@ export default {
     subtitle: 'Enter your code to carry on.',
     unlock: 'Unlock',
     wrong: 'Wrong code.',
-    use_biometrics: 'Use Face ID or fingerprint',
-    biometric_prompt: 'Unlock ZwoSocial',
+    use_device_authentication: 'Use device passcode or biometrics',
+    biometric_prompt: 'Unlock ZwoSocial with your device',
   },
   tabs: {
     chats: 'Chats',

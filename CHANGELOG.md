@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Privacidade
 - O Modo Ghost passa a ser uma sessão controlada pelo servidor: dura duas horas, pode ser ativado uma vez por dia UTC e expira de forma consistente em todos os dispositivos.
 - A escolha de descoberta por contactos feita no registo é guardada, pode ser alterada nas Definições e é aplicada à pesquisa de pessoas.
+- O bloqueio da app pode usar o código do dispositivo através do pedido de autenticação do sistema; se o pedido for cancelado ou não estiver disponível, o código interno continua no ecrã como alternativa.
 
 #### Temas
 - Novo tema oficial **ZwoSocial Liquid**: fundo de cor líquida animado na GPU (Skia) por trás do ecrã inicial e das conversas, cabeçalho transparente com ações numa cápsula de vidro, barra inferior de vidro flutuante cujo indicador estica ao passar de um separador para outro, e bolhas translúcidas. Claro e escuro. Pára quando o ecrã fica tapado e respeita o "reduzir movimento"

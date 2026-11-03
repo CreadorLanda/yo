@@ -8,10 +8,11 @@ import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import {
   unlockWithAppCode,
-  unlockWithBiometrics,
+  unlockWithDeviceAuthentication,
   useAppLockPrefs,
   useAppLocked,
 } from '@/data/app-lock';
+import { canUseDeviceAuthentication } from '@/data/app-lock-policy';
 import { useCurrentUser } from '@/data/auth-store';
 import { isValidCode } from '@/data/chat-lock';
 import { useTheme } from '@/hooks/use-theme';
@@ -48,11 +49,11 @@ export function AppLockGate() {
   // queues, so a second call stacks a second system sheet behind the first.
   const askedRef = useRef(false);
 
-  const tryBiometrics = useCallback(async () => {
-    if (!prefs.biometrics) return;
-    const ok = await unlockWithBiometrics(t('app_lock.biometric_prompt'));
+  const tryDeviceAuthentication = useCallback(async () => {
+    if (!canUseDeviceAuthentication(prefs)) return;
+    const ok = await unlockWithDeviceAuthentication(t('app_lock.biometric_prompt'));
     if (ok) setCode('');
-  }, [prefs.biometrics]);
+  }, [prefs.biometrics, prefs.devicePasscode]);
 
   useEffect(() => {
     if (!locked || !user) {
@@ -63,8 +64,8 @@ export function AppLockGate() {
     }
     if (askedRef.current) return;
     askedRef.current = true;
-    void tryBiometrics();
-  }, [locked, user, tryBiometrics]);
+    void tryDeviceAuthentication();
+  }, [locked, user, tryDeviceAuthentication]);
 
   const submit = useCallback(
     async (value: string) => {
@@ -106,7 +107,7 @@ export function AppLockGate() {
               setWrong(false);
             }}
             onSubmitEditing={() => submit(code)}
-            autoFocus={!prefs.biometrics}
+            autoFocus={!canUseDeviceAuthentication(prefs)}
             secureTextEntry
             keyboardType="number-pad"
             returnKeyType="go"
@@ -147,11 +148,11 @@ export function AppLockGate() {
             </Text>
           </Pressable>
 
-          {prefs.biometrics ? (
-            <Pressable onPress={tryBiometrics} style={styles.biometric} hitSlop={8}>
-              <Ionicons name="finger-print" size={18} color={colors.primary} />
+          {canUseDeviceAuthentication(prefs) ? (
+            <Pressable onPress={tryDeviceAuthentication} style={styles.biometric} hitSlop={8}>
+              <Ionicons name="keypad-outline" size={18} color={colors.primary} />
               <Text style={[styles.biometricText, { color: colors.primary }]}>
-                {t('app_lock.use_biometrics')}
+                {t('app_lock.use_device_authentication')}
               </Text>
             </Pressable>
           ) : null}
