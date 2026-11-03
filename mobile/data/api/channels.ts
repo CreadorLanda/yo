@@ -57,6 +57,7 @@ export interface ChannelPostDTO {
 export interface ChannelCommentDTO {
   id: string;
   post_id: string;
+  parent_id?: string;
   author_id?: string;
   author_name?: string;
   text: string;
@@ -130,10 +131,11 @@ export function listPostComments(postId: string) {
   return api.get<ChannelCommentDTO[]>(`/api/channel-posts/${postId}/comments`);
 }
 
-export function addPostComment(postId: string, text: string, anonymous?: boolean) {
+export function addPostComment(postId: string, text: string, anonymous?: boolean, parentId?: string) {
   return api.post<ChannelCommentDTO>(`/api/channel-posts/${postId}/comments`, {
     text,
     anonymous: !!anonymous,
+    parent_id: parentId,
   });
 }
 

@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Catálogo Unicode pesquisável para mensagens, stories, posts e comentários, com tons de pele e sequências actuais
 - Limite uniforme de duas reacções por pessoa e item, aplicado no servidor e no cliente; formatos antigos de uma reacção continuam válidos
 - Reacções persistentes adicionadas a comentários de stories e canais
+
+#### Canais
+- Respostas públicas a comentários ficam guardadas no servidor e associadas ao comentário original; respostas privadas continuam fora desta entrega
 #### Privacidade das conversas
 - Controlos de privacidade avançada por conversa: bloquear reencaminhamento, proteger capturas de ecrã quando a plataforma suporta, confirmar abertura de links, restringir mensagens/chamadas a administradores em grupos e limitar tipos de mensagem. As regras são persistidas e aplicadas no servidor; a proteção de captura é explicitamente best-effort no Android e não é prometida no iOS/web.
 #### Privacidade
