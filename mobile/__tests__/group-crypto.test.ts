@@ -5,7 +5,7 @@ import nacl from 'tweetnacl';
 // SecureStore and the app database, neither of which exists here — so this
 // re-derives the same primitives from the same source file and checks the
 // maths, which is the part that decides whether anyone can read anything.
-const src = await Bun.file('data/crypto/session.ts').text();
+const src = await Bun.file('data/crypto/primitives.ts').text();
 
 function hkdfLike(ikm: Uint8Array, info: string): Uint8Array {
   const infoBytes = new TextEncoder().encode(info);

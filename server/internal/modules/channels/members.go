@@ -228,6 +228,9 @@ func (s *Service) EditPost(ctx context.Context, postID, user uuid.UUID, text str
 	if err := s.assertCanMutatePost(ctx, post, user); err != nil {
 		return err
 	}
+	if post.PostType == PostGame || len(post.GamePayload) > 0 {
+		return ErrImmutableGame
+	}
 	text = strings.TrimSpace(text)
 	if text == "" && post.MediaURL == "" {
 		// A text post edited to nothing is a delete pretending not to be.
@@ -247,6 +250,9 @@ func (s *Service) DeletePost(ctx context.Context, postID, user uuid.UUID) error 
 	}
 	if err := s.assertCanMutatePost(ctx, post, user); err != nil {
 		return err
+	}
+	if post.PostType == PostGame || len(post.GamePayload) > 0 {
+		return ErrImmutableGame
 	}
 	return s.repo.DeletePost(ctx, postID)
 }

@@ -57,3 +57,14 @@ func TestLoadDefaultsToProduction(t *testing.T) {
 		t.Fatalf("Env = %q, want prod", cfg.Env)
 	}
 }
+
+func TestLoadRejectsInsecureProductionSMSRelay(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "prod")
+	t.Setenv("MESSAGE_KEY", strings.Repeat("a", 64))
+	t.Setenv("SMS_WEBHOOK_URL", "http://sms-relay.internal/send")
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SMS_WEBHOOK_URL") {
+		t.Fatalf("Load() error = %v, want insecure SMS relay rejection", err)
+	}
+}

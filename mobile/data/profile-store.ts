@@ -5,11 +5,9 @@
  * writes go through patchMe() to the server.
  */
 
-import { useState } from 'react';
-
 import { uploadMedia } from './api/media';
 import { patchMe, type UserPatch } from './api/users';
-import { useCurrentUser } from './auth-store';
+import { setUser, useCurrentUser } from './auth-store';
 
 export function useProfile() {
   const user = useCurrentUser();
@@ -31,7 +29,7 @@ export async function updateProfile(patch: {
   bio?: string;
   location?: string;
   avatarUri?: string | null;
-}) {
+}): Promise<void> {
   const body: UserPatch = {};
   if (patch.name !== undefined) body.display_name = patch.name;
   if (patch.username !== undefined) body.username = patch.username;
@@ -40,7 +38,12 @@ export async function updateProfile(patch: {
     body.avatar_uri = await resolveAvatarUrl(patch.avatarUri);
   }
   if (Object.keys(body).length === 0) return;
-  await patchMe(body);
+  const updated = await patchMe(body);
+  // Refresh the cached signed-in user so every surface (profile, chat list,
+  // account, header) re-renders with the server's saved avatar_uri instead
+  // of the stale value. Without this the upload can succeed yet the UI keeps
+  // showing the old/missing photo.
+  await setUser(updated);
 }
 
 

@@ -1,19 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import { createChat } from '@/data/api/messages';
+import { createChat, createSelfChat } from '@/data/api/messages';
+import { displayChatName } from '@/data/chat-identity';
 import { searchUsers, type PublicUser } from '@/data/api/users';
 import { isValidCode, unlockWithCode, useRevealedChats } from '@/data/chat-lock';
 import { searchNotes } from '@/data/db/notes';
 import { useLockedChatIds } from '@/data/chat-prefs';
-import { useChats } from '@/data/chat-store';
+import { upsertChat, useChats } from '@/data/chat-store';
+import { useCurrentUser } from '@/data/auth-store';
+import { appAlert } from '@/data/dialog-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -22,6 +25,8 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PublicUser[]>([]);
   const [busy, setBusy] = useState(false);
+  const openingSelfChat = useRef(false);
+  const currentUser = useCurrentUser();
 
   useEffect(() => {
     if (query.length < 2) { setResults([]); return; }
@@ -114,6 +119,22 @@ export default function SearchScreen() {
     }
   };
 
+  const handleOpenSelfChat = async () => {
+    if (openingSelfChat.current) return;
+    openingSelfChat.current = true;
+    setBusy(true);
+    try {
+      const { chat_id, chat } = await createSelfChat();
+      upsertChat(chat);
+      router.replace(`/chat/${chat_id}`);
+    } catch {
+      appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+    } finally {
+      openingSelfChat.current = false;
+      setBusy(false);
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
@@ -176,6 +197,32 @@ export default function SearchScreen() {
         contentContainerStyle={results?.length === 0 ? styles.empty : undefined}
         ListHeaderComponent={
           <View>
+            {!query.trim() && currentUser ? (
+              <Pressable
+                onPress={handleOpenSelfChat}
+                disabled={busy}
+                style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surfaceMuted }]}
+                accessibilityRole="button"
+                accessibilityLabel={t('chats.saved_messages')}
+              >
+                <Avatar
+                  uri={currentUser.avatar_uri}
+                  id={currentUser.id}
+                  username={currentUser.username}
+                  size={48}
+                  style={styles.avatar}
+                />
+                <View style={styles.text}>
+                  <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+                    {t('chats.saved_messages')}
+                  </Text>
+                  <Text style={[styles.username, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {t('chats.saved_messages_hint')}
+                  </Text>
+                </View>
+                <Ionicons name="bookmark-outline" size={20} color={colors.primary} />
+              </Pressable>
+            ) : null}
             {visibleNoteHits.length > 0 ? (
               <View>
                 <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
@@ -197,7 +244,7 @@ export default function SearchScreen() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-                          {chat?.title ?? chat?.peer_username ?? t('chats.unknown')}
+                          {chat ? displayChatName(chat, t('chats.saved_messages'), t('chats.unknown')) : t('chats.unknown')}
                         </Text>
                         <Text style={[styles.noteBody, { color: colors.textSecondary }]} numberOfLines={1}>
                           {n.body}
@@ -229,7 +276,7 @@ export default function SearchScreen() {
                   />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-                      {c.title ?? c.peer_username ?? ''}
+                      {displayChatName(c, t('chats.saved_messages'), '')}
                     </Text>
                   </View>
                   <Ionicons name="lock-open-outline" size={18} color={colors.primary} />

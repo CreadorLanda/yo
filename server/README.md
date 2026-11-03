@@ -71,6 +71,35 @@ curl -s -X POST localhost:8080/api/auth/verify \
 # → { "user": { ... }, "tokens": { ... } }
 ```
 
+Credential verification:
+
+```text
+POST /api/auth/reauth/start          protected; verifies the current phone
+POST /api/auth/email/request         protected; consumes re-authentication
+POST /api/auth/email/verify          protected; verifies the latest email code
+DELETE /api/auth/email               protected; removes email after re-authentication
+POST /api/auth/phone/change/start    protected; verifies destination ownership
+POST /api/auth/phone/change/confirm  protected; changes phone and revokes sessions
+```
+
+Signup accepts an optional email in `POST /api/auth/verify`. It is stored as
+unverified until the email code is confirmed. Existing verified email and phone
+credentials return the same generic `credential_unavailable` conflict without
+revealing account ownership. Email and destination-phone challenges are
+single-use, expire after ten minutes, and stop after five invalid attempts.
+
+Changing the phone revokes every persisted refresh session and the mobile client
+clears its local session. Access JWTs are stateless and remain valid until their
+configured access TTL (15 minutes by default); a future token-introspection or
+user-session-version check is required for immediate access-token revocation.
+
+In `APP_ENV=dev`, verification codes are returned as `dev_code` for local
+testing. In production email requires the SMTP variables above and phone
+verification requires `SMS_WEBHOOK_URL` (HTTPS) plus its optional bearer token.
+The relay receives only the destination, the short-lived code and `channel`;
+the API never returns OTPs in production. If the relay is absent or fails, the
+API returns `503` and does not silently accept the credential change.
+
 ---
 
 ## Implemented vs skeleton
@@ -85,6 +114,8 @@ curl -s -X POST localhost:8080/api/auth/verify \
 | `POST /api/auth/logout`                  | public   | ✅ revokes the refresh-token family |
 | `GET  /api/users/me`                     | required | ✅                                  |
 | `PATCH /api/users/me`                    | required | ✅ partial updates (username, name, bio, avatar, privacy) |
+| `POST /api/users/me/ghost-mode`          | required | ✅ two-hour session; 409 if active or already used that UTC day |
+| `DELETE /api/users/me/ghost-mode`        | required | ✅ ends the session; daily quota remains consumed |
 | `GET  /api/users/availability?username=` | required | ✅ validates + checks uniqueness    |
 | `GET  /api/users/by-username/:username`  | required | ✅ honours username_public          |
 | `PUT  /api/users/me/keys`                | required | ✅ identity + signed + OTK upload   |
@@ -136,6 +167,12 @@ curl -s -X POST localhost:8080/api/auth/verify \
 | `POST   /api/channels/:id/posts`         | required | ✅ publish post                     |
 | `POST   /api/channel-posts/:id/react`    | required | ✅ react to post                    |
 | `POST   /api/channel-posts/:id/comments` | required | ✅ comment                          |
+
+Ghost Mode is intentionally updated through its dedicated endpoints. The
+legacy `ghost_mode` field remains accepted by `PATCH /api/users/me` only when
+it is the sole field in the request; mixed profile/privacy patches return
+`422 ghost_mode_must_be_updated_alone` so a failed Ghost activation cannot
+partially persist unrelated profile changes.
 
 Token shape: HS256 JWT with `sub` (user id), `dev` (device id), `typ`
 (`access` or `refresh`), `iat`, `exp`. Verify with `cfg.JWT.Secret`.

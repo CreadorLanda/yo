@@ -25,6 +25,8 @@ import { TabScene } from '@/components/ui/tab-scene';
 import { Text } from '@/components/ui/text';
 import { Palette, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import type { Story } from '@/data/mock';
+import { refreshRunningLives, useRunningLives } from '@/data/live-store';
+import type { Live } from '@/data/api/lives';
 import { useProfile } from '@/data/profile-store';
 import {
   bootstrapStories,
@@ -47,9 +49,11 @@ export default function StoriesScreen() {
   const profile = useProfile();
   const stories = useStories();
   const loading = useStoriesLoading();
+  const lives = useRunningLives();
 
   useEffect(() => {
     bootstrapStories().catch(() => {});
+    refreshRunningLives().catch(() => {});
   }, []);
 
   const mine = useMemo(() => stories.filter((s) => s.isOwn), [stories]);
@@ -70,6 +74,7 @@ export default function StoriesScreen() {
           refreshing={loading}
           onRefresh={() => {
             refreshStories().catch(() => {});
+            refreshRunningLives().catch(() => {});
           }}
           ListHeaderComponent={
             <View style={styles.headerBlock}>
@@ -101,6 +106,14 @@ export default function StoriesScreen() {
                     ownStory={mine[0]}
                   />
                 </Animated.View>
+                {lives.map((live, i) => (
+                  <Animated.View
+                    key={`live:${live.id}`}
+                    entering={FadeInRight.delay(55 + i * 40).duration(380)}
+                  >
+                    <LiveRailCard live={live} />
+                  </Animated.View>
+                ))}
                 {mine.slice(1).map((story, i) => (
                   <Animated.View
                     key={story.id}
@@ -376,6 +389,40 @@ function RailCard({ story }: { story: Story }) {
   );
 }
 
+function LiveRailCard({ live }: { live: Live }) {
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.selectionAsync();
+        router.push(`/live/${live.id}`);
+      }}
+      style={({ pressed }) => [styles.railCard, styles.liveRailCard, pressed && { opacity: 0.88 }]}
+      accessibilityRole="button"
+      accessibilityLabel={`${t('stories.live_badge')}: ${live.title || live.host_name}`}
+    >
+      <View style={styles.liveRailGlow} />
+      <View style={styles.storyLiveBadge}>
+        <View style={styles.storyLiveDot} />
+        <Text style={styles.storyLiveText}>{t('stories.live_badge')}</Text>
+      </View>
+      <View style={styles.liveRailIcon}>
+        <Ionicons name="radio" size={30} color="#FFF" />
+      </View>
+      <View style={styles.liveRailFooter}>
+        <Text style={styles.liveRailHost} numberOfLines={1}>
+          {live.host_name}
+        </Text>
+        <Text style={styles.liveRailTitle} numberOfLines={2}>
+          {live.title || t('stories.live_starting')}
+        </Text>
+        <Text style={styles.liveRailViewers} numberOfLines={1}>
+          {t('stories.live_viewers', { count: live.viewers })}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 // ── For-you portrait cards ──────────────────────────────────────────────────
 
 function PortraitCard({ story, tall }: { story: Story; tall?: boolean }) {
@@ -581,6 +628,34 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: Palette.neutral[800],
   },
+  liveRailCard: { backgroundColor: '#35131A' },
+  liveRailGlow: {
+    position: 'absolute',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: 'rgba(239,68,68,0.32)',
+    top: -38,
+    left: -28,
+  },
+  liveRailIcon: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 30,
+  },
+  liveRailFooter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: Spacing.sm,
+    backgroundColor: 'rgba(11,16,32,0.5)',
+    gap: 3,
+  },
+  liveRailHost: { ...Typography.caption, color: '#FFF', fontWeight: '800' },
+  liveRailTitle: { ...Typography.micro, color: 'rgba(255,255,255,0.82)' },
+  liveRailViewers: { ...Typography.micro, color: 'rgba(255,255,255,0.62)' },
   createRail: {
     borderWidth: 1.5,
     borderStyle: 'dashed',

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
@@ -72,7 +73,7 @@ func New(cfg config.Config) (*Server, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(middleware.RequestID(), middleware.Recovery(), gin.Logger())
+	r.Use(middleware.RequestID(), middleware.Recovery(), gin.Logger(), middleware.CORS(cfg.HTTP.CORSOrigins))
 
 	api := r.Group("/api")
 
@@ -82,6 +83,16 @@ func New(cfg config.Config) (*Server, error) {
 	// Public routes (no auth required).
 	authRepo := auth.NewRepository(pg)
 	authSvc := auth.NewService(authRepo, rdb, cfg.JWT)
+	authSvc.WithDevVerificationCodes(cfg.Env == "dev")
+	if cfg.Email.SMTPHost != "" && cfg.Email.From != "" {
+		authSvc.WithEmailSender(auth.NewSMTPSender(auth.SMTPConfig{
+			Host: cfg.Email.SMTPHost, Port: cfg.Email.SMTPPort,
+			Username: cfg.Email.SMTPUser, Password: cfg.Email.SMTPPass, From: cfg.Email.From,
+		}))
+	}
+	if cfg.SMS.WebhookURL != "" {
+		authSvc.WithPhoneSender(auth.NewHTTPPhoneSender(cfg.SMS.WebhookURL, cfg.SMS.WebhookToken))
+	}
 	authCtl := auth.NewController(authSvc, cfg)
 	auth.Register(api, authCtl)
 
@@ -89,6 +100,7 @@ func New(cfg config.Config) (*Server, error) {
 	// access token. Mounted as a sub-group so /auth/* stays open.
 	authed := api.Group("")
 	authed.Use(middleware.Auth([]byte(cfg.JWT.Secret)))
+	auth.RegisterAuthed(authed, authCtl)
 
 	usersRepo := users.NewRepository(pg)
 	usersCtl := users.NewController(users.NewService(usersRepo))
@@ -107,6 +119,7 @@ func New(cfg config.Config) (*Server, error) {
 	// Notifications — device tokens, prefs, Redis push queue + worker.
 	notifRepo := notifications.NewRepository(pg)
 	notifSvc := notifications.NewService(notifRepo, rdb)
+	authSvc.WithCredentialNotifier(notifSvc)
 	notifCtl := notifications.NewController(notifSvc)
 	notifications.Register(authed, notifCtl)
 	pushWorker := notifications.NewWorker(notifRepo, rdb, notifications.WorkerOpts{
@@ -120,6 +133,8 @@ func New(cfg config.Config) (*Server, error) {
 
 	// Native E2E-encrypted messaging (push for offline peers via notifSvc).
 	msgRepo := messages.NewRepository(pg, cfg.Crypto.MessageKey)
+	groupsRepo := groups.NewRepository(pg)
+	groupsSvc := groups.NewService(groupsRepo)
 	// Blocking, which both messages and calls consult through a narrow
 	// interface rather than importing this module.
 	blocksRepo := blocks.NewRepo(pg)
@@ -129,7 +144,8 @@ func New(cfg config.Config) (*Server, error) {
 
 	msgSvc := messages.NewService(msgRepo, usersRepo, hub, notifSvc).
 		WithBlocks(blocksRepo).
-		WithMediaAccess(mediaSvc)
+		WithMediaAccess(mediaSvc).
+		WithGroupPolicy(groupsSvc)
 	msgCtl := messages.NewController(msgSvc, hub, []byte(cfg.JWT.Secret))
 	messages.Register(authed, msgCtl)
 	// WS lives on the public /api group — token is validated inside the handler.
@@ -144,8 +160,7 @@ func New(cfg config.Config) (*Server, error) {
 	mediaSweeper := media.NewSweeper(mediaRepo, cfg.Media.Dir, cfg.Media.SweepEvery)
 
 	// Group chats (roles + history settings on chats type=group).
-	groupsRepo := groups.NewRepository(pg)
-	groupsCtl := groups.NewController(groups.NewService(groupsRepo))
+	groupsCtl := groups.NewController(groupsSvc)
 	groups.Register(authed, groupsCtl)
 
 	// Ephemeral stories (24h feed + views).
@@ -179,13 +194,13 @@ func New(cfg config.Config) (*Server, error) {
 		callRinger{repo: msgRepo, hub: hub, push: notifSvc},
 		callsHistory,
 		callTrace{repo: msgRepo, hub: hub},
-	).WithBlocks(callBlocks{blocks: blocksRepo, chats: msgRepo}))
+	).WithBlocks(callBlocks{blocks: blocksRepo, chats: msgRepo}).WithPrivacy(msgRepo))
 	calls.Register(authed, callsCtl)
 	blocks.Register(authed, blocksCtl)
 
 	// Discover channels + posts.
 	channelsRepo := channels.NewRepository(pg)
-	channelsCtl := channels.NewController(channels.NewService(channelsRepo))
+	channelsCtl := channels.NewController(channels.NewService(channelsRepo).WithBroadcaster(hub))
 	channels.Register(authed, channelsCtl)
 
 	// Live broadcasts. One person publishing to an audience that cannot
@@ -201,10 +216,14 @@ func New(cfg config.Config) (*Server, error) {
 			APISecret: cfg.LiveKit.APISecret,
 		}),
 		livesRepo,
-		liveAudience{chats: msgRepo, channels: channelsRepo},
+		liveAudience{chats: msgRepo, channels: channelsRepo, groups: groupsRepo},
 		userNames{usersRepo},
 		liveAnnouncer{hub: hub},
-	))
+	).WithRoom(liveRoom(lkplatform.NewRoom(lkplatform.Config{
+		URL:       cfg.LiveKit.URL,
+		APIKey:    cfg.LiveKit.APIKey,
+		APISecret: cfg.LiveKit.APISecret,
+	}))))
 	lives.Register(authed, livesCtl)
 
 	return &Server{
@@ -363,6 +382,7 @@ func (c callBlocks) PeerOf(ctx context.Context, chatID, userID uuid.UUID) (uuid.
 type liveAudience struct {
 	chats    *messages.Repository
 	channels *channels.Repository
+	groups   *groups.Repository
 }
 
 // CanBroadcastToChannel mirrors who may post: a live is a post that happens
@@ -408,6 +428,66 @@ func (a liveAudience) ChannelFollowers(ctx context.Context, channelID uuid.UUID)
 	return a.channels.MemberIDs(ctx, channelID)
 }
 
+// DirectPeer: a live in a direct chat is hosted by both people in it.
+func (a liveAudience) DirectPeer(ctx context.Context, chatID, userID uuid.UUID) (*uuid.UUID, error) {
+	c, err := a.chats.GetChat(ctx, chatID)
+	if err != nil || c.Type != messages.ChatDirect {
+		return nil, err
+	}
+	ids, err := a.chats.ParticipantIDs(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if id != userID {
+			return &id, nil
+		}
+	}
+	return nil, nil
+}
+
+func (a liveAudience) IsContact(ctx context.Context, x, y uuid.UUID) (bool, error) {
+	c, err := a.chats.FindDirectChat(ctx, x, y)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return c.Status == messages.ChatStatusActive, nil
+}
+
+func (a liveAudience) Contacts(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	return a.chats.DirectPeerIDs(ctx, userID)
+}
+
+// ModeratesChat: group admins and moderators look after a live in their group.
+func (a liveAudience) ModeratesChat(ctx context.Context, chatID, userID uuid.UUID) (bool, error) {
+	role, err := a.groups.MemberRole(ctx, chatID, userID)
+	if err != nil {
+		return false, nil
+	}
+	return role == groups.RoleAdmin || role == groups.RoleModerator, nil
+}
+
+// ModeratesChannel: a channel's owner and admins, likewise.
+func (a liveAudience) ModeratesChannel(ctx context.Context, channelID, userID uuid.UUID) (bool, error) {
+	c, err := a.channels.Get(ctx, channelID, userID)
+	if err != nil {
+		return false, nil
+	}
+	return c.Role == string(channels.RoleOwner) || c.Role == string(channels.RoleAdmin), nil
+}
+
+// liveRoom keeps a nil *Room a nil interface, so "no SFU" stays "nothing to
+// tell it" instead of a call on a nil pointer.
+func liveRoom(r *lkplatform.Room) lives.RoomControl {
+	if r == nil {
+		return nil
+	}
+	return r
+}
+
 // liveAnnouncer tells people over the websocket.
 //
 // No push. A broadcast is worth interrupting someone for only if they asked to
@@ -431,6 +511,20 @@ func (a liveAnnouncer) Ended(_ context.Context, users []uuid.UUID, liveID uuid.U
 	a.hub.PublishJSON(users, "live.ended", liveID.String(), map[string]string{
 		"type": "live.ended", "live_id": liveID.String(),
 	})
+}
+
+// Notify carries everything that happens inside a live: comments, the stage,
+// bans. The body gets the type and live id added so the client can route it
+// without knowing which event it asked for.
+func (a liveAnnouncer) Notify(_ context.Context, users []uuid.UUID, event string, liveID uuid.UUID, data map[string]any) {
+	if a.hub == nil || len(users) == 0 {
+		return
+	}
+	body := map[string]any{"type": event, "live_id": liveID.String()}
+	for k, v := range data {
+		body[k] = v
+	}
+	a.hub.PublishJSON(users, event, liveID.String(), body)
 }
 
 func (a liveAnnouncer) Viewers(_ context.Context, users []uuid.UUID, liveID uuid.UUID, n int) {

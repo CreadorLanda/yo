@@ -1,16 +1,32 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
 import { Radii, Sizes, Spacing, Typography } from '@/constants/theme';
-import { appAlert, appPrompt } from '@/data/dialog-store';
-import { deleteMe, me, patchMe, type UserPatch } from '@/data/api/users';
+import { appAlert, appPrompt, type DialogButton } from '@/data/dialog-store';
+import {
+  authEmailRemove,
+  authEmailRequest,
+  authEmailVerify,
+  authPhoneChangeConfirm,
+  authPhoneChangeStart,
+  authReauthStart,
+} from '@/data/api/auth';
+import { ApiError } from '@/data/api/client';
+import {
+  activateGhostMode,
+  deactivateGhostMode,
+  deleteMe,
+  me,
+  patchMe,
+  type UserPatch,
+} from '@/data/api/users';
 import {
   biometricsAvailable,
   setAppLockBiometrics,
@@ -19,7 +35,7 @@ import {
   useAppLockPrefs,
 } from '@/data/app-lock';
 import { LOCK_TIMEOUTS_MS, type LockTimeoutMs } from '@/data/app-lock-policy';
-import { clearSession, getSessionPhone } from '@/data/auth-store';
+import { clearSession, getSessionPhone, setUser } from '@/data/auth-store';
 import { hasLockCode, isValidCode, setLockCode } from '@/data/chat-lock';
 import { resetAllStores } from '@/data/reset';
 
@@ -57,30 +73,85 @@ export default function SettingsScreen() {
   const [profilePhoto, setProfilePhoto] = useState<Visibility>('everyone');
   const [readReceipts, setReadReceipts] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
+  const [ghostModeBusy, setGhostModeBusy] = useState(false);
+  const [ghostModeExpiresAt, setGhostModeExpiresAt] = useState<string | undefined>();
+  const [ghostModeNow, setGhostModeNow] = useState(() => Date.now());
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [emailVerified, setEmailVerified] = useState(false);
   const [privacyLoaded, setPrivacyLoaded] = useState(false);
+  const privacyRequestId = useRef(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const requestId = ++privacyRequestId.current;
+      me()
+        .then((u) => {
+          if (cancelled || requestId !== privacyRequestId.current) return;
+          setLastSeen(u.last_seen_visibility ?? 'everyone');
+          setProfilePhoto(u.photo_visibility ?? 'everyone');
+          setReadReceipts(u.read_receipts !== false);
+          setGhostMode(u.ghost_mode === true);
+          setGhostModeExpiresAt(u.ghost_mode_expires_at);
+          setEmail(u.email ?? '');
+          setEmailVerified(u.email_verified === true);
+          // Not from the server: it holds a hash of the number, never the
+          // number. The device is the only place that can answer this.
+          void getSessionPhone().then(setPhone);
+          setPrivacyLoaded(true);
+        })
+        .catch(() => {
+          if (!cancelled && requestId === privacyRequestId.current) setPrivacyLoaded(true);
+        });
+      const onAppStateChange = (state: string) => {
+        if (state !== 'active') return;
+        const foregroundRequestId = ++privacyRequestId.current;
+        me()
+          .then((u) => {
+            if (cancelled || foregroundRequestId !== privacyRequestId.current) return;
+            setGhostMode(u.ghost_mode === true);
+            setGhostModeExpiresAt(u.ghost_mode_expires_at);
+            setGhostModeNow(Date.now());
+          })
+          .catch(() => {});
+      };
+      const appStateSubscription = AppState.addEventListener('change', onAppStateChange);
+      return () => {
+        cancelled = true;
+        appStateSubscription.remove();
+      };
+    }, []),
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    me()
-      .then((u) => {
-        if (cancelled) return;
-        setLastSeen(u.last_seen_visibility ?? 'everyone');
-        setProfilePhoto(u.photo_visibility ?? 'everyone');
-        setReadReceipts(u.read_receipts !== false);
-        setGhostMode(u.ghost_mode === true);
-        // Not from the server: it holds a hash of the number, never the
-        // number. The device is the only place that can answer this.
-        void getSessionPhone().then(setPhone);
-        setPrivacyLoaded(true);
-      })
-      .catch(() => {
-        if (!cancelled) setPrivacyLoaded(true);
-      });
-    return () => {
-      cancelled = true;
+    if (!ghostMode || !ghostModeExpiresAt) return;
+    const refreshClock = () => setGhostModeNow(Date.now());
+    const expiry = new Date(ghostModeExpiresAt).getTime();
+    const refreshProfile = () => {
+      const requestId = ++privacyRequestId.current;
+      me()
+        .then((u) => {
+          if (requestId !== privacyRequestId.current) return;
+          setGhostMode(u.ghost_mode === true);
+          setGhostModeExpiresAt(u.ghost_mode_expires_at);
+          setGhostModeNow(Date.now());
+        })
+        .catch(() => {
+          if (requestId !== privacyRequestId.current) return;
+          // The server still enforces expiry; the local UI should not claim
+          // an active session after its last known deadline.
+          setGhostMode(false);
+          setGhostModeExpiresAt(undefined);
+        });
     };
-  }, []);
+    const interval = setInterval(refreshClock, 30_000);
+    const timeout = setTimeout(refreshProfile, Math.max(0, expiry - Date.now()) + 100);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [ghostMode, ghostModeExpiresAt]);
 
   /**
    * Optimistic, with a rollback.
@@ -98,6 +169,214 @@ export default function SettingsScreen() {
     },
     [privacyLoaded],
   );
+
+  const refreshCredentialState = async () => {
+    const u = await me();
+    setEmail(u.email ?? '');
+    setEmailVerified(u.email_verified === true);
+    await setUser(u);
+  };
+
+  const showCredentialError = (err: unknown) => {
+    const code = err instanceof ApiError ? err.code : '';
+    if (code === 'credential_unavailable') {
+      appAlert(t('settings.credential_failed_title'), t('settings.credential_conflict'));
+      return;
+    }
+    if (code === 'reauthentication_required') {
+      appAlert(t('settings.credential_failed_title'), t('settings.reauth_failed'));
+      return;
+    }
+    if (code === 'verification_delivery_unavailable') {
+      appAlert(t('settings.credential_failed_title'), t('settings.delivery_unavailable'));
+      return;
+    }
+    appAlert(t('settings.credential_failed_title'), t('settings.credential_failed_body'));
+  };
+
+  const promptCredentialCode = (
+    title: string,
+    message: string,
+    onCode: (code: string) => Promise<void>,
+  ) =>
+    appPrompt(title, {
+      message,
+      placeholder: t('settings.credential_code_placeholder'),
+      secure: true,
+      keyboard: 'number-pad',
+      cancelLabel: t('common.cancel'),
+      submitLabel: t('common.confirm'),
+      onSubmit: async (value) => {
+        const code = value.trim();
+        if (!/^\d{6}$/.test(code)) return false;
+        try {
+          await onCode(code);
+          return true;
+        } catch (err) {
+          showCredentialError(err);
+          return false;
+        }
+      },
+    });
+
+  const withReauthentication = (onCode: (code: string) => Promise<void>) => {
+    if (!phone) {
+      appAlert(t('settings.credential_failed_title'), t('settings.phone_unavailable'));
+      return;
+    }
+    void authReauthStart(phone)
+      .then((res) => {
+        if (res.dev_code) {
+          return onCode(res.dev_code);
+        }
+        promptCredentialCode(t('settings.reauth_code_title'), t('settings.reauth_code_hint'), onCode);
+      })
+      .catch(showCredentialError);
+  };
+
+  const verifyPendingEmail = async (code: string) => {
+    await authEmailVerify(code);
+    await refreshCredentialState();
+    appAlert(t('settings.email_verified_title'), t('settings.email_verified_body'));
+  };
+
+  const requestEmailChange = () => {
+    appPrompt(t('settings.email_prompt_title'), {
+      message: t('settings.email_prompt_body'),
+      placeholder: t('settings.email_placeholder'),
+      keyboard: 'default',
+      cancelLabel: t('common.cancel'),
+      submitLabel: t('common.continue'),
+      onSubmit: async (value) => {
+        const next = value.trim().toLowerCase();
+        if (!next || !next.includes('@') || next.includes(' ')) return false;
+        withReauthentication(async (reauthCode) => {
+          const res = await authEmailRequest(next, reauthCode);
+          setEmail(next);
+          setEmailVerified(false);
+          if (res.dev_code) {
+            await verifyPendingEmail(res.dev_code);
+          } else {
+            promptCredentialCode(t('settings.email_code_title'), t('settings.email_code_hint'), verifyPendingEmail);
+          }
+        });
+        return true;
+      },
+    });
+  };
+
+  const requestEmailVerification = () => {
+    if (!email) return;
+    withReauthentication(async (reauthCode) => {
+      const res = await authEmailRequest(email, reauthCode);
+      if (res.dev_code) {
+        await verifyPendingEmail(res.dev_code);
+      } else {
+        promptCredentialCode(t('settings.email_code_title'), t('settings.email_code_hint'), verifyPendingEmail);
+      }
+    });
+  };
+
+  const removeEmail = () => {
+    appAlert(t('settings.email_remove_title'), t('settings.email_remove_body'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('settings.email_remove'),
+        style: 'destructive',
+        onPress: () =>
+          withReauthentication(async (reauthCode) => {
+            await authEmailRemove(reauthCode);
+            await refreshCredentialState();
+          }),
+      },
+    ]);
+  };
+
+  const manageEmail = () => {
+    if (!email) {
+      requestEmailChange();
+      return;
+    }
+    const actions: DialogButton[] = [
+      ...(emailVerified ? [] : [{ text: t('settings.email_verify'), onPress: requestEmailVerification }]),
+      { text: t('settings.email_change'), onPress: requestEmailChange },
+      { text: t('settings.email_remove'), style: 'destructive', onPress: removeEmail },
+      { text: t('common.cancel'), style: 'cancel' },
+    ];
+    appAlert(t('settings.email'), email, actions);
+  };
+
+  const requestPhoneChange = () => {
+    appPrompt(t('settings.phone_change_title'), {
+      message: t('settings.phone_change_body'),
+      placeholder: t('settings.phone_placeholder'),
+      keyboard: 'default',
+      cancelLabel: t('common.cancel'),
+      submitLabel: t('common.continue'),
+      onSubmit: async (value) => {
+        const next = value.trim();
+        if (!/^\+[1-9]\d{7,14}$/.test(next) || next === phone) return false;
+        withReauthentication(async (reauthCode) => {
+          const res = await authPhoneChangeStart(next, reauthCode);
+          const confirm = async (code: string) => {
+            await authPhoneChangeConfirm(code);
+            await resetAllStores();
+            await clearSession();
+            router.replace('/onboarding');
+          };
+          if (res.dev_code) {
+            await confirm(res.dev_code);
+          } else {
+            promptCredentialCode(t('settings.phone_code_title'), t('settings.phone_code_hint'), confirm);
+          }
+        });
+        return true;
+      },
+    });
+  };
+
+  const toggleGhostMode = async (enabled: boolean) => {
+    if (!privacyLoaded || ghostModeBusy) return;
+    const requestId = ++privacyRequestId.current;
+    setGhostModeBusy(true);
+    setGhostMode(enabled);
+    const reconcile = () => {
+      const recoveryRequestId = ++privacyRequestId.current;
+      void me().then((u) => {
+        if (recoveryRequestId !== privacyRequestId.current) return;
+        setGhostMode(u.ghost_mode === true);
+        setGhostModeExpiresAt(u.ghost_mode_expires_at);
+        setGhostModeNow(Date.now());
+      }).catch(() => {});
+    };
+    try {
+      const u = enabled ? await activateGhostMode() : await deactivateGhostMode();
+      if (requestId !== privacyRequestId.current) {
+        reconcile();
+        return;
+      }
+      setGhostMode(u.ghost_mode === true);
+      setGhostModeExpiresAt(u.ghost_mode_expires_at);
+      setGhostModeNow(Date.now());
+    } catch (err) {
+      if (requestId !== privacyRequestId.current) {
+        reconcile();
+        return;
+      }
+      setGhostMode(!enabled);
+      if (enabled && err instanceof ApiError && err.code === 'ghost_mode_daily_limit') {
+        appAlert(t('settings.ghost_mode_limit_title'), t('settings.ghost_mode_limit_body'));
+      } else if (enabled && err instanceof ApiError && err.code === 'ghost_mode_already_active') {
+        appAlert(t('settings.ghost_mode_active_title'), t('settings.ghost_mode_active_body'));
+      } else {
+        appAlert(t('settings.privacy_failed_title'), t('settings.privacy_failed_body'));
+      }
+      reconcile();
+    } finally {
+      setGhostModeBusy(false);
+    }
+  };
+
   const [notifMessages, setNotifMessages] = useState(true);
   const [notifGroups, setNotifGroups] = useState(true);
   const [notifCalls, setNotifCalls] = useState(false);
@@ -309,14 +588,13 @@ export default function SettingsScreen() {
           // authenticated-or-not depending on which promise won, so the
           // device stayed subscribed to an account nobody was signed in to.
           // resetAllStores never rejects and each step is bounded.
-          void resetAllStores().finally(() => {
-            clearSession().catch(() => {
-              /* swallowed — local SecureStore wipe is best-effort */
-            });
-          });
-          // replace, not push — the user shouldn't be able to swipe back
-          // into a screen that still thinks it's authenticated.
-          router.replace('/onboarding');
+          void (async () => {
+            await resetAllStores();
+            await clearSession();
+            // Replace only after teardown, so a new session cannot race a
+            // pending reset of this account's local stores.
+            router.replace('/onboarding');
+          })();
         },
       },
     ]);
@@ -372,11 +650,14 @@ export default function SettingsScreen() {
             icon="call-outline"
             label={t('settings.phone')}
             value={phone || t('settings.phone_hidden')}
+            onPress={requestPhoneChange}
           />
-          {/* No onPress: there is no email on an account yet, and a row that
-              responds to a tap by doing nothing is worse than one that does
-              not respond at all. */}
-          <Row icon="mail-outline" label={t('settings.email')} value={t('settings.email_empty')} />
+          <Row
+            icon="mail-outline"
+            label={t('settings.email')}
+            value={email ? `${email}${emailVerified ? '' : ` · ${t('settings.email_unverified')}`}` : t('settings.email_empty')}
+            onPress={manageEmail}
+          />
           <Row icon="trash-outline" label={t('settings.delete_account')} danger onPress={confirmDelete} last />
         </Group>
 
@@ -419,18 +700,23 @@ export default function SettingsScreen() {
           <Row
             icon="eye-off-outline"
             label={t('settings.ghost_mode')}
-            value={ghostMode ? undefined : t('settings.ghost_mode_off')}
+            value={
+              ghostMode
+                ? t('settings.ghost_mode_remaining', {
+                    time: formatGhostModeRemaining(ghostModeExpiresAt, ghostModeNow),
+                  })
+                : t('settings.ghost_mode_off')
+            }
             control={
               <Switch
                 value={ghostMode}
-                onValueChange={(v) => {
-                  setGhostMode(v);
-                  savePrivacy({ ghost_mode: v }, () => setGhostMode(!v));
-                }}
+                disabled={!privacyLoaded || ghostModeBusy}
+                onValueChange={(v) => void toggleGhostMode(v)}
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
               />
             }
+            below={<Text style={[styles.rowHint, { color: colors.textSecondary }]}>{t('settings.ghost_mode_hint')}</Text>}
             last
           />
         </Group>
@@ -642,6 +928,14 @@ export default function SettingsScreen() {
   );
 }
 
+function formatGhostModeRemaining(expiresAt: string | undefined, now: number): string {
+  if (!expiresAt) return '0m';
+  const seconds = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - now) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.ceil((seconds % 3600) / 60);
+  return hours > 0 ? `${hours}h ${minutes}m` : `${Math.max(1, minutes)}m`;
+}
+
 function Group({ title, children }: { title: string; children: ReactNode }) {
   const { colors } = useTheme();
   return (
@@ -727,6 +1021,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: { ...Typography.h3 },
+  rowHint: { ...Typography.caption, paddingLeft: 41, paddingRight: Spacing.md, paddingBottom: Spacing.sm },
 
   body: {
     padding: Spacing.lg,

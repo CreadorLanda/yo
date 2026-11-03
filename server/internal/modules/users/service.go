@@ -4,15 +4,19 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 var (
-	ErrNotFound          = errors.New("user_not_found")
-	ErrInvalidVisibility = errors.New("invalid_visibility")
-	ErrUsernameInvalid   = errors.New("username_invalid")
-	ErrUsernameTaken     = errors.New("username_taken")
+	ErrNotFound           = errors.New("user_not_found")
+	ErrInvalidVisibility  = errors.New("invalid_visibility")
+	ErrUsernameInvalid    = errors.New("username_invalid")
+	ErrUsernameTaken      = errors.New("username_taken")
+	ErrGhostAlreadyActive = errors.New("ghost_mode_already_active")
+	ErrGhostDailyLimit    = errors.New("ghost_mode_daily_limit")
+	ErrMixedGhostPatch    = errors.New("ghost_mode_must_be_updated_alone")
 )
 
 // usernameRe — same rule the mobile client uses (3–20 chars, lowercase
@@ -26,6 +30,11 @@ type Service struct {
 
 func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
+}
+
+func (s *Service) WithClock(now func() time.Time) *Service {
+	s.repo.WithClock(now)
+	return s
 }
 
 // Me returns the authenticated user's full profile.
@@ -133,6 +142,11 @@ func (s *Service) publicViews(
 // Patch applies a profile patch. Validates the username (when supplied)
 // and surfaces a precise error so the controller can map it to 409.
 func (s *Service) Patch(ctx context.Context, userID uuid.UUID, p PatchRequest) (*User, error) {
+	ghostMode := p.GhostMode
+	p.GhostMode = nil
+	if ghostMode != nil && hasPatchFields(p) {
+		return nil, ErrMixedGhostPatch
+	}
 	if p.Username != nil {
 		if !usernameRe.MatchString(*p.Username) {
 			return nil, ErrUsernameInvalid
@@ -154,11 +168,40 @@ func (s *Service) Patch(ctx context.Context, userID uuid.UUID, p PatchRequest) (
 		}
 	}
 
-	u, err := s.repo.Patch(ctx, userID, p)
+	var u *User
+	var err error
+	if hasPatchFields(p) {
+		u, err = s.repo.Patch(ctx, userID, p)
+	} else if ghostMode == nil {
+		u, err = s.repo.ByID(ctx, userID)
+	}
 	if IsNoRows(err) {
 		return nil, ErrNotFound
 	}
-	return u, err
+	if err != nil {
+		return nil, err
+	}
+	if ghostMode == nil {
+		return u, nil
+	}
+	if *ghostMode {
+		return s.ActivateGhostMode(ctx, userID)
+	}
+	return s.DeactivateGhostMode(ctx, userID)
+}
+
+func (s *Service) ActivateGhostMode(ctx context.Context, userID uuid.UUID) (*User, error) {
+	return s.repo.ActivateGhostMode(ctx, userID)
+}
+
+func (s *Service) DeactivateGhostMode(ctx context.Context, userID uuid.UUID) (*User, error) {
+	return s.repo.DeactivateGhostMode(ctx, userID)
+}
+
+func hasPatchFields(p PatchRequest) bool {
+	return p.Username != nil || p.DisplayName != nil || p.Bio != nil || p.AvatarURI != nil ||
+		p.UsernamePublic != nil || p.LastSeenVisibility != nil || p.PhotoVisibility != nil ||
+		p.ReadReceipts != nil
 }
 
 // Delete removes the account for good.

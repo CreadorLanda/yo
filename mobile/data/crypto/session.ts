@@ -19,6 +19,9 @@ import {
   takeOtkSecret,
 } from './device-keys';
 import { b64urlToBytes, bytesToB64url, utf8Decode, utf8Encode } from './encoding';
+import { messageKey, nonceFromCounter } from './primitives';
+
+export { messageKey, nonceFromCounter } from './primitives';
 
 const SESSION_PREFIX = 'e2ee.session.v1.';
 const ENVELOPE_PREFIX = 'soc1.';
@@ -199,6 +202,35 @@ function hkdfLike(ikm: Uint8Array, info: string): Uint8Array {
 }
 
 /**
+ * Derive the local-only root used by saved messages.
+ *
+ * A self-chat has no remote device that needs an X3DH handshake. Binding its
+ * root to the account's persistent device identity and signed pre-key lets a
+ * later history load rebuild the session after the cached session record is
+ * gone, while keeping the plaintext and root out of the server.
+ */
+async function establishSelfSession(peerUserId: string): Promise<SessionRecord> {
+  const identitySecret = await getIdentitySecret();
+  const signedPreKeySecret = await getSignedPreKeySecret();
+  const identityPublic = await getIdentityPublic();
+  if (!identitySecret || !signedPreKeySecret || !identityPublic) {
+    throw new Error('local_keys_missing');
+  }
+
+  const material = new Uint8Array(identitySecret.length + signedPreKeySecret.length);
+  material.set(identitySecret, 0);
+  material.set(signedPreKeySecret, identitySecret.length);
+  return {
+    peerUserId,
+    peerIdentityPublic: identityPublic,
+    rootKey: bytesToB64url(hkdfLike(material, 'Socialize-self-chat-v1')),
+    sendN: 0,
+    recvN: 0,
+    establishedAt: new Date().toISOString(),
+  };
+}
+
+/**
  * X3DH-lite: DH(IKa, SPKb) || DH(EKa, IKb) || DH(EKa, SPKb) [|| DH(EKa, OTKb)]
  */
 function deriveRoot(
@@ -355,18 +387,6 @@ export async function establishSessionAsResponder(
   return session;
 }
 
-export function messageKey(root: Uint8Array, n: number): Uint8Array {
-  return hkdfLike(root, `msg-${n}`);
-}
-
-export function nonceFromCounter(n: number): Uint8Array {
-  const nonce = new Uint8Array(24);
-  const view = new DataView(nonce.buffer);
-  view.setUint32(0, n, false);
-  view.setUint32(4, 0x534f4349 /* SOCI */, false);
-  return nonce;
-}
-
 export function isEnvelope(content: string): boolean {
   return content.startsWith(ENVELOPE_PREFIX);
 }
@@ -380,7 +400,10 @@ export async function encryptForPeer(
 	return withPeerSendLock(peerUserId, async (assertActive) => {
 		let session = await loadSession(peerUserId);
 		assertActive();
-		if (!session && opts?.peerUsername) {
+		if (!session && getCurrentUser()?.id === peerUserId) {
+			session = await establishSelfSession(peerUserId);
+			await saveSession(session);
+		} else if (!session && opts?.peerUsername) {
 			session = await establishSessionAsInitiator(peerUserId, opts.peerUsername);
 		}
 		if (!session) {
@@ -453,7 +476,11 @@ async function decryptFromPeerLocked(
 
   let session = await loadSession(peerUserId);
   assertActive();
-  if (!session && header.ek) {
+	if (!session && peerUserId === getCurrentUser()?.id) {
+		session = await establishSelfSession(peerUserId);
+		assertActive();
+		await saveSession(session);
+	} else if (!session && header.ek) {
     session = await establishSessionAsResponder(peerUserId, header);
     assertActive();
   }
@@ -613,7 +640,7 @@ export async function encryptForPeerOrFail(
   plaintext: string,
   opts?: { peerUsername?: string },
 ): Promise<string> {
-  if (!opts?.peerUsername) {
+  if (!opts?.peerUsername && getCurrentUser()?.id !== peerUserId) {
     // Without a username there is no bundle to fetch, so a first message to
     // this peer can never be encrypted. Worth naming separately: it is a bug
     // in whatever opened the chat, not a problem with the peer.

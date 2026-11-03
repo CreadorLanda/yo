@@ -7,7 +7,10 @@
 ## 1. Modo Ghost
 
 Um interruptor sobre todos os sinais de saída, em **Definições → Privacidade →
-Modo ghost**.
+Modo ghost**. Inicia uma sessão de duas horas, controlada pelo servidor, e pode
+ser ativado uma vez por dia UTC. A expiração e a janela diária ficam guardadas
+na conta, por isso o relógio local, uma reinstalação ou outro dispositivo não
+conseguem prolongar a sessão.
 
 | Sinal | Com o modo ghost ligado |
 |---|---|

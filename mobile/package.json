@@ -8,7 +8,7 @@
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios --dev-client",
-    "web": "expo start --web",
+    "web": "node scripts/copy-livekit-worker.js && expo start --web",
     "lint": "expo lint"
   },
   "dependencies": {

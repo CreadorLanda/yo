@@ -1,7 +1,17 @@
 import { api } from './client';
 
-export type MemberRole = 'admin' | 'member';
+export type MemberRole = 'admin' | 'moderator' | 'member';
 export type HistoryMode = 'full' | 'view-only';
+export type PermissionLevel = MemberRole;
+
+export interface GroupPermissionsDTO {
+  text: PermissionLevel;
+  stickers: PermissionLevel;
+  audio: PermissionLevel;
+  media: PermissionLevel;
+  posting: PermissionLevel;
+  posting_until?: string;
+}
 
 export interface GroupMemberDTO {
   user_id: string;
@@ -24,6 +34,7 @@ export interface GroupDTO {
   history_limit: number;
   member_count: number;
   members?: GroupMemberDTO[];
+  permissions: GroupPermissionsDTO;
 }
 
 export function listGroups() {
@@ -52,6 +63,7 @@ export function patchGroup(
     history_enabled?: boolean;
     history_mode?: HistoryMode;
     history_limit?: number;
+    permissions?: GroupPermissionsDTO;
   },
 ) {
   return api.patch<GroupDTO>(`/api/groups/${id}`, patch);
@@ -77,6 +89,61 @@ export function removeGroupMember(id: string, userId: string) {
 
 export function setGroupMemberRole(id: string, userId: string, role: MemberRole) {
   return api.patch<GroupDTO>(`/api/groups/${id}/members/${userId}`, { role });
+}
+
+export function bulkGroupMembers(
+  id: string,
+  userIds: string[],
+  action: 'remove' | 'role',
+  role?: MemberRole,
+) {
+  return api.post<GroupDTO>(`/api/groups/${id}/members/bulk`, {
+    user_ids: userIds,
+    action,
+    ...(role ? { role } : {}),
+  });
+}
+
+export type AchievementAwardDTO = {
+  achievement_id: string;
+  user_id: string;
+  awarded_by: string;
+  evidence_message_id: number;
+  awarded_at: string;
+};
+
+export type AchievementDTO = {
+  id: string;
+  group_id: string;
+  created_by: string;
+  icon: string;
+  name: string;
+  criteria: Record<string, unknown>;
+  created_at: string;
+  awards: AchievementAwardDTO[];
+};
+
+export function listGroupAchievements(id: string) {
+  return api.get<AchievementDTO[]>(`/api/groups/${id}/achievements`);
+}
+
+export function createGroupAchievement(
+  id: string,
+  input: { icon: string; name: string; criteria: Record<string, unknown> },
+) {
+  return api.post<AchievementDTO>(`/api/groups/${id}/achievements`, input);
+}
+
+export function awardGroupAchievement(
+  id: string,
+  achievementId: string,
+  userId: string,
+  evidenceMessageId: number,
+) {
+  return api.post<void>(`/api/groups/${id}/achievements/${achievementId}/awards`, {
+    user_id: userId,
+    evidence_message_id: evidenceMessageId,
+  });
 }
 
 export function leaveGroup(id: string) {

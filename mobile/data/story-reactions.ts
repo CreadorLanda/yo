@@ -8,6 +8,9 @@
 
 export type StoryReactionCount = { emoji: string; count: number };
 
+import { EMOJI_CATALOGUE } from './emoji-catalogue';
+import { toggleReactionSet } from './reactions';
+
 /**
  * The emoji a reaction may be, mirroring the server's closed set — anything
  * else comes back `400 invalid_emoji`.
@@ -46,10 +49,7 @@ export const EXTENDED_REACTIONS = [
   '🥳',
 ] as const;
 
-export const ALL_REACTIONS: readonly string[] = [
-  ...STANDARD_REACTIONS,
-  ...EXTENDED_REACTIONS,
-];
+export const ALL_REACTIONS: readonly string[] = EMOJI_CATALOGUE.map((item) => item.emoji);
 
 /**
  * Add an emoji to the reader's set, or take it back out if it is already
@@ -60,9 +60,7 @@ export const ALL_REACTIONS: readonly string[] = [
  * enough that chips do not shuffle while someone is tapping.
  */
 export function toggleReaction(current: readonly string[], emoji: string): string[] {
-  return current.includes(emoji)
-    ? current.filter((e) => e !== emoji)
-    : [...current, emoji];
+	return toggleReactionSet(current, emoji) ?? [...current];
 }
 
 /**

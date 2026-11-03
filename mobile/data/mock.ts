@@ -33,6 +33,8 @@ export type ChatPreview = {
   isAI?: boolean;
   /** Pending friend request chat */
   isPending?: boolean;
+  /** Saved-messages chat owned by the current user. */
+  isSelf?: boolean;
 };
 
 /** The Dandara AI assistant — her own chat plus an in-chat helper. */
@@ -204,10 +206,11 @@ export type MessageAttachment =
       icon: string;
       /** Truth or Dare engine payload — present on real game messages. */
       game?: 'truth-or-dare';
-      action?: 'start' | 'choose' | 'challenge' | 'done' | 'end';
+      action?: 'start' | 'join' | 'choose' | 'challenge' | 'done' | 'end';
       seed?: string;
       maxRounds?: number;
       playerId?: string;
+      playerIds?: string[];
       choice?: 'truth' | 'dare';
       text?: string;
       winnerId?: string;
@@ -219,6 +222,8 @@ export type Message = {
   /** A forwarded channel post keeps a way back to where it came from. */
   sourceChannelId?: string;
   sourcePostId?: string;
+  sourceChatId?: string;
+  sourceMessageId?: number;
   id: string;
   text: string;
   fromMe: boolean;
@@ -250,7 +255,16 @@ export type Message = {
    */
   systemEvent?:
     | { kind: 'joined' }
-    | { kind: 'disappearing'; seconds: number; actorId: string };
+    | { kind: 'disappearing'; seconds: number; actorId: string }
+    | {
+        kind: 'group';
+        event: 'created' | 'members_added' | 'member_removed' | 'role_changed' | 'admin_handoff' | 'achievement_created' | 'achievement_awarded';
+        actorId: string;
+        targetIds?: string[];
+        targetId?: string;
+        role?: string;
+        achievementId?: string;
+      };
   replyTo?: { id: string; text: string; fromMe: boolean; senderName?: string; icon?: string };
   /**
    * The message this one answers, as the server knows it.
@@ -294,7 +308,7 @@ export type GroupMember = {
   name: string;
   username: string;
   avatarUri: string;
-  role: 'admin' | 'member';
+  role: 'admin' | 'moderator' | 'member';
 };
 
 /** Number of past messages a new member can see. `Infinity` means all. */
@@ -312,6 +326,14 @@ export type GroupInfo = {
   historyMode: 'view-only' | 'full';
   /** How many past messages new members can see (see HISTORY_LIMITS). */
   historyLimit: number;
+  permissions?: {
+    text: GroupMember['role'];
+    stickers: GroupMember['role'];
+    audio: GroupMember['role'];
+    media: GroupMember['role'];
+    posting: GroupMember['role'];
+    posting_until?: string;
+  };
 };
 
 export const MESSAGES: Record<string, Message[]> = {
@@ -407,12 +429,15 @@ export type StoryComment = {
   isMine?: boolean;
   /** Nested replies on the public comment thread. */
   replies?: StoryComment[];
+  reactions?: { emoji: string; count: number }[];
+  myReactions?: string[];
 };
 
 export type Story = {
   id: string;
   user: string;
   username: string;
+  authorId?: string;
   avatarUri: string;
   coverUri: string;
   kind: StoryKind;
@@ -533,13 +558,18 @@ export type ChannelPost = {
   text: string;
   mediaUri?: string;
   timestamp: string;
+  /** Server timestamp used as the first key when replaying channel events. */
+  createdAt?: string;
   views: number;
   reactions?: ChannelReaction[];
   myReaction?: string | null;
+  myReactions?: string[];
   comments?: ChannelComment[];
   /** Post kind — defaults to text/image based on mediaUri when omitted. */
   type?: ChannelPostType;
   gameKind?: ChannelGameKind;
+  /** Persisted event for the deterministic game stream. */
+  gamePayload?: import('@/data/game').GameMessagePayload;
   /** Live / voice hangout is currently active. */
 };
 
@@ -557,6 +587,8 @@ export type ChannelComment = {
   pending?: boolean;
   likes?: number;
   liked?: boolean;
+  reactions?: ChannelReaction[];
+  myReactions?: string[];
   replies?: ChannelComment[];
 };
 

@@ -15,9 +15,10 @@ import { PrimaryButton } from '@/components/ui/primary-button';
 import { StepHeader } from '@/components/ui/step-header';
 import { Text, TextInput, type TextInputHandle } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import { authStart, authVerify, type Platform } from '@/data/api/auth';
+import { authEmailVerify, authStart, authVerify, type Platform } from '@/data/api/auth';
 import { ApiError } from '@/data/api/client';
-import { setSession } from '@/data/auth-store';
+import { me } from '@/data/api/users';
+import { setSession, setUser } from '@/data/auth-store';
 import { ensureKeysPublished } from '@/data/crypto';
 import { notifyWelcome, registerPushWithServer } from '@/data/push';
 import { useTheme } from '@/hooks/use-theme';
@@ -89,8 +90,19 @@ export default function VerifyScreen() {
         // registers another device row on every sign-in.
         device_key: await getInstallId(),
         platform: devicePlatform(),
+        email: data.email.trim() || undefined,
       });
       await setSession(res.user, res.tokens, e164);
+
+      if (res.email_verification?.sent && data.email.trim()) {
+        if (res.email_verification.dev_code) {
+          await authEmailVerify(res.email_verification.dev_code);
+          await setUser(await me());
+        } else {
+          router.push('/auth/email');
+          return;
+        }
+      }
 
       // Publish keys and register for push the moment a session exists.
       //

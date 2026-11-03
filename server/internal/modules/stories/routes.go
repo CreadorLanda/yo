@@ -22,6 +22,8 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	g.GET("/:id/comments", c.GetComments)
 	g.POST("/:id/comments", c.PostComment)
 	rg.DELETE("/story-comments/:cid", c.DeleteComment)
+	rg.POST("/story-comments/:cid/react", c.PostCommentReact)
+	rg.DELETE("/story-comments/:cid/react", c.DeleteCommentReact)
 
 	// Threads live outside /stories/:id: a thread outlives the story it
 	// started from, and both parties reach it by thread id alone.

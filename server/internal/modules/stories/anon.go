@@ -238,11 +238,14 @@ func (r *Repository) revealSide(ctx context.Context, threadID, userID uuid.UUID)
 // A blocked sender gets the same success they would otherwise: telling them
 // they were blocked hands back the feedback that makes evading it a game.
 func (s *Service) WriteAnon(ctx context.Context, storyID, senderID uuid.UUID, body string) error {
-	story, err := s.Get(ctx, storyID, senderID)
+	x, err := s.repo.Get(ctx, storyID, senderID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
 		return err
 	}
-	if story.AuthorID == senderID {
+	if x.AuthorID == senderID {
 		return ErrOwnStory
 	}
 
@@ -262,7 +265,7 @@ func (s *Service) WriteAnon(ctx context.Context, storyID, senderID uuid.UUID, bo
 		return ErrRateLimited
 	}
 
-	threadID, blocked, err := s.repo.upsertThread(ctx, storyID, story.AuthorID, senderID)
+	threadID, blocked, err := s.repo.upsertThread(ctx, storyID, x.AuthorID, senderID)
 	if err != nil {
 		return fmt.Errorf("open thread: %w", err)
 	}

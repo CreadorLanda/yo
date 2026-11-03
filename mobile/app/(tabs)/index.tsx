@@ -21,6 +21,7 @@ import { Radii, Shadows, Sizes, Spacing, Typography } from '@/constants/theme';
 import { withAlpha } from '@/data/theme-model';
 import { appAlert } from '@/data/dialog-store';
 import { connectRealtime, type ChatDTO } from '@/data/api/messages';
+import { displayChatName } from '@/data/chat-identity';
 import { getCurrentUser } from '@/data/auth-store';
 import {
   applyRealtimeEvent,
@@ -255,7 +256,7 @@ export default function ChatsScreen() {
     if (!apiLoaded) return [] as ChatPreview[];
     const combined: ChatPreview[] = apiChats.map((c) => ({
       id: c.id,
-      name: c.title ?? 'Unknown',
+      name: displayChatName(c, t('chats.saved_messages'), t('chats.unknown')),
       username: c.peer_username ? `@${c.peer_username.replace(/^@/, '')}` : '',
       avatarUri: c.avatar_url ?? '',
       peerUserId: c.peer_user_id,
@@ -267,6 +268,7 @@ export default function ChatsScreen() {
       unreadCount: c.unread_count,
       online: false,
       isPending: c.status === 'pending',
+      isSelf: c.is_self,
       isGroup: c.type === 'group',
       pinned: !!c.pinned_at,
       muted: !!c.muted_until,
@@ -759,7 +761,7 @@ function CreateFilterSheet({
                       <Ionicons name="person" size={20} color={colors.textMuted} />
                     </View>
                     <Text style={[styles.selectName, { color: colors.text }]} numberOfLines={1}>
-                      {chat.title ?? 'Chat'}
+                      {displayChatName(chat, t('chats.saved_messages'), 'Chat')}
                     </Text>
                     <View
                       style={[

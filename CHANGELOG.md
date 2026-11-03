@@ -13,15 +13,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ❌️ Added (Adicionado)
 
+#### Credenciais
+- Registo aceita email opcional com verificação por código; definições permitem alterar/remover email e alterar telefone com reautenticação, OTP de destino, conflitos genéricos, limite de tentativas e revogação de sessões após troca do telefone
+- Os desafios de email e telefone guardam apenas hashes dos códigos, expiram, são de uso único e enviam notificações de segurança após alterações concluídas
+
+#### Web
+- As ferramentas das Lives também no browser: escolher o público, Live conjunta, palco, comentários em tempo real, moderação e estatísticas, com a mesma folha de ferramentas do telemóvel
+- Lives no browser ao estilo TikTok: palco vertical, quem está a emitir e o número de espectadores no topo, comentários e corações em tempo real, e controlos de microfone, câmara e terminar para quem emite. Os comentários não ficam guardados nem são moderados
+- O app corre no browser (`bun run web`): entrar, ver conversas e fazer ou atender chamadas de voz e vídeo, com a mesma cifragem de ponta a ponta das chamadas no telemóvel. Câmara e base de dados local ainda não existem na web; o tema Liquid mostra só a cor de fundo
+- A API aceita pedidos de browsers só das origens listadas em `CORS_ALLOWED_ORIGINS`; vazio por omissão, as apps nativas não precisam dela
+
 #### Stories
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista
+
+#### Reacções
+- Catálogo Unicode pesquisável para mensagens, stories, posts e comentários, com tons de pele e sequências actuais
+- Limite uniforme de duas reacções por pessoa e item, aplicado no servidor e no cliente; formatos antigos de uma reacção continuam válidos
+- Reacções persistentes adicionadas a comentários de stories e canais
+#### Privacidade das conversas
+- Controlos de privacidade avançada por conversa: bloquear reencaminhamento, proteger capturas de ecrã quando a plataforma suporta, confirmar abertura de links, restringir mensagens/chamadas a administradores em grupos e limitar tipos de mensagem. As regras são persistidas e aplicadas no servidor; a proteção de captura é explicitamente best-effort no Android e não é prometida no iOS/web.
+#### Privacidade
+- O Modo Ghost passa a ser uma sessão controlada pelo servidor: dura duas horas, pode ser ativado uma vez por dia UTC e expira de forma consistente em todos os dispositivos.
 
 #### Temas
 - Novo tema oficial **ZwoSocial Liquid**: fundo de cor líquida animado na GPU (Skia) por trás do ecrã inicial e das conversas, cabeçalho transparente com ações numa cápsula de vidro, barra inferior de vidro flutuante cujo indicador estica ao passar de um separador para outro, e bolhas translúcidas. Claro e escuro. Pára quando o ecrã fica tapado e respeita o "reduzir movimento"
 - "Líquido" passa a ser uma opção de movimento do fundo no criador de temas
 
+#### Lives
+- Live conjunta: iniciada num chat a dois, as duas pessoas são anfitriãs e moderadoras. A outra pessoa é convidada como numa chamada e, se recusar, pode entrar mais tarde
+- Quem inicia escolhe o público: membros do chat, grupo ou canal, contactos, pessoas escolhidas, ou pública. As Lives dos Stories não precisam de destino
+- Moderação: banir (sai da sala na hora e não volta), apagar comentários, desligar comentários e nomear moderadores. Administradores de grupos e canais moderam as Lives desses sítios
+- Palco: espectadores podem pedir para falar e os moderadores podem chamar alguém, que aceita ou recusa
+- Comentários guardados e em tempo real, e estatísticas para quem anfitria: espectadores, pico, únicos, corações, comentários e duração
+- Novo ecrã da Live ao estilo TikTok: vídeo em ecrã inteiro (dividido quando há duas ou mais pessoas a falar), comentários em baixo à esquerda, corações com duplo toque, e as ferramentas de moderação num único botão. Ao terminar, quem anfitria vê o resumo da Live
+- Antes de entrar em direto escolhe-se o título e o público, a partir dos Stories, de um chat, de um grupo ou de um canal
+
 ### ✏️ Changed (Alterado)
+
+#### Chamadas
+- Novo ecrã de chamada de vídeo no estilo do WhatsApp: a outra pessoa em ecrã inteiro, a tua câmara numa janela pequena que se arrasta para qualquer canto e troca com um toque, e um painel de controlos (altifalante, câmara, microfone, virar câmara e desligar) que desaparece ao fim de uns segundos e volta com um toque. O nome e o estado ficam no topo, com a linha de cifragem que mostra a impressão digital ao tocar. O aviso de chamada não cifrada mantém-se. Também no browser
 
 #### Marca
 - Yo passa a chamar-se ZwoSocial: nome da app, textos em inglês e português, documentação e notificações
@@ -46,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Mensagens
 - A pesquisa dentro da conversa permite filtrar por não lidas, favoritas, multimédia, documentos, links e áudio, além de combinar cada filtro com texto de pesquisa
 - Mensagens podem ser adicionadas/removidas das favoritas no menu de pressão longa; esta escolha é privada por utilizador e sincronizada entre dispositivos
+- Self-chat de mensagens guardadas: cada conta pode abrir uma conversa activa e idempotente consigo própria, sem pedidos de amizade ou limite de mensagens pendentes
 
 #### iOS
 - Push notifications usam tokens Expo encaminhados pelo APNs, em vez de enviarem tokens APNs diretamente ao FCM
@@ -57,7 +89,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed (Corrigido)
 
+#### Mensagens
+- Ao pressionar uma mensagem, a conversa por trás passa a ficar mesmo desfocada, como no iPhone, com só um escurecimento leve por cima. No Android o desfoque nem estava ligado, e uma camada preta forte escondia o que restava
+
+#### Lives
+- Iniciar uma Live num chat ou canal onde já há uma a decorrer entra nessa Live em vez de dizer que alguém já está em direto. Quem a iniciou volta como emissor (útil quando a app fechou a meio), os outros entram como espectadores
+
+#### Perfil
+- A foto de perfil escolhida no registo e na edição de perfil é agora enviada para o servidor e guardada antes de reportar sucesso; o URL devolvido pelo servidor é o que aparece no perfil, na lista de conversas e nas contas, também após reiniciar a app. Erros de upload/API deixam de ser silenciosos e mantêm a seleção para nova tentativa
+
 #### Câmara
+- O botão de filtros do visor das Stories agora abre os filtros reais para fotos; os filtros ficam fora do vídeo porque a gravação ainda não incorpora a sobreposição do preview
+- A primeira captura após conceder a permissão espera a montagem da câmara, e dispositivos sem câmara retornam uma falha explícita em vez de capturar silenciosamente
+- Recusar a câmara num chat abre a galeria como fallback, mantendo o envio no caminho de multimédia cifrada
+- Em dispositivos sem câmara (emulador, Waydroid) as chamadas de vídeo e as Lives começam com a câmara desligada e só a ligam quando a pessoa toca no botão, em vez de falhar à entrada; o botão de câmara do chat abre a galeria
 - Abrir a câmara dos stories já não passa pelo pipeline de fotogramas (worklets + Skia), a causa provável do crash ao abrir: só é criado quando há um filtro escolhido. Uma falha na árvore da câmara passa a mostrar "sem câmara" (o obturador abre a galeria) em vez de derrubar o ecrã
 - O pinch-to-zoom funciona: o zoom é convertido de 0–1 para o intervalo da lente (`minZoom`–`maxZoom`); antes a câmara abria em zoom 0 e cada gesto era rejeitado
 - O limite de duração do boomerang e do mãos-livres volta a parar a gravação, e um temporizador antigo já não dispara na gravação seguinte

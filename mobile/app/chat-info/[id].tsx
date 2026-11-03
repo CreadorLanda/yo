@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ListPicker } from '@/components/chat/list-picker';
@@ -16,13 +17,17 @@ import {
   DISAPPEAR_OPTIONS,
   setDisappearing,
   listMessages,
+  createChat,
   reportChat,
   type ChatDTO,
+  type ChatPermission,
+  type ChatPrivacy,
   type ReportReason,
 } from '@/data/api/messages';
 import { appAlert, appPrompt } from '@/data/dialog-store';
 import {
   addGroupMembers,
+  bulkGroupMembers,
   leaveGroup,
   removeGroupMember,
   setGroupMemberRole,
@@ -31,13 +36,25 @@ import { getCurrentUser } from '@/data/auth-store';
 import {
   hasLockCode,
   isValidCode,
-  LOCK_CODE_MIN_LENGTH,
   setLockCode,
   relockAll,
   verifyLockCode,
 } from '@/data/chat-lock';
-import { forgetChatPrefs, setChatPref, useChatPrefs } from '@/data/chat-prefs';
-import { clearChat, refreshChats, removeChat, setChatSettings, useChats } from '@/data/chat-store';
+import {
+  forgetChatPrefs,
+  setChatPref,
+  setChatWallpaper,
+  useChatPrefs,
+} from '@/data/chat-prefs';
+import {
+  clearChat,
+  refreshChats,
+  removeChat,
+  setChatPrivacy,
+  setChatSettings,
+  useArchivedChats,
+  useChats,
+} from '@/data/chat-store';
 import {
   ensureKeysPublished,
   getIdentityPublic,
@@ -51,11 +68,17 @@ import { refreshGroup, useGroup } from '@/data/group-store';
 import { clearMediaCache, formatBytes, mediaCacheSize } from '@/data/media-cache';
 import { mapApiMessage } from '@/data/message-map';
 import { type ChatPreview, type Message } from '@/data/mock';
+import { displayChatName } from '@/data/chat-identity';
 import { block, blockedAmong, refreshBlocks, useBlocked } from '@/data/block-store';
+import { persistThemeImage } from '@/data/theme-assets';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
 const MAX_MEDIA_PREVIEW = 6;
+const DEFAULT_PRIVACY_TYPES = [
+  'text', 'image', 'video', 'audio', 'document', 'sticker',
+  'location', 'contact', 'poll', 'event', 'reply', 'game',
+];
 
 export default function ChatInfoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,16 +87,21 @@ export default function ChatInfoScreen() {
   // Single source of truth: the same store the list renders from, so a
   // toggle here is reflected there without either screen refetching.
   const { chats } = useChats();
+const archivedChats = useArchivedChats();
+
   const apiChat: ChatDTO | null = useMemo(
-    () => chats.find((c) => c.id === id) ?? null,
-    [chats, id],
+    () => chats.find((c) => c.id === id) ?? archivedChats.find((c) => c.id === id) ?? null,
+    [chats, archivedChats, id],
   );
+useEffect(() => { void refreshChats({ archived: true }); }, []);
+
 
   useEffect(() => {
     if (!chats.length) void refreshChats();
   }, [chats.length]);
 
   const isGroup = apiChat?.type === 'group';
+  const isSelf = !!apiChat?.is_self;
   const group = useGroup(isGroup ? id : undefined);
   const allBlocked = useBlocked();
   // Recomputed as the roster or the block list changes — someone can be added
@@ -92,7 +120,7 @@ export default function ChatInfoScreen() {
   const chat: ChatPreview | undefined = apiChat
     ? {
           id: apiChat.id,
-          name: apiChat.title ?? group?.name ?? 'Chat',
+          name: displayChatName(apiChat, t('chats.saved_messages'), group?.name ?? 'Chat'),
           username: apiChat.peer_username ? `@${apiChat.peer_username.replace(/^@/, '')}` : '',
           avatarUri: apiChat.avatar_url ?? group?.avatarUri ?? '',
           lastMessage: '',
@@ -100,6 +128,7 @@ export default function ChatInfoScreen() {
           unreadCount: apiChat.unread_count,
           online: false,
           isGroup: apiChat.type === 'group',
+          isSelf: apiChat.is_self,
           memberCount: group?.members.length,
         }
     : group
@@ -121,6 +150,11 @@ export default function ChatInfoScreen() {
   // read straight off the chat so they survive leaving the screen.
   const muted = !!apiChat?.muted_until;
   const favorite = !!apiChat?.pinned_at;
+  const currentUserId = getCurrentUser()?.id;
+  const isPrivacyAdmin = !!apiChat &&
+    (apiChat.created_by === currentUserId || !!group?.members.some(
+      (member) => member.id === currentUserId && member.role === 'admin',
+    ));
 
   const applySetting = async (settings: Parameters<typeof setChatSettings>[1]) => {
     if (!id) return;
@@ -131,9 +165,100 @@ export default function ChatInfoScreen() {
     }
   };
 
+  const privacy: ChatPrivacy = {
+    forwarding_disabled: apiChat?.privacy?.forwarding_disabled ?? false,
+    screenshot_protection_enabled: apiChat?.privacy?.screenshot_protection_enabled ?? false,
+    links_require_confirmation: apiChat?.privacy?.links_require_confirmation ?? false,
+    who_can_message: apiChat?.privacy?.who_can_message ?? 'everyone',
+    who_can_call: apiChat?.privacy?.who_can_call ?? 'everyone',
+    allowed_message_types: apiChat?.privacy?.allowed_message_types?.length
+      ? apiChat.privacy.allowed_message_types
+      : DEFAULT_PRIVACY_TYPES,
+  };
+  const [advancedPrivacyOpen, setAdvancedPrivacyOpen] = useState(false);
+  const applyPrivacy = async (patch: Parameters<typeof setChatPrivacy>[1]) => {
+    if (!id || !isPrivacyAdmin) return;
+    try {
+      await setChatPrivacy(id, patch);
+    } catch {
+      appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+    }
+  };
+
+  const togglePrivacyType = (messageType: string, enabled: boolean) => {
+    const current = privacy.allowed_message_types?.length
+      ? privacy.allowed_message_types
+      : DEFAULT_PRIVACY_TYPES;
+    const next = enabled
+      ? Array.from(new Set([...current, messageType]))
+      : current.filter((type) => type !== messageType);
+    if (next.length === 0) {
+      appAlert(t('chat_info.advanced_privacy'), t('chat_info.privacy_keep_one_type'));
+      return;
+    }
+    void applyPrivacy({ allowed_message_types: next });
+  };
+
+  const pickPrivacyPermission = (key: 'who_can_message' | 'who_can_call') => {
+    if (!isGroup || !isPrivacyAdmin) return;
+    const choices: { value: ChatPermission; label: string }[] = [
+      { value: 'everyone', label: t('chat_info.privacy_everyone') },
+      { value: 'admins', label: t('chat_info.privacy_admins') },
+    ];
+    appAlert(
+      key === 'who_can_message'
+        ? t('chat_info.privacy_who_can_message')
+        : t('chat_info.privacy_who_can_call'),
+      t('chat_info.privacy_admin_hint'),
+      choices.map((choice) => ({
+        text: choice.label + (privacy[key] === choice.value ? '  ✓' : ''),
+        onPress: () => void applyPrivacy({ [key]: choice.value }),
+      })).concat([{ text: t('common.cancel'), onPress: () => {} }]),
+    );
+  };
+
   // Device-local prefs: they describe this phone, not the account, so they
   // live in SecureStore instead of syncing to the server.
-  const { locked, filesVisible: fileVisible } = useChatPrefs(id);
+  const { locked, filesVisible: fileVisible, wallpaper } = useChatPrefs(id);
+
+  const chooseWallpaperPhoto = async () => {
+    if (!id) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+      allowsEditing: true,
+      aspect: [9, 16],
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const imageUri = await persistThemeImage(result.assets[0].uri);
+    if (!imageUri) {
+      appAlert(t('themes.creator_title'), t('themes.image_copy_failed'));
+      return;
+    }
+    setChatWallpaper(id, {
+      color: wallpaper?.color,
+      imageUri,
+      dim: wallpaper?.dim ?? 35,
+      blur: wallpaper?.blur ?? false,
+      animation: wallpaper?.animation ?? 'none',
+    });
+  };
+
+  const clearWallpaper = () => {
+    if (id) setChatWallpaper(id, undefined);
+  };
+
+  const setWallpaperColor = (color: string) => {
+    if (!id) return;
+    setChatWallpaper(id, {
+      color,
+      // A solid swatch is a replacement, not a tint over the previous photo.
+      imageUri: undefined,
+      dim: wallpaper?.dim ?? 35,
+      blur: wallpaper?.blur ?? false,
+      animation: wallpaper?.animation ?? 'none',
+    });
+  };
 
   // Real messages for the media strip and the storage estimate. These used
   // to read the mock MESSAGES fixture, so a real chat showed someone else's
@@ -337,19 +462,90 @@ export default function ChatInfoScreen() {
   const isGroupAdmin =
     isGroup && (group?.members ?? []).some((m) => m.id === meId && m.role === 'admin');
   const [addingMembers, setAddingMembers] = useState(false);
+  const [memberQuery, setMemberQuery] = useState('');
+  const [showAllMembers, setShowAllMembers] = useState(false);
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+
+  const visibleMembers = useMemo(() => {
+    const query = memberQuery.trim().toLowerCase();
+    const filtered = (group?.members ?? []).filter(
+      (m) => !query || `${m.name} ${m.username}`.toLowerCase().includes(query),
+    );
+    return showAllMembers || query ? filtered : filtered.slice(0, 8);
+  }, [group?.members, memberQuery, showAllMembers]);
+
+  const openMemberChat = (memberId: string) => {
+    createChat(memberId)
+      .then((result) => router.push(`/chat/${result.chat_id}`))
+      .catch(failed);
+  };
+
+  const toggleMember = (memberId: string) => {
+    setSelectedMembers((current) =>
+      current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId],
+    );
+  };
+
+  const applyBulkRole = (role: 'admin' | 'moderator' | 'member') => {
+    if (!id || selectedMembers.length === 0) return;
+    bulkGroupMembers(id, selectedMembers, 'role', role)
+      .then(() => {
+        setSelectedMembers([]);
+        return refreshGroup(id);
+      })
+      .catch(failed);
+  };
+
+  const confirmBulkMembers = () => {
+    if (!id || selectedMembers.length === 0) return;
+    appAlert(t('chat_info.selected_members', { count: selectedMembers.length }), t('chat_info.bulk_members_hint'), [
+      { text: t('chat_info.make_moderator'), onPress: () => applyBulkRole('moderator') },
+      { text: t('chat_info.make_admin'), onPress: () => applyBulkRole('admin') },
+      {
+        text: t('chat_info.remove_member'),
+        style: 'destructive',
+        onPress: () => appAlert(t('chat_info.remove_member'), t('chat_info.bulk_remove_confirm'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('chat_info.remove_member'),
+            style: 'destructive',
+            onPress: () => {
+              bulkGroupMembers(id, selectedMembers, 'remove')
+                .then(() => {
+                  setSelectedMembers([]);
+                  invalidateGroupEpoch(id);
+                  return refreshGroup(id);
+                })
+                .catch(failed);
+            },
+          },
+        ]),
+      },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  };
 
   const manageMember = (m: { id: string; name: string; role?: string }) => {
     if (!id || !isGroupAdmin || m.id === meId) return;
     const isAdmin = m.role === 'admin';
     appAlert(m.name, t('chat_info.manage_member_hint'), [
       {
-        text: isAdmin ? t('chat_info.demote_member') : t('chat_info.promote_member'),
+        text: isAdmin ? t('chat_info.make_moderator') : t('chat_info.make_admin'),
         onPress: () => {
-          setGroupMemberRole(id, m.id, isAdmin ? 'member' : 'admin')
+          setGroupMemberRole(id, m.id, isAdmin ? 'moderator' : 'admin')
             .then(() => refreshGroup(id))
             .catch(failed);
         },
       },
+      ...(m.role === 'moderator'
+        ? [
+            {
+              text: t('chat_info.demote_member'),
+              onPress: () =>
+                setGroupMemberRole(id, m.id, 'member').then(() => refreshGroup(id)).catch(failed),
+            },
+          ]
+        : []),
       {
         text: t('chat_info.remove_member'),
         style: 'destructive',
@@ -596,7 +792,7 @@ export default function ChatInfoScreen() {
             label={t('hangout.mode_live')}
             subtitle={t('hangout.live_hint')}
             colors={colors}
-            onPress={() => router.push(`/live/new?chat=${chat.id}`)}
+            onPress={() => router.push(`/live/setup?chat=${chat.id}`)}
           />
         </Section>
 
@@ -674,6 +870,31 @@ export default function ChatInfoScreen() {
             onValueChange={(v) => id && setChatPref(id, 'filesVisible', v)}
             colors={colors}
           />
+          <Divider colors={colors} />
+          <Row
+            icon="color-palette-outline"
+            label={t('themes.wallpaper')}
+            subtitle={wallpaper?.imageUri ? t('themes.change_photo') : t('themes.wallpaper_photo')}
+            colors={colors}
+            onPress={chooseWallpaperPhoto}
+          />
+          <View style={styles.wallpaperControls}>
+            {['#EEF1F6', '#E8F5E9', '#FFF3E0', '#E3F2FD', '#0E0F13', '#12141C'].map((color) => (
+              <Pressable
+                key={color}
+                accessibilityLabel={color}
+                onPress={() => setWallpaperColor(color)}
+                style={[styles.wallpaperSwatch, { backgroundColor: color, borderColor: colors.border }]}
+              />
+            ))}
+            {wallpaper ? (
+              <Pressable onPress={clearWallpaper} hitSlop={8}>
+                <Text style={[styles.wallpaperReset, { color: colors.danger }]}>
+                  {t('themes.remove_photo')}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </Section>
 
         {/* Encryption */}
@@ -708,9 +929,81 @@ export default function ChatInfoScreen() {
           <Row
             icon="shield-checkmark-outline"
             label={t('chat_info.advanced_privacy')}
-            value={t('chat_info.off')}
+            value={advancedPrivacyOpen ? t('chat_info.on') : t('chat_info.off')}
+            subtitle={
+              isPrivacyAdmin
+                ? t('chat_info.privacy_control_hint')
+                : t('chat_info.privacy_read_only_hint')
+            }
             colors={colors}
+            onPress={() => setAdvancedPrivacyOpen((open) => !open)}
           />
+          {advancedPrivacyOpen ? (
+            <View style={{ backgroundColor: colors.surfaceMuted }}>
+              <RowToggle
+                icon="arrow-redo-outline"
+                label={t('chat_info.privacy_forwarding')}
+                subtitle={t('chat_info.privacy_forwarding_hint')}
+                value={!privacy.forwarding_disabled}
+                onValueChange={(enabled) => void applyPrivacy({ forwarding_disabled: !enabled })}
+                colors={colors}
+              />
+              <Divider colors={colors} />
+              <RowToggle
+                icon="phone-portrait-outline"
+                label={t('chat_info.privacy_screenshot')}
+                subtitle={t('chat_info.privacy_screenshot_hint')}
+                value={privacy.screenshot_protection_enabled}
+                onValueChange={(enabled) => void applyPrivacy({ screenshot_protection_enabled: enabled })}
+                colors={colors}
+              />
+              <Divider colors={colors} />
+              <RowToggle
+                icon="link-outline"
+                label={t('chat_info.privacy_links')}
+                subtitle={t('chat_info.privacy_links_hint')}
+                value={privacy.links_require_confirmation}
+                onValueChange={(enabled) => void applyPrivacy({ links_require_confirmation: enabled })}
+                colors={colors}
+              />
+              {isGroup ? (
+                <>
+                  <Divider colors={colors} />
+                  <Row
+                    icon="chatbubble-ellipses-outline"
+                    label={t('chat_info.privacy_who_can_message')}
+                    value={privacyPermissionLabel(privacy.who_can_message)}
+                    colors={colors}
+                    onPress={() => pickPrivacyPermission('who_can_message')}
+                  />
+                  <Divider colors={colors} />
+                  <Row
+                    icon="call-outline"
+                    label={t('chat_info.privacy_who_can_call')}
+                    value={privacyPermissionLabel(privacy.who_can_call)}
+                    colors={colors}
+                    onPress={() => pickPrivacyPermission('who_can_call')}
+                  />
+                </>
+              ) : null}
+              <Divider colors={colors} />
+              <Text style={[styles.privacyTypesTitle, { color: colors.textSecondary }]}>
+                {t('chat_info.privacy_message_types')}
+              </Text>
+              {DEFAULT_PRIVACY_TYPES.map((messageType, index) => (
+                <View key={messageType}>
+                  {index > 0 ? <Divider colors={colors} /> : null}
+                  <RowToggle
+                    icon="ellipse-outline"
+                    label={privacyMessageTypeLabel(messageType)}
+                    value={privacy.allowed_message_types.includes(messageType)}
+                    onValueChange={(enabled) => togglePrivacyType(messageType, enabled)}
+                    colors={colors}
+                  />
+                </View>
+              ))}
+            </View>
+          ) : null}
         </Section>
 
         {/* 1:1 — common groups */}
@@ -802,17 +1095,45 @@ export default function ChatInfoScreen() {
                   </View>
                 </>
               ) : null}
-              {(group?.members ?? []).slice(0, 8).map((m) => (
+              <TextInput
+                value={memberQuery}
+                onChangeText={setMemberQuery}
+                placeholder={t('chat_info.search_members')}
+                placeholderTextColor={colors.textMuted}
+                style={[styles.memberSearch, { color: colors.text, borderColor: colors.border }]}
+                autoCapitalize="none"
+                clearButtonMode="while-editing"
+              />
+              {isGroupAdmin && selectedMembers.length > 0 ? (
+                <Pressable
+                  onPress={confirmBulkMembers}
+                  style={[styles.bulkAction, { backgroundColor: colors.surfaceMuted }]}
+                >
+                  <Ionicons name="people-outline" size={17} color={colors.primary} />
+                  <Text style={[styles.bulkActionText, { color: colors.primary }]}>
+                    {t('chat_info.manage_selected', { count: selectedMembers.length })}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {visibleMembers.map((m) => (
                 <View key={m.id}>
                   <Divider colors={colors} />
                   <Pressable
-                    onPress={() => manageMember(m)}
-                    disabled={!isGroupAdmin || m.id === meId}
+                    onPress={() => openMemberChat(m.id)}
                     style={({ pressed }) => [
                       styles.row,
-                      pressed && isGroupAdmin && { backgroundColor: colors.surfaceMuted },
+                      pressed && { backgroundColor: colors.surfaceMuted },
                     ]}
                   >
+                    {isGroupAdmin && m.id !== meId ? (
+                      <Pressable onPress={() => toggleMember(m.id)} hitSlop={8}>
+                        <Ionicons
+                          name={selectedMembers.includes(m.id) ? 'checkbox' : 'square-outline'}
+                          size={20}
+                          color={selectedMembers.includes(m.id) ? colors.primary : colors.textMuted}
+                        />
+                      </Pressable>
+                    ) : null}
                     <Image
                       source={{ uri: m.avatarUri }}
                       style={[styles.rowAvatar, { backgroundColor: colors.surfaceMuted }]}
@@ -828,16 +1149,28 @@ export default function ChatInfoScreen() {
                         </Text>
                       ) : null}
                     </View>
-                    {m.role === 'admin' ? (
+                    {m.role !== 'member' ? (
                       <View style={[styles.adminPill, { backgroundColor: colors.surfaceMuted }]}>
                         <Text style={[styles.adminPillText, { color: colors.textSecondary }]}>
-                          {t('chat_info.admin')}
+                          {m.role === 'admin' ? t('chat_info.admin') : t('chat_info.moderator')}
                         </Text>
                       </View>
+                    ) : null}
+                    {isGroupAdmin && m.id !== meId ? (
+                      <Pressable onPress={() => manageMember(m)} hitSlop={8}>
+                        <Ionicons name="ellipsis-vertical" size={18} color={colors.textSecondary} />
+                      </Pressable>
                     ) : null}
                   </Pressable>
                 </View>
               ))}
+              {(group?.members ?? []).length > 8 && !memberQuery ? (
+                <Pressable onPress={() => setShowAllMembers((v) => !v)} style={styles.expandMembers}>
+                  <Text style={[styles.expandMembersText, { color: colors.primary }]}>
+                    {showAllMembers ? t('chat_info.show_less') : t('chat_info.show_all_members')}
+                  </Text>
+                </Pressable>
+              ) : null}
             </Section>
           </>
         ) : null}
@@ -897,7 +1230,7 @@ export default function ChatInfoScreen() {
               destructive
               onPress={confirmLeaveGroup}
             />
-          ) : (
+          ) : isSelf ? null : (
             <>
               <Row
                 icon="ban-outline"
@@ -1121,6 +1454,28 @@ function RowToggle({
   );
 }
 
+function privacyPermissionLabel(permission: ChatPermission): string {
+  return permission === 'admins' ? t('chat_info.privacy_admins') : t('chat_info.privacy_everyone');
+}
+
+function privacyMessageTypeLabel(messageType: string): string {
+  const labels: Record<string, string> = {
+    text: t('chat_info.privacy_type_text'),
+    image: t('chat_info.privacy_type_image'),
+    video: t('chat_info.privacy_type_video'),
+    audio: t('chat_info.privacy_type_audio'),
+    document: t('chat_info.privacy_type_document'),
+    sticker: t('chat_info.privacy_type_sticker'),
+    location: t('chat_info.privacy_type_location'),
+    contact: t('chat_info.privacy_type_contact'),
+    poll: t('chat_info.privacy_type_poll'),
+    event: t('chat_info.privacy_type_event'),
+    reply: t('chat_info.privacy_type_reply'),
+    game: t('chat_info.privacy_type_game'),
+  };
+  return labels[messageType] ?? messageType;
+}
+
 function MediaTile({ msg, colors }: { msg: Message; colors: Colors }) {
   const uri =
     (msg.attachment?.kind === 'sticker' ? msg.attachment.uri : undefined) ?? msg.media?.uri;
@@ -1222,8 +1577,38 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   adminPillText: { ...Typography.micro, fontWeight: '700' },
+  memberSearch: {
+    margin: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: Radii.md,
+    ...Typography.body,
+  },
+  bulkAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: Radii.md,
+  },
+  bulkActionText: { ...Typography.caption, fontWeight: '700' },
+  expandMembers: { alignItems: 'center', padding: Spacing.md },
+  expandMembersText: { ...Typography.caption, fontWeight: '700' },
 
   mediaRow: { gap: Spacing.sm, padding: Spacing.sm },
+  wallpaperControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
+  },
+  wallpaperSwatch: { width: 28, height: 28, borderRadius: Radii.pill, borderWidth: 1 },
+  wallpaperReset: { ...Typography.caption, fontWeight: '700' },
   mediaTile: {
     width: 92,
     height: 92,
@@ -1233,6 +1618,14 @@ const styles = StyleSheet.create({
   mediaImg: { width: '100%', height: '100%' },
   emptyText: { ...Typography.caption, padding: Spacing.md },
   blockNotice: { ...Typography.caption, flex: 1 },
+  privacyTypesTitle: {
+    ...Typography.micro,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
 });
 
 /** First non-empty line, trimmed for a one-line subtitle. */

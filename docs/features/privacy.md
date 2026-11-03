@@ -6,7 +6,10 @@
 
 ## 1. Ghost Mode
 
-One switch over every outbound signal, in **Settings → Privacy → Ghost mode**.
+One switch over every outbound signal, in **Settings → Privacy → Ghost mode**. It
+starts a server-authoritative two-hour session and can be activated once per UTC
+day. The expiry and daily window are stored on the account, so a local clock,
+reinstall, or second device cannot extend the session.
 
 | Signal | With ghost mode on |
 |---|---|

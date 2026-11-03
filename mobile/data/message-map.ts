@@ -71,6 +71,8 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
     forwardCount: m.forward_count ?? 0,
     sourceChannelId: m.source_channel_id,
     sourcePostId: m.source_post_id,
+    sourceChatId: m.source_chat_id,
+    sourceMessageId: m.source_message_id,
   };
   if (deleted) return base;
 
@@ -88,6 +90,28 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
           kind: 'disappearing',
           seconds: Number(parts[1]) || 0,
           actorId: parts[2],
+        },
+      };
+    }
+    if (parts[0] === 'group' && parts.length >= 3) {
+      type GroupSystemEvent = Extract<NonNullable<Message['systemEvent']>, { kind: 'group' }>;
+      const event = parts[1] as GroupSystemEvent['event'];
+      const actorId = parts[2];
+      const ids = parts[3] ? parts[3].split(',').filter(Boolean) : [];
+      return {
+        ...base,
+        text: '',
+        system: true,
+        systemEvent: {
+          kind: 'group',
+          event,
+          actorId,
+          ...(event === 'members_added' ? { targetIds: ids } : {}),
+          ...(event === 'member_removed' ? { targetId: parts[3] } : {}),
+          ...(event === 'role_changed' ? { targetId: parts[3], role: parts[4] } : {}),
+          ...(event === 'admin_handoff' ? { targetId: parts[3] } : {}),
+          ...(event === 'achievement_created' ? { achievementId: parts[3] } : {}),
+          ...(event === 'achievement_awarded' ? { achievementId: parts[3], targetId: parts[4] } : {}),
         },
       };
     }

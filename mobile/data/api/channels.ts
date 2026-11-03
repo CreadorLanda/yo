@@ -14,6 +14,7 @@ import type {
   ManagedChannel,
   PostPermission,
 } from '@/data/channel-store';
+import type { GameMessagePayload } from '@/data/game';
 
 export interface ChannelDTO {
   id: string;
@@ -48,7 +49,9 @@ export interface ChannelPostDTO {
   views: number;
   created_at: string;
   my_emoji?: string;
+  my_emojis?: string[];
   reactions?: { emoji: string; count: number }[];
+  game_payload?: GameMessagePayload;
 }
 
 export interface ChannelCommentDTO {
@@ -59,6 +62,8 @@ export interface ChannelCommentDTO {
   text: string;
   anonymous: boolean;
   created_at: string;
+  my_emojis?: string[];
+  reactions?: { emoji: string; count: number }[];
 }
 
 export function listChannels(category?: string) {
@@ -104,13 +109,17 @@ export function unfollowChannel(id: string) {
 
 export function createChannelPost(
   channelId: string,
-  body: { text?: string; post_type?: string; media_url?: string },
+  body: { text?: string; post_type?: string; media_url?: string; game_payload?: GameMessagePayload },
 ) {
   return api.post<ChannelPostDTO>(`/api/channels/${channelId}/posts`, body);
 }
 
 export function reactToPost(postId: string, emoji: string) {
   return api.post<void>(`/api/channel-posts/${postId}/react`, { emoji });
+}
+
+export function setPostReactions(postId: string, emojis: readonly string[]) {
+  return api.post<void>(`/api/channel-posts/${postId}/react`, { reactions: emojis });
 }
 
 export function clearPostReaction(postId: string) {
@@ -126,6 +135,14 @@ export function addPostComment(postId: string, text: string, anonymous?: boolean
     text,
     anonymous: !!anonymous,
   });
+}
+
+export function setCommentReactions(commentId: string, emojis: readonly string[]) {
+  return api.post<void>(`/api/channel-comments/${commentId}/react`, { reactions: emojis });
+}
+
+export function clearCommentReactions(commentId: string) {
+  return api.del<void>(`/api/channel-comments/${commentId}/react`);
 }
 
 export function checkHandleAvailable(handle: string) {
@@ -144,13 +161,16 @@ export function mapPostDTO(p: ChannelPostDTO): ChannelPost {
     text: p.text,
     mediaUri: p.media_url ? mediaFileURL(p.media_url) : undefined,
     timestamp: relative(p.created_at),
+    createdAt: p.created_at,
     views: p.views,
     reactions,
-    myReaction: p.my_emoji || null,
+    myReaction: (p.my_emojis ?? (p.my_emoji ? [p.my_emoji] : []))[0] || null,
+    myReactions: p.my_emojis ?? (p.my_emoji ? [p.my_emoji] : []),
     type: (p.post_type as ChannelPost['type']) || 'text',
     // Needed to decide who may edit or delete it. Dropping it here meant the
     // screen had no way to tell your own post from anyone else's.
     authorId: p.author_id,
+    gamePayload: p.game_payload,
     comments: [],
   };
 }

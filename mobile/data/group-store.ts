@@ -5,6 +5,7 @@ import {
   listGroups,
   patchGroup as apiPatchGroup,
   type GroupDTO,
+  type GroupPermissionsDTO,
 } from '@/data/api/groups';
 import { GROUPS, type GroupInfo, type GroupMember } from './mock';
 
@@ -31,7 +32,7 @@ function mapDTO(g: GroupDTO): GroupInfo {
     name: m.display_name || m.username || 'Member',
     username: m.username ? `@${m.username.replace(/^@/, '')}` : '',
     avatarUri: m.avatar_uri ?? '',
-    role: m.role === 'admin' ? 'admin' : 'member',
+    role: m.role,
   }));
   return {
     id: g.id,
@@ -42,6 +43,7 @@ function mapDTO(g: GroupDTO): GroupInfo {
     historyEnabled: g.history_enabled,
     historyMode: g.history_mode === 'view-only' ? 'view-only' : 'full',
     historyLimit: g.history_limit < 0 ? Infinity : g.history_limit,
+    permissions: g.permissions,
   };
 }
 
@@ -92,6 +94,7 @@ export function updateGroup(id: string, patch: Partial<GroupInfo>) {
       history_enabled?: boolean;
       history_mode?: 'full' | 'view-only';
       history_limit?: number;
+      permissions?: GroupPermissionsDTO;
     } = {};
     if (patch.name != null) body.title = patch.name;
     if (patch.description != null) body.description = patch.description;
@@ -101,6 +104,7 @@ export function updateGroup(id: string, patch: Partial<GroupInfo>) {
     if (patch.historyLimit != null) {
       body.history_limit = patch.historyLimit === Infinity ? -1 : patch.historyLimit;
     }
+    if (patch.permissions != null) body.permissions = patch.permissions;
     if (Object.keys(body).length > 0) {
       apiPatchGroup(id, body)
         .then((g) => {

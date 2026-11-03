@@ -2,6 +2,8 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -202,7 +204,7 @@ func (r *Repository) Patch(
 func (r *Repository) InsertPost(
 	ctx context.Context,
 	channelID, author uuid.UUID,
-	text string, ptype PostType, media string,
+	text string, ptype PostType, media string, payload json.RawMessage,
 ) (uuid.UUID, error) {
 	var mediaPtr *string
 	if media != "" {
@@ -210,9 +212,9 @@ func (r *Repository) InsertPost(
 	}
 	var id uuid.UUID
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO channel_posts (channel_id, author_id, text, post_type, media_url)
-		VALUES ($1,$2,$3,$4,$5) RETURNING id
-	`, channelID, author, text, string(ptype), mediaPtr).Scan(&id)
+		INSERT INTO channel_posts (channel_id, author_id, text, post_type, media_url, game_payload)
+		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
+	`, channelID, author, text, string(ptype), mediaPtr, payloadOrNil(payload)).Scan(&id)
 	return id, err
 }
 
@@ -221,13 +223,12 @@ func (r *Repository) ListPosts(ctx context.Context, channelID, viewer uuid.UUID,
 		limit = 30
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT p.id, p.channel_id, p.author_id, p.text, p.post_type, p.media_url, p.views, p.created_at,
-		       COALESCE((SELECT r.emoji FROM channel_post_reactions r WHERE r.post_id = p.id AND r.user_id = $2), '')
+		SELECT p.id, p.channel_id, p.author_id, p.text, p.post_type, p.media_url, p.views, p.created_at, p.game_payload
 		FROM channel_posts p
 		WHERE p.channel_id = $1
-		ORDER BY p.created_at DESC
-		LIMIT $3
-	`, channelID, viewer, limit)
+		ORDER BY p.created_at DESC, p.id DESC
+		LIMIT $2
+	`, channelID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -237,15 +238,21 @@ func (r *Repository) ListPosts(ctx context.Context, channelID, viewer uuid.UUID,
 		var p Post
 		var media *string
 		var ptype string
-		if err := rows.Scan(&p.ID, &p.ChannelID, &p.AuthorID, &p.Text, &ptype, &media, &p.Views, &p.CreatedAt, &p.MyEmoji); err != nil {
+		var payload []byte
+		if err := rows.Scan(&p.ID, &p.ChannelID, &p.AuthorID, &p.Text, &ptype, &media, &p.Views, &p.CreatedAt, &payload); err != nil {
 			return nil, err
 		}
 		p.PostType = PostType(ptype)
 		if media != nil {
 			p.MediaURL = *media
 		}
+		p.GamePayload = payload
 		reacts, _ := r.ListReactions(ctx, p.ID)
 		p.Reactions = reacts
+		p.MyEmojis, _ = r.MyReactions(ctx, p.ID, viewer)
+		if len(p.MyEmojis) > 0 {
+			p.MyEmoji = p.MyEmojis[0]
+		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -255,10 +262,11 @@ func (r *Repository) GetPost(ctx context.Context, postID uuid.UUID) (Post, error
 	var p Post
 	var media *string
 	var ptype string
+	var payload []byte
 	err := r.db.QueryRow(ctx, `
-		SELECT id, channel_id, author_id, text, post_type, media_url, views, created_at
+		SELECT id, channel_id, author_id, text, post_type, media_url, views, created_at, game_payload
 		FROM channel_posts WHERE id = $1
-	`, postID).Scan(&p.ID, &p.ChannelID, &p.AuthorID, &p.Text, &ptype, &media, &p.Views, &p.CreatedAt)
+	`, postID).Scan(&p.ID, &p.ChannelID, &p.AuthorID, &p.Text, &ptype, &media, &p.Views, &p.CreatedAt, &payload)
 	if err != nil {
 		return p, err
 	}
@@ -266,7 +274,15 @@ func (r *Repository) GetPost(ctx context.Context, postID uuid.UUID) (Post, error
 	if media != nil {
 		p.MediaURL = *media
 	}
+	p.GamePayload = payload
 	return p, nil
+}
+
+func payloadOrNil(payload json.RawMessage) any {
+	if len(payload) == 0 {
+		return nil
+	}
+	return payload
 }
 
 func (r *Repository) IncViews(ctx context.Context, postID uuid.UUID) error {
@@ -275,12 +291,27 @@ func (r *Repository) IncViews(ctx context.Context, postID uuid.UUID) error {
 }
 
 func (r *Repository) SetReaction(ctx context.Context, postID, userID uuid.UUID, emoji string) error {
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO channel_post_reactions (post_id, user_id, emoji)
-		VALUES ($1,$2,$3)
-		ON CONFLICT (post_id, user_id) DO UPDATE SET emoji = EXCLUDED.emoji, created_at = NOW()
-	`, postID, userID, emoji)
-	return err
+	return r.SetReactions(ctx, postID, userID, []string{emoji})
+}
+
+func (r *Repository) SetReactions(ctx context.Context, postID, userID uuid.UUID, emojis []string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, fmt.Sprintf("channel-post-reaction:%s:%s", postID, userID)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM channel_post_reactions WHERE post_id = $1 AND user_id = $2`, postID, userID); err != nil {
+		return err
+	}
+	for _, emoji := range emojis {
+		if _, err := tx.Exec(ctx, `INSERT INTO channel_post_reactions (post_id, user_id, emoji) VALUES ($1,$2,$3)`, postID, userID, emoji); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) ClearReaction(ctx context.Context, postID, userID uuid.UUID) error {
@@ -310,6 +341,23 @@ func (r *Repository) ListReactions(ctx context.Context, postID uuid.UUID) ([]Rea
 	return out, rows.Err()
 }
 
+func (r *Repository) MyReactions(ctx context.Context, postID, userID uuid.UUID) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT emoji FROM channel_post_reactions WHERE post_id = $1 AND user_id = $2 ORDER BY created_at ASC`, postID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var emoji string
+		if err := rows.Scan(&emoji); err != nil {
+			return nil, err
+		}
+		out = append(out, emoji)
+	}
+	return out, rows.Err()
+}
+
 func (r *Repository) AddComment(ctx context.Context, postID uuid.UUID, author *uuid.UUID, text string, anon bool) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := r.db.QueryRow(ctx, `
@@ -319,7 +367,13 @@ func (r *Repository) AddComment(ctx context.Context, postID uuid.UUID, author *u
 	return id, err
 }
 
-func (r *Repository) ListComments(ctx context.Context, postID uuid.UUID) ([]Comment, error) {
+func (r *Repository) CommentPost(ctx context.Context, commentID uuid.UUID) (uuid.UUID, error) {
+	var postID uuid.UUID
+	err := r.db.QueryRow(ctx, `SELECT post_id FROM channel_comments WHERE id = $1`, commentID).Scan(&postID)
+	return postID, err
+}
+
+func (r *Repository) ListComments(ctx context.Context, postID, viewer uuid.UUID) ([]Comment, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT c.id, c.post_id, c.author_id, c.text, c.anonymous, c.created_at,
 		       COALESCE(u.display_name, '')
@@ -343,7 +397,68 @@ func (r *Repository) ListComments(ctx context.Context, postID uuid.UUID) ([]Comm
 		if !c.Anonymous {
 			c.AuthorName = name
 		}
+		c.Reactions, _ = r.ListCommentReactions(ctx, c.ID)
+		c.MyEmojis, _ = r.MyCommentReactions(ctx, c.ID, viewer)
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) SetCommentReactions(ctx context.Context, commentID, userID uuid.UUID, emojis []string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, fmt.Sprintf("channel-comment-reaction:%s:%s", commentID, userID)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM channel_comment_reactions WHERE comment_id = $1 AND user_id = $2`, commentID, userID); err != nil {
+		return err
+	}
+	for _, emoji := range emojis {
+		if _, err := tx.Exec(ctx, `INSERT INTO channel_comment_reactions (comment_id, user_id, emoji) VALUES ($1,$2,$3)`, commentID, userID, emoji); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) ClearCommentReactions(ctx context.Context, commentID, userID uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM channel_comment_reactions WHERE comment_id = $1 AND user_id = $2`, commentID, userID)
+	return err
+}
+
+func (r *Repository) ListCommentReactions(ctx context.Context, commentID uuid.UUID) ([]React, error) {
+	rows, err := r.db.Query(ctx, `SELECT emoji, COUNT(*) FROM channel_comment_reactions WHERE comment_id = $1 GROUP BY emoji ORDER BY COUNT(*) DESC`, commentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []React
+	for rows.Next() {
+		var x React
+		if err := rows.Scan(&x.Emoji, &x.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) MyCommentReactions(ctx context.Context, commentID, userID uuid.UUID) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT emoji FROM channel_comment_reactions WHERE comment_id = $1 AND user_id = $2 ORDER BY created_at ASC`, commentID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var emoji string
+		if err := rows.Scan(&emoji); err != nil {
+			return nil, err
+		}
+		out = append(out, emoji)
 	}
 	return out, rows.Err()
 }

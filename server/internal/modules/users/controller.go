@@ -40,6 +40,24 @@ func (c *Controller) PatchMe(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, u)
 }
 
+func (c *Controller) PostGhostMode(ctx *gin.Context) {
+	u, err := c.svc.ActivateGhostMode(ctx.Request.Context(), middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, u)
+}
+
+func (c *Controller) DeleteGhostMode(ctx *gin.Context) {
+	u, err := c.svc.DeactivateGhostMode(ctx.Request.Context(), middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, u)
+}
+
 func (c *Controller) GetAvailability(ctx *gin.Context) {
 	username := ctx.Query("username")
 	if username == "" {
@@ -94,9 +112,11 @@ func writeErr(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case errors.Is(err, ErrUsernameInvalid), errors.Is(err, ErrInvalidVisibility):
+	case errors.Is(err, ErrUsernameInvalid), errors.Is(err, ErrInvalidVisibility), errors.Is(err, ErrMixedGhostPatch):
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrUsernameTaken):
+		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrGhostAlreadyActive), errors.Is(err, ErrGhostDailyLimit):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})

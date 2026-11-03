@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
@@ -25,6 +26,9 @@ import {
   setAppIcon,
   useAppIcon,
   installTheme,
+  exportThemeDesign,
+  importThemeDesign,
+  publishThemeToMarketplace,
   toggleLikeTheme,
   useActiveThemeId,
   useInstalledThemeIds,
@@ -45,6 +49,15 @@ export default function ThemeMarketplaceScreen() {
 
   const [category, setCategory] = useState<ThemeCategory>('all');
   const [query, setQuery] = useState('');
+
+  const importFromClipboard = async () => {
+    const raw = await Clipboard.getStringAsync();
+    if (!importThemeDesign(raw)) {
+      appAlert(t('themes.import_design'), t('themes.import_empty'));
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -77,6 +90,13 @@ export default function ThemeMarketplaceScreen() {
             {t('themes.subtitle')}
           </Text>
         </View>
+        <Pressable
+          onPress={importFromClipboard}
+          accessibilityLabel={t('themes.import_design')}
+          style={styles.importBtn}
+        >
+          <Ionicons name="download-outline" size={20} color={colors.text} />
+        </Pressable>
         <Pressable
           onPress={() => router.push('/themes/create')}
           style={[styles.createBtn, { backgroundColor: colors.primary }]}
@@ -268,6 +288,31 @@ function ThemeHero({
               )
             }
           />
+          {pack.isOwned ? (
+            <ActionButton
+              label={t('themes.export_design')}
+              onPress={async () => {
+                const exported = exportThemeDesign(pack.id);
+                if (!exported.ok) {
+                  appAlert(t('themes.export_design'), t('themes.export_failed'));
+                  return;
+                }
+                await Clipboard.setStringAsync(exported.value);
+                appAlert(t('themes.export_design'), t('themes.export_done'));
+              }}
+            />
+          ) : null}
+          {pack.isOwned ? (
+            <ActionButton
+              label={pack.isPublished ? t('themes.published') : t('themes.publish')}
+              onPress={() => {
+                if (pack.isPublished) return;
+                if (!publishThemeToMarketplace(pack.id)) {
+                  appAlert(t('themes.publish'), t('themes.publish_failed'));
+                }
+              }}
+            />
+          ) : null}
         </View>
       </View>
     </View>
@@ -521,6 +566,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     height: 34,
     borderRadius: Radii.pill,
+  },
+  importBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   createBtnText: { ...Typography.label },
   list: { padding: Spacing.lg, gap: Spacing.md, paddingBottom: Spacing.xxxl },

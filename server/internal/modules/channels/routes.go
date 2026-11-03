@@ -37,4 +37,7 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	p.DELETE("/:postId/react", c.DeleteReact)
 	p.GET("/:postId/comments", c.GetComments)
 	p.POST("/:postId/comments", c.PostComment)
+	cr := rg.Group("/channel-comments")
+	cr.POST("/:commentId/react", c.PostCommentReact)
+	cr.DELETE("/:commentId/react", c.DeleteCommentReact)
 }

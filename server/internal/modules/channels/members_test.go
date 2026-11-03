@@ -137,6 +137,46 @@ func TestMemberRolesRespectHierarchy(t *testing.T) {
 	}
 }
 
+func TestPostAndCommentReactionsCap(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	svc := NewService(NewRepository(pool))
+	owner := createUser(t, pool, "owner_"+uuid.NewString()[:8])
+	bob := createUser(t, pool, "bob_"+uuid.NewString()[:8])
+	ch, err := svc.Create(ctx, owner, CreateChannelRequest{Name: "Reactions", Handle: "react_" + uuid.NewString()[:8]})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	join(t, svc, ch.ID, bob)
+	post, err := svc.CreatePost(ctx, ch.ID, owner, CreatePostRequest{Text: "post"})
+	if err != nil {
+		t.Fatalf("CreatePost: %v", err)
+	}
+	if err := svc.ReactSet(ctx, post.ID, bob, []string{"🔥", "👍🏽"}); err != nil {
+		t.Fatalf("ReactSet(post): %v", err)
+	}
+	if err := svc.ReactSet(ctx, post.ID, bob, []string{"🔥", "👍🏽", "🎉"}); !errors.Is(err, ErrTooManyReactions) {
+		t.Fatalf("third post reaction: got %v, want ErrTooManyReactions", err)
+	}
+	comment, err := svc.Comment(ctx, post.ID, bob, CommentRequest{Text: "comment"})
+	if err != nil {
+		t.Fatalf("Comment: %v", err)
+	}
+	if err := svc.ReactCommentSet(ctx, comment.ID, bob, []string{"❤️", "😂"}); err != nil {
+		t.Fatalf("ReactCommentSet: %v", err)
+	}
+	if err := svc.ReactCommentSet(ctx, comment.ID, bob, []string{"❤️", "😂", "🎉"}); !errors.Is(err, ErrTooManyReactions) {
+		t.Fatalf("third comment reaction: got %v, want ErrTooManyReactions", err)
+	}
+	comments, err := svc.ListComments(ctx, post.ID, bob)
+	if err != nil {
+		t.Fatalf("ListComments: %v", err)
+	}
+	if len(comments) != 1 || len(comments[0].MyEmojis) != 2 {
+		t.Fatalf("comment reactions after reload: %+v", comments)
+	}
+}
+
 func TestRemoveMember(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()

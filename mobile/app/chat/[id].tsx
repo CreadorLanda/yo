@@ -13,6 +13,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { allowScreenCaptureAsync, preventScreenCaptureAsync } from 'expo-screen-capture';
+import { openBrowserAsync } from 'expo-web-browser';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -71,11 +73,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StateTransition } from '@/components/ui/state-transition';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { dandaraReply, dandaraSuggestions } from '@/data/dandara';
-import { markChatRead, refreshChats, useChats } from '@/data/chat-store';
+import { markChatRead, refreshChats, useArchivedChats, useChats } from '@/data/chat-store';
 import type { StickerDTO } from '@/data/api/stickers';
 import { noteStickerUsed, refreshStickerPacks, useStickerPacks } from '@/data/sticker-store';
 import { removeSticker, saveSticker } from '@/data/api/stickers';
 import { showToast } from '@/data/toast-store';
+import { MAX_REACTIONS_PER_ITEM, searchEmojiCatalogue } from '@/data/reactions';
 import { refreshGroup, useGroup } from '@/data/group-store';
 import {
   encodeMediaContent,
@@ -107,6 +110,7 @@ import {
   type RealtimeEvent,
   type ReactionDTO,
 } from '@/data/api/messages';
+import { displayChatName } from '@/data/chat-identity';
 import {
   CHATS,
   DANDARA,
@@ -148,6 +152,7 @@ import { callHistory, type CallLogEntry } from '@/data/api/calls';
 import { setOpenChat } from '@/data/notification-builder';
 import { describeE2EEBlocked, reportE2EEBlocked } from '@/data/e2ee-blocked';
 import { getGroup, type GroupMemberDTO } from '@/data/api/groups';
+import { useChatPrefs } from '@/data/chat-prefs';
 import { bubbleRadii } from '@/data/theme-store';
 import { useTheme } from '@/hooks/use-theme';
 import { useCurrentUser } from '@/data/auth-store';
@@ -271,14 +276,20 @@ const FORWARD_MANY = 5;
 export default function ChatScreen() {
   const { id, game: openGame } = useLocalSearchParams<{ id: string; game?: string }>();
   const { chats: storeChats } = useChats();
+const archivedChats = useArchivedChats();
+
   const apiChatInfo: ChatDTO | null = useMemo(
-    () => storeChats.find((c) => c.id === id) ?? null,
-    [storeChats, id],
+    () => storeChats.find((c) => c.id === id) ?? archivedChats.find((c) => c.id === id) ?? null,
+    [storeChats, archivedChats, id],
   );
   // Undefined while the chat is still unknown — the distinction the load
   // effect depends on. A group has no single peer and must not wait for one
   // that never arrives.
   const chatType = apiChatInfo?.type;
+useEffect(() => {
+  void refreshChats({ archived: true });
+}, []);
+
 
   // Dandara is a local assistant surface, not a server chat — it is the one
   // entry that legitimately comes from the bundled fixtures.
@@ -288,7 +299,7 @@ export default function ChatScreen() {
     if (!apiChatInfo) return undefined;
     return {
       id: apiChatInfo.id,
-      name: apiChatInfo.title ?? 'Chat',
+      name: displayChatName(apiChatInfo, t('chats.saved_messages'), 'Chat'),
       username: apiChatInfo.peer_username
         ? `@${apiChatInfo.peer_username.replace(/^@/, '')}`
         : '',
@@ -299,10 +310,25 @@ export default function ChatScreen() {
       online: false,
       isGroup: apiChatInfo.type === 'group',
       isPending: apiChatInfo.status === 'pending',
+      isSelf: apiChatInfo.is_self,
       pinned: !!apiChatInfo.pinned_at,
       muted: !!apiChatInfo.muted_until,
     };
   }, [isAIChat, apiChatInfo]);
+  const isGroup = !!chat?.isGroup || apiChatInfo?.type === 'group';
+  const group = useGroup(isGroup ? id : undefined);
+  const mentionIdentifiers = useMemo(() => {
+    if (!isGroup) return [];
+    return [
+      'admins',
+      'moderators',
+      ...(group?.members ?? []).map((member) => member.username.replace(/^@/, '')).filter(Boolean),
+    ];
+  }, [isGroup, group?.members]);
+  const mentionsIn = useCallback((text: string) => {
+    const lower = text.toLowerCase();
+    return mentionIdentifiers.filter((identifier) => lower.includes(`@${identifier.toLowerCase()}`));
+  }, [mentionIdentifiers]);
   // Only the assistant thread seeds from fixtures; real chats load from the API.
   const [messages, setMessages] = useState<Message[]>(() =>
     id === DANDARA.id ? MESSAGES[DANDARA.id] ?? [] : [],
@@ -360,7 +386,27 @@ export default function ChatScreen() {
   const typingSentRef = useRef(false);
   const currentUser = useCurrentUser();
   const meId = currentUser?.id;
-  const { colors, isDark, chat: chrome, layout, metrics } = useTheme();
+  const { colors, isDark, chat: themeChrome, layout: themeLayout, metrics } = useTheme();
+  const chatPrefs = useChatPrefs(id);
+  const chrome = useMemo(() => {
+    const wallpaper = chatPrefs.wallpaper;
+    if (!wallpaper) return themeChrome;
+    return {
+      ...themeChrome,
+      wallpaper: wallpaper.color ?? themeChrome.wallpaper,
+      wallpaperImage: wallpaper.imageUri ?? '',
+    };
+  }, [chatPrefs.wallpaper, themeChrome]);
+  const layout = useMemo(() => {
+    const wallpaper = chatPrefs.wallpaper;
+    if (!wallpaper) return themeLayout;
+    return {
+      ...themeLayout,
+      wallpaperDim: wallpaper.dim,
+      wallpaperBlur: wallpaper.blur,
+      wallpaperAnimation: wallpaper.animation,
+    };
+  }, [chatPrefs.wallpaper, themeLayout]);
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recordPhase, setRecordPhase] = useState<'idle' | 'recording' | 'locked'>('idle');
@@ -533,7 +579,8 @@ export default function ChatScreen() {
             // thread render differently from a freshly fetched one — and
             // an encrypted media envelope would surface as raw JSON.
             const plainDTO = { ...m, content: plain };
-            decrypted.push({ dto: plainDTO, body: plain, msg: mapApiMessage(plainDTO, meId) });
+            const mapped = mapApiMessage(plainDTO, meId);
+            decrypted.push({ dto: plainDTO, body: plain, msg: { ...mapped, mentions: mentionsIn(plain) } });
           } else {
             decrypted.push({ dto: m, body: m.content, msg: base });
           }
@@ -582,7 +629,7 @@ export default function ChatScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, meId, apiChatInfo?.peer_user_id, chatType, isAIChat]);
+  }, [id, meId, apiChatInfo?.peer_user_id, chatType, isAIChat, mentionsIn]);
 
   // Load chat info from the API + ensure E2EE keys are ready.
   useEffect(() => {
@@ -645,7 +692,7 @@ export default function ChatScreen() {
             // with no attachment — while the same message rendered correctly
             // after a reload, which is the history path a few lines up.
             const plain = await decryptMessageContent(dto, meId, peerId);
-            mapped = mapApiMessage({ ...dto, content: plain }, meId);
+            mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(plain) };
           }
           setMessages((prev) => {
             if (prev.some((m) => m.id === mapped.id)) return prev;
@@ -799,7 +846,7 @@ export default function ChatScreen() {
       // Stop typing on leave.
       apiSetTyping(id, false).catch(() => {});
     };
-  }, [id, meId]);
+  }, [id, meId, isGroup, apiChatInfo?.peer_user_id, mentionsIn]);
 
   // Keep the latest message (and typing bubble) in view.
   useEffect(() => {
@@ -808,7 +855,17 @@ export default function ChatScreen() {
     return () => clearTimeout(tId);
   }, [messages.length, dandaraTyping, peerTyping, searchMode]);
 
-  const isGroup = !!chat?.isGroup || apiChatInfo?.type === 'group';
+  // Android can enforce this with FLAG_SECURE through expo-screen-capture.
+  // iOS and web do not provide an equivalent guarantee, so this is best
+  // effort and the setting screen states that limitation explicitly.
+  useEffect(() => {
+    const key = id ? `chat:${id}` : undefined;
+    if (!key || !apiChatInfo?.privacy?.screenshot_protection_enabled) return;
+    void preventScreenCaptureAsync(key).catch(() => {});
+    return () => {
+      void allowScreenCaptureAsync(key).catch(() => {});
+    };
+  }, [id, apiChatInfo?.privacy?.screenshot_protection_enabled]);
   // Tell the notification builder which conversation is on screen, so it stays
   // quiet about this one. The server pushes to connected clients now; only the
   // client knows what the reader is actually looking at.
@@ -828,12 +885,48 @@ export default function ChatScreen() {
   }, [isGroup, id]);
   const isPending = apiChatInfo?.status === 'pending';
   const isBlocked = apiChatInfo?.status === 'blocked';
+  const isSelf = !!apiChatInfo?.is_self;
   const iSentRequest = isPending && apiChatInfo?.created_by === currentUser?.id;
   // Requester may send one intro message while pending; recipient only accept/block.
   const hasMyIntro = messages.some((m) => m.fromMe);
+  const meIsGroupAdmin = !!group?.members.some(
+    (member) => member.id === currentUser?.id && member.role === 'admin',
+  );
+  const canMessageByPolicy =
+    !apiChatInfo?.privacy ||
+    apiChatInfo.privacy.who_can_message === 'everyone' ||
+    !isGroup ||
+    meIsGroupAdmin;
   const canCompose =
-    !isBlocked && (!isPending || (iSentRequest && !hasMyIntro));
-  const group = useGroup(isGroup ? id : undefined);
+    !isBlocked &&
+    canMessageByPolicy &&
+    (!isPending || (iSentRequest && !hasMyIntro));
+  const canCallByPolicy =
+    !apiChatInfo?.privacy ||
+    apiChatInfo.privacy.who_can_call === 'everyone' ||
+    !isGroup ||
+    meIsGroupAdmin;
+  const isMessageTypeAllowed = (messageType: string) =>
+    !apiChatInfo?.privacy?.allowed_message_types?.length ||
+    apiChatInfo.privacy.allowed_message_types.includes(messageType);
+
+  const refuseMessageType = (messageType: string): boolean => {
+    if (isMessageTypeAllowed(messageType)) return false;
+    appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_message_type_body'));
+    return true;
+  };
+
+  const handleLinkPress = (url: string) => {
+    const open = () => void openBrowserAsync(url).catch(() => {});
+    if (apiChatInfo?.privacy?.links_require_confirmation) {
+      appAlert(t('chat.privacy_link_title'), t('chat.privacy_link_body'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('chat.privacy_link_open'), onPress: open },
+      ]);
+      return;
+    }
+    open();
+  };
 
   // Broadcast typing while the user is composing.
   useEffect(() => {
@@ -949,6 +1042,7 @@ export default function ChatScreen() {
   };
 
   const beginRecording = async () => {
+    if (refuseMessageType('audio')) return;
     if (!recordPermRef.current) {
       const r = await requestRecordingPermissionsAsync().catch(() => null);
       recordPermRef.current = !!r?.granted;
@@ -1116,20 +1210,22 @@ export default function ChatScreen() {
   const handleReact = (msgId: string, emoji: string) => {
     const mid = serverMessageId(msgId);
     const existing = reactionsMap[msgId] ?? [];
-    const mine = existing.find((r) => r.mine);
-    const removing = mine?.emoji === emoji;
+	const mine = existing.filter((r) => r.mine).map((r) => r.emoji);
+	const removing = mine.includes(emoji);
+	if (!removing && mine.length >= MAX_REACTIONS_PER_ITEM) {
+	  appAlert(t('stories.reactions'), t('stories.reaction_limit'));
+	  return;
+	}
 
     // Optimistic UI
     setReactionsMap((prev) => {
       const list = [...(prev[msgId] ?? [])];
-      const mineIdx = list.findIndex((r) => r.mine);
-      const myEmoji = mineIdx >= 0 ? list[mineIdx].emoji : null;
-
-      if (mineIdx >= 0) {
-        if (list[mineIdx].count <= 1) list.splice(mineIdx, 1);
-        else list[mineIdx] = { ...list[mineIdx], count: list[mineIdx].count - 1, mine: false };
-      }
-      if (myEmoji === emoji) return { ...prev, [msgId]: list };
+	  const mineIdx = list.findIndex((r) => r.mine && r.emoji === emoji);
+	  if (mineIdx >= 0) {
+	    if (list[mineIdx].count <= 1) list.splice(mineIdx, 1);
+	    else list[mineIdx] = { ...list[mineIdx], count: list[mineIdx].count - 1, mine: false };
+	    return { ...prev, [msgId]: list };
+	  }
 
       const idx = list.findIndex((r) => r.emoji === emoji);
       if (idx >= 0) list[idx] = { ...list[idx], count: list[idx].count + 1, mine: true };
@@ -1186,7 +1282,9 @@ export default function ChatScreen() {
   };
 
   const forwardFromMenu = () => {
-    if (menuTarget) setForwardTargets([menuTarget.msg]);
+    if (menuTarget && !apiChatInfo?.privacy?.forwarding_disabled) setForwardTargets([menuTarget.msg]);
+    else if (apiChatInfo?.privacy?.forwarding_disabled)
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
   };
 
   const editFromMenu = () => {
@@ -1268,9 +1366,11 @@ export default function ChatScreen() {
     (msgId: string) => {
       const msg = messages.find((m) => m.id === msgId);
       setViewerStart(null);
-      if (msg) setForwardTargets([msg]);
+      if (msg && !apiChatInfo?.privacy?.forwarding_disabled) setForwardTargets([msg]);
+      else if (apiChatInfo?.privacy?.forwarding_disabled)
+        appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
     },
-    [messages],
+    [apiChatInfo?.privacy?.forwarding_disabled, messages],
   );
 
   // ── Multi-select ─────────────────────────────────────────────────────────
@@ -1299,6 +1399,10 @@ export default function ChatScreen() {
     visible.filter((m) => selectedIds.has(m.id) && !m.deletedAt);
 
   const bulkForward = () => {
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     const list = selectedMessages();
     if (list.length === 0) return;
     setForwardTargets(list);
@@ -1401,6 +1505,10 @@ export default function ChatScreen() {
   const forwardToStory = () => {
     const msg = forwardTargets[0];
     if (!msg) return;
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     setForwardTargets([]);
     clearSelection();
 
@@ -1418,6 +1526,10 @@ export default function ChatScreen() {
 
   const forwardTo = async (destChatId: string) => {
     if (forwardTargets.length === 0) return;
+    if (apiChatInfo?.privacy?.forwarding_disabled) {
+      appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
+      return;
+    }
     const dest = storeChats.find((c) => c.id === destChatId);
     const toSend = [...forwardTargets];
 
@@ -1447,6 +1559,8 @@ export default function ChatScreen() {
           forwardCount: msg.forwardCount ?? 0,
           sourceChannelId: msg.sourceChannelId,
           sourcePostId: msg.sourcePostId,
+          sourceChatId: msg.sourceChatId ?? id,
+          sourceMessageId: msg.sourceMessageId ?? serverMessageId(msg.id) ?? undefined,
           mediaIds: mediaId ? [mediaId] : [],
         });
       }
@@ -1476,6 +1590,7 @@ export default function ChatScreen() {
 
   const submitText = (text: string) => {
     if (!text) return;
+    if (!canCompose || refuseMessageType('text')) return;
     // If we're editing an existing message, update it in place and bail out.
     if (editingMsgId) {
       const editId = editingMsgId;
@@ -1528,6 +1643,7 @@ export default function ChatScreen() {
     appendMessage({
       id: tempId,
       text,
+      mentions: mentionsIn(text),
       replyTo: reply,
       status: id && !isAIChat ? 'sending' : 'sent',
     });
@@ -1537,9 +1653,8 @@ export default function ChatScreen() {
     if (id && !isAIChat) {
       // Persist first, network after: this is the whole fix for a message
       // that used to vanish if the app closed before the send finished.
-      // Direct chats are end-to-end encrypted or they do not send — groups
-      // are exempt because they have no E2EE yet, not because encryption is
-      // optional. Encryption itself happens inside the outbox, at the moment
+      // Direct and group chats are end-to-end encrypted or they do not send.
+      // Encryption itself happens inside the outbox, at the moment
       // of actual send, not here: sealing now would spend a ratchet step on
       // a message that has not even tried the network yet.
       const replyTo = reply ? serverMessageId(reply.id) ?? undefined : undefined;
@@ -1562,7 +1677,7 @@ export default function ChatScreen() {
    * the server as a media object either way.
    */
   const sendSticker = async (sticker: StickerDTO) => {
-    if (!canCompose || !id) return;
+    if (!canCompose || !id || refuseMessageType('sticker')) return;
     setShowStickers(false);
     noteStickerUsed(sticker);
 
@@ -1607,7 +1722,7 @@ export default function ChatScreen() {
     captionOverride?: string,
     viewLimit?: number | null,
   ) => {
-    if (!canCompose) return;
+    if (!canCompose || refuseMessageType(asset.type === 'video' ? 'video' : 'image')) return;
     // The editor hands its caption in directly. Reading `draft` here would
     // see the value from before setDraft landed — React state is async, so
     // the caption was always empty on the first send.
@@ -1705,12 +1820,25 @@ export default function ChatScreen() {
 
   const openCamera = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.8,
-      videoMaxDuration: 60,
-    });
+    if (!perm.granted) {
+      // Camera denial must not discard the attachment flow. The gallery is a
+      // safe, explicit fallback and keeps the same encrypted send path.
+      await pickFromLibrary();
+      return;
+    }
+    // No camera hardware (an emulator) makes the system picker throw rather
+    // than cancel. The gallery is the way to attach something on that device.
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images', 'videos'],
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
+    } catch {
+      await pickFromLibrary();
+      return;
+    }
     if (!result.canceled && result.assets[0]) openEditor(result.assets[0]);
   };
 
@@ -1777,6 +1905,7 @@ export default function ChatScreen() {
    * button; this is for music or a clip the user already has.
    */
   const pickAudio = async () => {
+    if (refuseMessageType('audio')) return;
     const result = await DocumentPicker.getDocumentAsync({
       type: 'audio/*',
       copyToCacheDirectory: true,
@@ -1853,6 +1982,8 @@ export default function ChatScreen() {
    * body, using the message_type the schema already allowed.
    */
   const sendAttachment = async (attachment: MessageAttachment) => {
+    const wireType = ATTACHMENT_WIRE_TYPE[attachment.kind];
+    if (wireType && refuseMessageType(wireType)) return;
     const reply = replyTarget;
     appendMessage({
       text: '',
@@ -1867,7 +1998,6 @@ export default function ChatScreen() {
     // Documents upload their bytes separately and are sent there.
     if (!id || isAIChat || attachment.kind === 'document') return;
 
-    const wireType = ATTACHMENT_WIRE_TYPE[attachment.kind];
     if (!wireType) return;
     try {
       await apiSendMessage(
@@ -1883,6 +2013,7 @@ export default function ChatScreen() {
   };
 
   const pickDocument = async () => {
+    if (refuseMessageType('document')) return;
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
@@ -2463,11 +2594,13 @@ export default function ChatScreen() {
                   <Text style={[styles.peerStatus, { color: colors.textSecondary }]} numberOfLines={1}>
                     {isAIChat
                       ? t('chat.ai_subtitle')
-                      : isGroup
-                        ? t('group.members_count', { count: memberCount })
-                        : chat?.online
-                          ? t('chats.online')
-                          : t('chats.last_seen')}
+                      : isSelf
+                        ? t('chats.saved_messages_hint')
+                        : isGroup
+                          ? t('group.members_count', { count: memberCount })
+                          : chat?.online
+                            ? t('chats.online')
+                            : t('chats.last_seen')}
                   </Text>
                 </View>
               </View>
@@ -2482,7 +2615,7 @@ export default function ChatScreen() {
               >
                 <Ionicons name="search" size={20} color={colors.text} />
               </Pressable>
-              {!isAIChat ? (
+              {!isAIChat && canCallByPolicy ? (
                 <Pressable
                   hitSlop={8}
                   style={styles.iconBtn}
@@ -2502,6 +2635,7 @@ export default function ChatScreen() {
                   <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
                 </Pressable>
               ) : (
+                canCallByPolicy ? (
                 <>
                   <Pressable
                     hitSlop={8}
@@ -2520,6 +2654,7 @@ export default function ChatScreen() {
                     <Ionicons name="call-outline" size={20} color={colors.text} />
                   </Pressable>
                 </>
+                ) : null
               )}
             </View>
           </View>
@@ -2586,6 +2721,7 @@ export default function ChatScreen() {
                   msg={item}
                   mine={item.fromMe}
                   peerName={chat?.name ?? ''}
+                  groupMembers={group?.members ?? []}
                   onPressDisappearing={pickDisappearing}
                 />
               ) : (
@@ -2606,6 +2742,7 @@ export default function ChatScreen() {
                   onViewOnce={handleViewOnce}
                   revealed={revealed}
                   onRetry={handleRetry}
+                onLinkPress={handleLinkPress}
                 />
               )
             }
@@ -3043,11 +3180,13 @@ function SystemDivider({
   msg,
   mine,
   peerName,
+  groupMembers,
   onPressDisappearing,
 }: {
   msg: GroupedMessage;
   mine: boolean;
   peerName: string;
+  groupMembers: { id: string; name: string }[];
   onPressDisappearing?: () => void;
 }) {
   const { colors } = useTheme();
@@ -3072,6 +3211,32 @@ function SystemDivider({
           </Text>
         </View>
       </Pressable>
+    );
+  }
+
+  if (ev?.kind === 'group') {
+    const nameFor = (id: string | undefined) =>
+      id === msg.senderId && mine
+        ? t('chat.you')
+        : groupMembers.find((member) => member.id === id)?.name ?? t('chat.deleted_user');
+    const actor = nameFor(ev.actorId);
+    const target = nameFor(ev.targetId);
+    const targets = (ev.targetIds ?? []).map(nameFor).join(', ');
+    let label = t('chat.group_changed');
+    if (ev.event === 'created') label = t('chat.group_created', { actor });
+    if (ev.event === 'members_added') label = t('chat.group_members_added', { actor, members: targets });
+    if (ev.event === 'member_removed') label = t('chat.group_member_removed', { actor, member: target });
+    if (ev.event === 'role_changed') label = t('chat.group_role_changed', { actor, member: target, role: ev.role ?? '' });
+    if (ev.event === 'admin_handoff') label = t('chat.group_admin_handoff', { oldAdmin: actor, newAdmin: target });
+    if (ev.event === 'achievement_created') label = t('chat.group_achievement_created', { actor });
+    if (ev.event === 'achievement_awarded') label = t('chat.group_achievement_awarded', { actor, member: target });
+    return (
+      <View style={styles.systemRow}>
+        <View style={[styles.systemPill, { backgroundColor: colors.surface }]}>
+          <Ionicons name="people-outline" size={11} color={colors.textSecondary} />
+          <Text style={[styles.systemText, { color: colors.textSecondary }]}>{label}</Text>
+        </View>
+      </View>
     );
   }
 
@@ -3130,6 +3295,7 @@ function HighlightedText({
   style,
   highlight,
   mentionColor,
+  onLinkPress,
 }: {
   text: string;
   query: string;
@@ -3137,10 +3303,11 @@ function HighlightedText({
   style: StyleProp<TextStyle>;
   highlight: string;
   mentionColor?: string;
+  onLinkPress?: (url: string) => void;
 }) {
   const q = (query ?? '').trim().toLowerCase();
   const hasMentions = !!mentions && mentions.length > 0;
-  if (!q && !hasMentions) return <Text style={style}>{text}</Text>;
+  if (!q && !hasMentions && !onLinkPress) return <Text style={style}>{text}</Text>;
 
   // 1) Split by mentions first so each "@user" is its own segment we won't recolor.
   const mentionRe = hasMentions ? new RegExp(`@(?:${mentions!.join('|')})\\b`, 'gi') : null;
@@ -3183,6 +3350,30 @@ function HighlightedText({
     if (last < tok.text.length) parts.push({ text: tok.text.slice(last), kind: 'plain' });
   }
 
+  const linkRe = /https?:\/\/[^\s]+/gi;
+  const renderText = (value: string, key: string | number, style?: TextStyle) => {
+    if (!onLinkPress) return <Text key={key} style={style}>{value}</Text>;
+    const chunks = value.split(linkRe);
+    const matches = value.match(linkRe) ?? [];
+    return (
+      <Text key={key} style={style}>
+        {chunks.map((chunk, index) => (
+          <Text key={`${key}-${index}`}>
+            {chunk}
+            {matches[index] ? (
+              <Text
+                onPress={() => onLinkPress(matches[index])}
+                style={{ textDecorationLine: 'underline' }}
+              >
+                {matches[index]}
+              </Text>
+            ) : null}
+          </Text>
+        ))}
+      </Text>
+    );
+  };
+
   return (
     <Text style={style}>
       {parts.map((p, i) =>
@@ -3195,7 +3386,7 @@ function HighlightedText({
             {p.text}
           </Text>
         ) : (
-          <Text key={i}>{p.text}</Text>
+          renderText(p.text, i)
         ),
       )}
     </Text>
@@ -3695,6 +3886,7 @@ function BubbleBody({
   onOpenMedia,
   onLongPressMedia,
   onRetry,
+  onLinkPress,
 }: {
   msg: GroupedMessage;
   mine: boolean;
@@ -3708,6 +3900,7 @@ function BubbleBody({
   onOpenMedia?: (msg: Message) => void;
   onLongPressMedia?: () => void;
   onRetry?: (msgId: string) => void;
+  onLinkPress?: (url: string) => void;
 }) {
   const { colors, chat, metrics, layout } = useTheme();
   const isAudio = msg.media?.type === 'audio';
@@ -3927,6 +4120,7 @@ function BubbleBody({
                 fontWeight: mine && layout.boldOutgoing ? '700' : '400',
               },
             ]}
+            onLinkPress={onLinkPress}
           />
           <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
         </View>
@@ -3956,6 +4150,7 @@ function Bubble({
   revealed,
   onOpenMedia,
   onRetry,
+  onLinkPress,
 }: {
   msg: GroupedMessage;
   isGroup: boolean;
@@ -3973,6 +4168,7 @@ function Bubble({
   revealed: Set<string>;
   onOpenMedia: (msg: Message) => void;
   onRetry?: (msgId: string) => void;
+  onLinkPress?: (url: string) => void;
 }) {
   const { colors, chat: chrome, layout, metrics } = useTheme();
   const mine = msg.fromMe;
@@ -4137,6 +4333,7 @@ function Bubble({
               onOpenMedia={onOpenMedia}
               onLongPressMedia={handleLongPress}
               onRetry={onRetry}
+              onLinkPress={onLinkPress}
             />
           </Pressable>
 
@@ -4215,6 +4412,8 @@ function ReactionMenu({
   const { msg, rect, mine } = target;
 
   const [visible, setVisible] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -4254,7 +4453,7 @@ function ReactionMenu({
     Number(showDelete);
   const menuH = menuItems * MENU_ITEM_HEIGHT;
   const menuW = 230;
-  const barW = CHAT_REACTIONS.length * 46 + 14;
+  const barW = (CHAT_REACTIONS.length + 1) * 46 + 14;
 
   // Vertical placement — shift the bubble so the bar and menu stay on-screen.
   const topSafe = insets.top + 8;
@@ -4293,21 +4492,27 @@ function ReactionMenu({
     ],
   }));
 
-  const myEmoji = reactions.find((r) => r.mine)?.emoji ?? null;
+  const myEmojis = new Set(reactions.filter((r) => r.mine).map((r) => r.emoji));
 
   return (
     <Modal transparent statusBarTranslucent animationType="fade" visible={visible} onRequestClose={close}>
-      {/* Frosted backdrop */}
+      {/* Frosted backdrop, as on iOS: the conversation behind is clearly
+          blurred and only lightly dimmed, and the pressed message stays sharp
+          above it. Android needs `dimezisBlurView` to blur at all; without it
+          expo-blur draws a flat translucent tint and a heavy black layer on
+          top was all that was left of the "blur". */}
       <Animated.View style={StyleSheet.absoluteFill} entering={FadeIn.duration(160)}>
         <BlurView
-          intensity={isDark ? 90 : 80}
+          intensity={100}
           tint={isDark ? 'dark' : 'light'}
+          experimentalBlurMethod="dimezisBlurView"
+          blurReductionFactor={2}
           style={StyleSheet.absoluteFill}
         />
         <View
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' },
+            { backgroundColor: isDark ? 'rgba(0,0,0,0.28)' : 'rgba(0,0,0,0.12)' },
           ]}
         />
       </Animated.View>
@@ -4322,7 +4527,7 @@ function ReactionMenu({
         ]}
       >
         {CHAT_REACTIONS.map((emoji) => {
-          const active = myEmoji === emoji;
+          const active = myEmojis.has(emoji);
           return (
             <Pressable
               key={emoji}
@@ -4340,7 +4545,41 @@ function ReactionMenu({
             </Pressable>
           );
         })}
+        <Pressable onPress={() => setPickerOpen(true)} style={styles.menuBarBtn} accessibilityLabel="More reactions">
+          <Ionicons name="add" size={22} color={colors.text} />
+        </Pressable>
       </Animated.View>
+
+      <Modal transparent visible={pickerOpen} animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.emojiPickerScrim} onPress={() => setPickerOpen(false)}>
+          <Pressable style={[styles.emojiPicker, { backgroundColor: colors.surface }]} onPress={() => {}}>
+            <Text style={[styles.emojiPickerTitle, { color: colors.text }]}>Reactions</Text>
+            <TextInput
+              value={pickerQuery}
+              onChangeText={setPickerQuery}
+              placeholder="Search emoji"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.emojiPickerSearch, { color: colors.text, borderColor: colors.border }]}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <ScrollView contentContainerStyle={styles.emojiPickerGrid}>
+              {searchEmojiCatalogue(pickerQuery).map(({ emoji }) => (
+                <Pressable
+                  key={emoji}
+                  onPress={() => {
+                    onReact(emoji);
+                    if (!myEmojis.has(emoji)) setPickerOpen(false);
+                  }}
+                  style={[styles.emojiPickerCell, myEmojis.has(emoji) && { backgroundColor: `${colors.primary}22` }]}
+                >
+                  <Text style={styles.emojiPickerEmoji}>{emoji}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Cloned message bubble — stays crisp above the blur */}
       <Animated.View
@@ -4767,6 +5006,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   menuBarEmoji: { fontSize: 27 },
+	 emojiPickerScrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+	 emojiPicker: { maxHeight: '70%', borderTopLeftRadius: Radii.xl, borderTopRightRadius: Radii.xl, padding: Spacing.lg },
+	 emojiPickerTitle: { ...Typography.h3, marginBottom: Spacing.sm },
+	 emojiPickerSearch: { height: 42, borderWidth: 1, borderRadius: Radii.md, paddingHorizontal: Spacing.md, marginBottom: Spacing.md },
+	 emojiPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, paddingBottom: Spacing.xl },
+	 emojiPickerCell: { width: 44, height: 44, borderRadius: Radii.sm, alignItems: 'center', justifyContent: 'center' },
+	 emojiPickerEmoji: { fontSize: 25 },
 
   menuCard: {
     position: 'absolute',

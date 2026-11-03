@@ -3,6 +3,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 export type RegistrationData = {
   countryCode: string;
   phoneNumber: string;
+  email: string;
   otp: string;
   displayName: string;
   avatarUri: string | null;
@@ -15,6 +16,7 @@ export type RegistrationData = {
 const initial: RegistrationData = {
   countryCode: '+244',
   phoneNumber: '',
+  email: '',
   otp: '',
   displayName: '',
   avatarUri: null,

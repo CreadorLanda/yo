@@ -8,7 +8,7 @@ export type StoryVisibility = 'public' | 'contacts' | 'close';
 
 export interface StoryDTO {
   id: string;
-  author_id: string;
+  author_id?: string;
   author_name?: string;
   author_username?: string;
   author_avatar?: string;
@@ -100,7 +100,7 @@ export function reactStory(id: string, emojis: readonly string[]) {
  * server rather than to render from.
  */
 export function storyReactionCatalogue() {
-  return api.get<{ standard: string[]; extended: string[] }>('/api/stories/reactions');
+	return api.get<{ standard: string[]; extended: string[]; all?: string[] }>('/api/stories/reactions');
 }
 
 export function deleteStory(id: string) {
@@ -120,6 +120,7 @@ export function mapStoryDTO(s: StoryDTO): import('@/data/mock').Story {
     id: s.id,
     user: s.is_own ? 'You' : s.author_name || 'Someone',
     username: s.author_username ? `@${s.author_username.replace(/^@/, '')}` : '',
+    authorId: s.author_id,
     avatarUri: s.author_avatar || '',
     coverUri: cover,
     kind: s.kind,
@@ -244,6 +245,8 @@ export type StoryCommentDTO = {
   /** True for your own, including your own anonymous ones. */
   is_mine: boolean;
   created_at: string;
+  reactions?: StoryReactionCount[];
+  my_reactions?: string[];
 };
 
 export function listComments(storyId: string) {
@@ -265,4 +268,8 @@ export function addComment(
 /** Own comment, or any comment on your own story. */
 export function deleteComment(commentId: number) {
   return api.del<void>(`/api/story-comments/${commentId}`);
+}
+
+export function setStoryCommentReactions(commentId: number, emojis: readonly string[]) {
+  return api.post<void>(`/api/story-comments/${commentId}/react`, { reactions: emojis });
 }

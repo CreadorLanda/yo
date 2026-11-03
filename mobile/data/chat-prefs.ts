@@ -1,6 +1,10 @@
 import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 
+import { deleteThemeImage } from './theme-assets';
+import { getCurrentUser } from './auth-store';
+import type { WallpaperAnimation } from './theme-model';
+
 /**
  * Device-local, per-chat preferences.
  *
@@ -20,12 +24,22 @@ export type ChatPrefs = {
   locked: boolean;
   /** Show media from this chat in the chat-info gallery. */
   filesVisible: boolean;
+  /** Device-local wallpaper override. The chat id also covers group chats. */
+  wallpaper?: ChatWallpaper;
+};
+
+export type ChatWallpaper = {
+  color?: string;
+  imageUri?: string;
+  dim: number;
+  blur: boolean;
+  animation: WallpaperAnimation;
 };
 
 const DEFAULTS: ChatPrefs = { locked: false, filesVisible: true };
 
 let prefs: Record<string, ChatPrefs> = {};
-let booted = false;
+let bootedFor: string | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -33,21 +47,61 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
+function accountKey(): string {
+  return getCurrentUser()?.id ?? 'anonymous';
+}
+
+function storageKey(account = accountKey()): string {
+  return `${STORAGE_KEY}.${account}`;
+}
+
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
+function normalize(value: unknown): Record<string, ChatPrefs> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, ChatPrefs> = {};
+  for (const [id, raw] of Object.entries(value)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const wallpaper = item.wallpaper;
+    const next: ChatPrefs = {
+      locked: item.locked === true,
+      filesVisible: item.filesVisible !== false,
+    };
+    if (wallpaper && typeof wallpaper === 'object' && !Array.isArray(wallpaper)) {
+      const w = wallpaper as Record<string, unknown>;
+      const animation = ['none', 'aurora', 'drift', 'pulse', 'liquid'].includes(String(w.animation))
+        ? (w.animation as WallpaperAnimation)
+        : 'none';
+      next.wallpaper = {
+        color: typeof w.color === 'string' ? w.color : undefined,
+        imageUri: typeof w.imageUri === 'string' ? w.imageUri : undefined,
+        dim: typeof w.dim === 'number' && Number.isFinite(w.dim) ? Math.min(80, Math.max(0, w.dim)) : 35,
+        blur: w.blur === true,
+        animation,
+      };
+    }
+    out[id] = next;
+  }
+  return out;
+}
+
 /** Load once at startup. Corrupt storage falls back to defaults, never throws. */
 export async function bootstrapChatPrefs(): Promise<void> {
-  if (booted) return;
-  booted = true;
+  const account = accountKey();
+  if (bootedFor === account) return;
+  bootedFor = account;
+  prefs = {};
   try {
-    const raw = await SecureStore.getItemAsync(STORAGE_KEY);
+    const raw = await SecureStore.getItemAsync(storageKey(account));
     if (!raw) return;
     const parsed = JSON.parse(raw);
+    if (accountKey() !== account) return;
     if (parsed && typeof parsed === 'object') {
-      prefs = parsed as Record<string, ChatPrefs>;
+      prefs = normalize(parsed);
       emit();
     }
   } catch {
@@ -55,9 +109,9 @@ export async function bootstrapChatPrefs(): Promise<void> {
   }
 }
 
-async function persist() {
+async function persist(account = accountKey()) {
   try {
-    await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(prefs));
+    await SecureStore.setItemAsync(storageKey(account), JSON.stringify(prefs));
   } catch {
     /* keep the in-memory value; the toggle still works this session */
   }
@@ -74,15 +128,36 @@ export function setChatPref<K extends keyof ChatPrefs>(
 ): void {
   prefs[chatId] = { ...getChatPrefs(chatId), [key]: value };
   emit();
-  void persist();
+  void persist(accountKey());
+}
+
+export function setChatWallpaper(chatId: string, wallpaper?: ChatWallpaper): void {
+  const previous = prefs[chatId]?.wallpaper?.imageUri;
+  const next = { ...getChatPrefs(chatId), wallpaper };
+  prefs[chatId] = next;
+  emit();
+  void persist(accountKey());
+  if (previous && previous !== wallpaper?.imageUri && !Object.values(prefs).some((p) => p.wallpaper?.imageUri === previous)) {
+    deleteThemeImage(previous);
+  }
 }
 
 /** Drop a chat's prefs when the chat itself is deleted. */
 export function forgetChatPrefs(chatId: string): void {
   if (!prefs[chatId]) return;
+  const previous = prefs[chatId].wallpaper?.imageUri;
   delete prefs[chatId];
   emit();
-  void persist();
+  void persist(accountKey());
+  if (previous && !Object.values(prefs).some((p) => p.wallpaper?.imageUri === previous)) {
+    deleteThemeImage(previous);
+  }
+}
+
+export function listChatWallpaperUris(): string[] {
+  return Object.values(prefs)
+    .map((entry) => entry.wallpaper?.imageUri)
+    .filter((uri): uri is string => !!uri);
 }
 
 export function useChatPrefs(chatId: string | undefined): ChatPrefs {
@@ -113,6 +188,7 @@ export function useLockedChatIds(): Set<string> {
  */
 export function resetChatPrefsCache(): void {
   prefs = {};
-  booted = false;
+  bootedFor = null;
+  void SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
   emit();
 }

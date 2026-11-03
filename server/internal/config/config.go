@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,6 +18,8 @@ type Config struct {
 	Postgres PostgresConfig
 	Redis    RedisConfig
 	JWT      JWTConfig
+	Email    EmailConfig
+	SMS      SMSConfig
 	Crypto   CryptoConfig
 	Media    MediaConfig
 	Push     PushConfig
@@ -68,6 +72,9 @@ type CryptoConfig struct {
 
 type HTTPConfig struct {
 	Addr string
+	// CORSOrigins lists the browser origins allowed to call the API. Empty
+	// means none: native apps do not need CORS, only the web client does.
+	CORSOrigins []string
 }
 
 type PostgresConfig struct {
@@ -88,6 +95,19 @@ type JWTConfig struct {
 	OTPPepper string
 }
 
+type EmailConfig struct {
+	SMTPHost string
+	SMTPPort int
+	SMTPUser string
+	SMTPPass string
+	From     string
+}
+
+type SMSConfig struct {
+	WebhookURL   string
+	WebhookToken string
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		// Production is the safe default. Local development declares APP_ENV=dev
@@ -95,7 +115,8 @@ func Load() (Config, error) {
 		// responses in a deployed process.
 		Env: getenv("APP_ENV", "prod"),
 		HTTP: HTTPConfig{
-			Addr: getenv("HTTP_ADDR", ":8080"),
+			Addr:        getenv("HTTP_ADDR", ":8080"),
+			CORSOrigins: splitList(os.Getenv("CORS_ALLOWED_ORIGINS")),
 		},
 		Postgres: PostgresConfig{
 			URL: os.Getenv("POSTGRES_URL"),
@@ -108,6 +129,17 @@ func Load() (Config, error) {
 			AccessTokenTTL:  getenvDuration("JWT_ACCESS_TTL", 15*time.Minute),
 			RefreshTokenTTL: getenvDuration("JWT_REFRESH_TTL", 30*24*time.Hour),
 			OTPPepper:       os.Getenv("OTP_PEPPER"),
+		},
+		Email: EmailConfig{
+			SMTPHost: os.Getenv("SMTP_HOST"),
+			SMTPPort: getenvInt("SMTP_PORT", 587),
+			SMTPUser: os.Getenv("SMTP_USER"),
+			SMTPPass: os.Getenv("SMTP_PASS"),
+			From:     os.Getenv("EMAIL_FROM"),
+		},
+		SMS: SMSConfig{
+			WebhookURL:   os.Getenv("SMS_WEBHOOK_URL"),
+			WebhookToken: os.Getenv("SMS_WEBHOOK_TOKEN"),
 		},
 		Crypto: CryptoConfig{
 			// Encrypts message content at rest (see internal/crypto).
@@ -154,6 +186,12 @@ func Load() (Config, error) {
 	if cfg.Env != "dev" && cfg.Env != "prod" {
 		return cfg, errors.New("APP_ENV must be either dev or prod")
 	}
+	if cfg.SMS.WebhookURL != "" {
+		u, err := url.Parse(cfg.SMS.WebhookURL)
+		if err != nil || u.Scheme == "" || u.Host == "" || (cfg.Env == "prod" && u.Scheme != "https") {
+			return cfg, errors.New("SMS_WEBHOOK_URL must be an https URL in prod")
+		}
+	}
 	if cfg.Env == "prod" && cfg.Crypto.MessageKey != "" {
 		key, err := hex.DecodeString(cfg.Crypto.MessageKey)
 		if err != nil || len(key) != 32 {
@@ -167,6 +205,17 @@ func Load() (Config, error) {
 		return cfg, errors.New("OTP_PEPPER must be at least 32 bytes in prod")
 	}
 	return cfg, nil
+}
+
+// splitList turns "a, b,,c" into ["a" "b" "c"]; empty input gives nil.
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getenv(key, fallback string) string {
@@ -191,6 +240,15 @@ func getenvDuration(key string, fallback time.Duration) time.Duration {
 func getenvInt64(key string, fallback int64) int64 {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
+func getenvInt(key string, fallback int) int {
+	if v, ok := os.LookupEnv(key); ok && v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}
 	}

@@ -9,6 +9,7 @@ import "github.com/gin-gonic/gin"
 // the upgrade handshake often carries the JWT in a query param.
 func Register(rg *gin.RouterGroup, c *Controller) {
 	// Chats
+	rg.POST("/chats/self", c.PostSelfChat)
 	rg.POST("/chats", c.PostChat)
 	rg.GET("/chats", c.GetChats)
 
@@ -40,6 +41,9 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 
 	// Per-user chat management (pin / mute / archive, clear, delete)
 	rg.PATCH("/chats/:id/settings", c.PatchChatSettings)
+	// Shared advanced privacy policy. The response is the same enriched chat
+	// shape returned by the chat list, so clients do not need a second model.
+	rg.PATCH("/chats/:id/privacy", c.PatchChatPrivacy)
 	rg.POST("/chats/:id/clear", c.PostClearChat)
 	// Disappearing messages. Any participant may set it — it is a property
 	// of the conversation, not of one side.
