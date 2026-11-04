@@ -25,7 +25,9 @@ import { displayChatName } from '@/data/chat-identity';
 import { getCurrentUser } from '@/data/auth-store';
 import {
   applyRealtimeEvent,
+  getCachedPreview,
   refreshChats,
+  rememberPreview,
   useArchivedChats,
   removeChat,
   setChatSettings,
@@ -39,6 +41,7 @@ import { anonInbox, type AnonThread } from '@/data/api/stories';
 import { useRevealedChats } from '@/data/chat-lock';
 import { decryptMessageContent } from '@/data/message-map';
 import { isMachineText, previewShape } from '@/data/message-preview';
+import { isSealedBody } from '@/data/message-sync';
 import { bootstrapGroups } from '@/data/group-store';
 import {
   addCustomFilter,
@@ -177,6 +180,8 @@ export default function ChatsScreen() {
           // Non-text messages never need decrypting — they get a label.
           const label = previewLabel(c);
           if (label) return [c.id, label] as const;
+          const known = getCachedPreview(c.id, lm.content);
+          if (known != null) return [c.id, known] as const;
           const text = await decryptMessageContent(
           {
             id: 0,
@@ -193,6 +198,7 @@ export default function ChatsScreen() {
           // without a case, still must not put a record in front of anybody
           // — which is exactly how {"kind":"poll",…} reached this list once.
           if (isMachineText(text)) return [c.id, t('chat.message')] as const;
+          if (!isSealedBody(text)) rememberPreview(c.id, lm.content, text);
           return [c.id, text] as const;
         }),
       );

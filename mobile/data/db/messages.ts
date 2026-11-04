@@ -1,4 +1,5 @@
 import type { MessageDTO } from '@/data/api/messages';
+import { withoutExpired } from '@/data/message-sync';
 
 import { getDB } from './index';
 
@@ -38,6 +39,8 @@ type Row = {
   expires_at: string | null;
   view_limit: number | null;
   views_left: number | null;
+  reactions: string | null;
+  is_starred: number | null;
 };
 
 function rowToDTO(r: Row): MessageDTO {
@@ -64,6 +67,8 @@ function rowToDTO(r: Row): MessageDTO {
     expires_at: r.expires_at ?? undefined,
     view_limit: r.view_limit ?? undefined,
     views_left: r.views_left ?? undefined,
+    reactions: r.reactions ? JSON.parse(r.reactions) : undefined,
+    is_starred: !!r.is_starred,
   };
 }
 
@@ -86,7 +91,7 @@ export async function loadCachedMessages(
     `SELECT server_id, chat_id, sender_id, sender_name, sender_avatar, body,
             message_type, reply_to_id, created_at, edited_at, deleted_at, status,
             forward_count, source_channel_id, source_post_id, expires_at,
-            view_limit, views_left
+            view_limit, views_left, reactions, is_starred
        FROM messages
       WHERE chat_id = ? AND server_id IS NOT NULL
       ORDER BY server_id DESC
@@ -94,7 +99,7 @@ export async function loadCachedMessages(
     [chatId, limit],
   );
   const rows = (res.rows ?? []) as unknown as Row[];
-  return rows.map(rowToDTO).reverse();
+  return withoutExpired(rows.map(rowToDTO)).reverse();
 }
 
 /**
@@ -120,8 +125,8 @@ export async function saveCachedMessages(
            (id, server_id, chat_id, sender_id, sender_name, sender_avatar, body,
             message_type, reply_to_id, created_at, edited_at, deleted_at, status, pending,
             forward_count, source_channel_id, source_post_id, expires_at,
-            view_limit, views_left)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+            view_limit, views_left, reactions, is_starred)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            body        = excluded.body,
            sender_name = excluded.sender_name,
@@ -135,6 +140,8 @@ export async function saveCachedMessages(
            source_post_id    = excluded.source_post_id,
            expires_at        = excluded.expires_at,
            view_limit        = excluded.view_limit,
+           reactions         = excluded.reactions,
+           is_starred        = excluded.is_starred,
            -- Opens only ever go down, so never let a stale refresh restore one.
            views_left        = MIN(COALESCE(messages.views_left, 999), COALESCE(excluded.views_left, 999)),
            -- Receipts only ever move forward. Without this guard a refresh
@@ -166,6 +173,8 @@ export async function saveCachedMessages(
           dto.expires_at ?? null,
           dto.view_limit ?? null,
           dto.views_left ?? null,
+          dto.reactions?.length ? JSON.stringify(dto.reactions) : null,
+          dto.is_starred ? 1 : 0,
         ],
       );
     }
@@ -192,6 +201,23 @@ export async function markCachedMessageOpened(
 export async function deleteCachedMessage(messageId: string): Promise<void> {
   const db = await getDB();
   await db.execute(`DELETE FROM messages WHERE id = ?`, [messageId]);
+}
+
+/** Drop messages the server no longer returns. */
+export async function removeCachedMessages(serverIds: number[]): Promise<void> {
+  if (serverIds.length === 0) return;
+  const db = await getDB();
+  const marks = serverIds.map(() => '?').join(',');
+  await db.execute(`DELETE FROM messages WHERE server_id IN (${marks})`, serverIds);
+}
+
+/**
+ * Forget a chat's delivered history, after it was cleared or deleted. Queued
+ * sends stay: they have not reached the server, so nothing has cleared them.
+ */
+export async function clearCachedChat(chatId: string): Promise<void> {
+  const db = await getDB();
+  await db.execute(`DELETE FROM messages WHERE chat_id = ? AND server_id IS NOT NULL`, [chatId]);
 }
 
 /**
@@ -323,6 +349,13 @@ export async function listChatsWithPendingSends(): Promise<string[]> {
 export async function markSendSucceeded(tempId: string, dto: MessageDTO): Promise<void> {
   const db = await getDB();
   await db.transaction(async (tx) => {
+    // The server's echo can be cached before this runs. Moving the local row
+    // onto that id would then break the primary key and fail a send that
+    // already landed, so the outbox would send it a second time.
+    await tx.execute(
+      `DELETE FROM messages WHERE id = ? AND EXISTS (SELECT 1 FROM messages WHERE id = ?)`,
+      [tempId, String(dto.id)],
+    );
     await tx.execute(
       `UPDATE messages SET
          id = ?, server_id = ?, status = ?, pending = 0, created_at = ?

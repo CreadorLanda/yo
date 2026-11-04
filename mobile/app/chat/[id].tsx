@@ -125,17 +125,21 @@ import {
   decryptMessageContent,
   mapApiMessage,
   STICKER_BUBBLE_SIZE,
+  formatMsgTime,
   serverMessageId,
 } from '@/data/message-map';
 import { linkReplies } from '@/data/reply-link';
 import { ensureLocal, mediaIdFromURL, useCacheState } from '@/data/media-cache';
 import {
+  deleteCachedMessage,
   listPendingSends,
   loadCachedMessages,
   markCachedMessageOpened,
+  removeCachedMessages,
   saveCachedMessages,
   trimCachedChat,
 } from '@/data/db/messages';
+import { mergeThread, reusableBody, sameThread, staleCachedIds } from '@/data/message-sync';
 import { queueTextMessage, retrySend, subscribeOutbox } from '@/data/outbox';
 import {
   E2EEUnavailable,
@@ -209,6 +213,9 @@ const ATTACH_ITEMS: { key: string; icon: keyof typeof Ionicons.glyphMap; color: 
  * envelopes — they carry the `soc1g.` prefix, so a group message would have
  * been mapped straight from its ciphertext.
  */
+/** Messages read per open. Disk is asked for twice this to judge what went stale. */
+const HISTORY_PAGE = 50;
+
 function needsDecrypt(content?: string | null): boolean {
   return !!content && (content.startsWith('soc1.') || isGroupEnvelope(content));
 }
@@ -457,12 +464,11 @@ useEffect(() => {
   useEffect(() => {
     if (!id || !meId) return;
     let cancelled = false;
-    Promise.all([loadCachedMessages(id, 50), listPendingSends(id)])
+    Promise.all([loadCachedMessages(id, HISTORY_PAGE), listPendingSends(id)])
       .then(([cached, pending]) => {
-        // Seed only — the network result replaces this wholesale, and
-        // overwriting live messages with stale rows would be a regression.
-        // Pending sends are the exception: nothing else will ever paint
-        // them, since the server has never heard of them.
+        // Seed only: if the network already painted, its result is newer.
+        // Pending sends are the exception, since nothing else will ever
+        // paint them: the server has never heard of them.
         if (cancelled || (cached.length === 0 && pending.length === 0)) return;
         // Quotes reconstructed here too: the cache stores the decrypted DTO,
         // which carries reply_to_id but no quoted text.
@@ -475,7 +481,7 @@ useEffect(() => {
             id: p.id,
             text: p.text,
             fromMe: true,
-            timestamp: new Date(p.createdAt).toLocaleTimeString(),
+            timestamp: formatMsgTime(p.createdAt),
             status: p.status === 'failed' ? 'failed' : 'sending',
             replyTo: replyToMsg
               ? {
@@ -488,7 +494,19 @@ useEffect(() => {
               : undefined,
           };
         });
-        setMessages(linkReplies([...cachedMapped, ...pendingMapped]));
+        setMessages((prev) => {
+          if (prev.length === 0) return linkReplies([...cachedMapped, ...pendingMapped]);
+          return [...prev, ...pendingMapped.filter((p) => !prev.some((m) => m.id === p.id))];
+        });
+        setReactionsMap((prev) => {
+          const next = { ...prev };
+          for (const m of cached) {
+            if (m.reactions?.length && !next[String(m.id)]) {
+              next[String(m.id)] = collapseReactions(m.reactions, meId);
+            }
+          }
+          return next;
+        });
       })
       .catch((err) => {
         // Loud on purpose. Swallowing this is how a completely dead local
@@ -557,9 +575,19 @@ useEffect(() => {
       if (chatType === 'direct' && !apiChatInfo?.peer_user_id) return;
     }
 
-    listMessages(id, 50)
-      .then(async (apiMsgs) => {
-        if (cancelled || !apiMsgs || apiMsgs.length === 0) return;
+    Promise.all([listMessages(id, HISTORY_PAGE), loadCachedMessages(id, HISTORY_PAGE * 2).catch(() => [])])
+      .then(async ([apiMsgs, cached]) => {
+        if (cancelled || !apiMsgs) return;
+        // Whatever the server stopped returning goes from disk and screen, or
+        // a message deleted while this chat was closed would come back on
+        // every open.
+        const stale = isAIChat ? [] : staleCachedIds(cached, apiMsgs, HISTORY_PAGE);
+        removeCachedMessages(stale).catch(() => {});
+        if (apiMsgs.length === 0) {
+          if (stale.length > 0) setMessages((prev) => mergeThread(prev, [], stale));
+          return;
+        }
+        const cachedById = new Map(cached.map((c) => [c.id, c]));
         // API returns newest-first; UI expects chronological (oldest first).
         const ordered = [...apiMsgs].reverse();
         const peerId = apiChatInfo?.peer_user_id;
@@ -570,6 +598,21 @@ useEffect(() => {
         // even though the material to read it was right there.
         const decrypted: { dto: MessageDTO; body: string; msg: Message }[] = [];
         for (const m of ordered) {
+          // Already opened once: the page is only here for what changed around
+          // it (receipts, reactions), so the body comes from disk and only new
+          // or edited messages pay for a decrypt.
+          const known = reusableBody(m, cachedById.get(m.id));
+          if (known != null) {
+            const plainDTO = { ...m, content: known };
+            const mapped = mapApiMessage(plainDTO, meId);
+            const mentions = mentionsIn(known);
+            decrypted.push({
+              dto: plainDTO,
+              body: known,
+              msg: mentions.length > 0 ? { ...mapped, mentions } : mapped,
+            });
+            continue;
+          }
           const base = mapApiMessage(m, meId);
           if (base.text === '🔒 …' || needsDecrypt(m.content)) {
             const plain = await decryptMessageContent(m, meId, peerId);
@@ -600,7 +643,11 @@ useEffect(() => {
         });
         if (cancelled) return;
         const mapped = decrypted.map((d) => d.msg);
-        setMessages(linkReplies(mapped));
+        // Nothing new means nothing to paint: the thread from disk stays put.
+        setMessages((prev) => {
+          const next = linkReplies(mergeThread(prev, mapped, stale));
+          return sameThread(prev, next) ? prev : next;
+        });
 
         // Write through in the background: the screen is already correct, so
         // a slow disk must not hold it up, and a failure here costs only the
@@ -612,12 +659,14 @@ useEffect(() => {
           .then(() => trimCachedChat(id))
           .catch(() => {});
 
-        // Ack delivery for inbound, then mark the latest as read.
+        // Ack delivery for what is new, then mark the latest as read. Anything
+        // already on disk was acked when it arrived.
         const inboundIds = ordered
           .filter((m) => m.sender_id !== meId && !m.deleted_at)
           .map((m) => m.id);
         if (inboundIds.length > 0) {
-          postReceipts(id, inboundIds, 'delivered').catch(() => {});
+          const unacked = inboundIds.filter((mid) => !cachedById.has(mid));
+          if (unacked.length > 0) postReceipts(id, unacked, 'delivered').catch(() => {});
           const last = inboundIds[inboundIds.length - 1];
           markRead(id, last).catch(() => {});
           postReceipts(id, [last], 'read').catch(() => {});
@@ -685,6 +734,7 @@ useEffect(() => {
             syncGroupKeys(id).catch(() => {});
           }
           let mapped = mapApiMessage(dto, meId);
+          let plainBody = dto.content;
           if (mapped.text === '🔒 …' || needsDecrypt(dto.content)) {
             // Re-mapped from the decrypted body, not patched. Assigning to
             // `text` alone left everything else derived from the envelope, so
@@ -692,7 +742,13 @@ useEffect(() => {
             // with no attachment — while the same message rendered correctly
             // after a reload, which is the history path a few lines up.
             const plain = await decryptMessageContent(dto, meId, peerId);
+            plainBody = plain;
             mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(plain) };
+          }
+          // On disk straight away, so it is there on the next open with no
+          // decrypt and no network. Our own sends are the outbox's to record.
+          if (!mapped.fromMe) {
+            saveCachedMessages(id, [{ dto: { ...dto, content: plainBody }, body: plainBody }]).catch(() => {});
           }
           setMessages((prev) => {
             if (prev.some((m) => m.id === mapped.id)) return prev;
@@ -727,6 +783,7 @@ useEffect(() => {
       if (ev.type === 'message.deleted' && payload) {
         const dto = payload as unknown as MessageDTO;
         const mid = String(dto.id);
+        deleteCachedMessage(mid).catch(() => {});
         setMessages((prev) =>
           prev.map((m) =>
             m.id === mid

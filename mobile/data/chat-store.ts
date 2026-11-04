@@ -10,6 +10,13 @@ import {
   type ChatSettings,
   type ChatPrivacySettings,
 } from './api/messages';
+import {
+  loadCachedChats,
+  saveCachedChats,
+  saveCachedPreview,
+  type CachedPreview,
+} from './db/chats';
+import { clearCachedChat } from './db/messages';
 
 /**
  * Chat list store.
@@ -22,12 +29,23 @@ import {
  *
  * Server order (pinned first, then last activity) is authoritative — we
  * never re-sort locally, so the client can't disagree with the backend.
+ *
+ * The last list is also kept on disk. It is shown the moment the app starts
+ * and the network replaces it when it answers, so a cold start or a dead
+ * connection still has every chat, and the outbox can still resolve a peer.
  */
 
 let chats: ChatDTO[] = [];
 let archived: ChatDTO[] = [];
 let loaded = false;
 let inFlight: Promise<void> | null = null;
+
+let previews = new Map<string, CachedPreview>();
+let hydration: Promise<void> | null = null;
+/** Which list the network has already answered for; disk must not overwrite it. */
+let fetched = { active: false, archived: false };
+/** Bumped on logout, so a late answer cannot refill a list for the next account. */
+let session = 0;
 
 const listeners = new Set<() => void>();
 
@@ -42,14 +60,44 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+/** Fill the lists from disk, once. Runs by itself on the first refresh. */
+export function hydrateChats(): Promise<void> {
+  if (hydration) return hydration;
+  const started = session;
+  hydration = (async () => {
+    try {
+      const cached = await loadCachedChats();
+      if (started !== session) return;
+      if (!fetched.active) chats = cached.active;
+      if (!fetched.archived) archived = cached.archived;
+      previews = cached.previews;
+      if (chats.length > 0) loaded = true;
+      emit();
+    } catch {
+      // No database, as on web: the network fills the list instead.
+    }
+  })();
+  return hydration;
+}
+
+function persist(list: ChatDTO[], isArchived: boolean) {
+  saveCachedChats(list, isArchived).catch(() => {});
+}
+
 /**
  * Fetch the list. Concurrent callers share one request — the screen
  * refreshes on focus and the socket can reconnect at the same moment.
  */
 export async function refreshChats(opts: { archived?: boolean } = {}): Promise<void> {
+  void hydrateChats();
+  const started = session;
   if (opts.archived) {
     try {
-      archived = await listChats({ archived: true });
+      const list = await listChats({ archived: true });
+      if (started !== session) return;
+      archived = list;
+      fetched.archived = true;
+      persist(list, true);
       emit();
     } catch {
       /* offline — keep what we have */
@@ -59,8 +107,12 @@ export async function refreshChats(opts: { archived?: boolean } = {}): Promise<v
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
-      chats = await listChats();
+      const list = await listChats();
+      if (started !== session) return;
+      chats = list;
+      fetched.active = true;
       loaded = true;
+      persist(list, false);
       emit();
     } catch {
       // Leave the previous list in place; an empty list would look like
@@ -164,6 +216,7 @@ export async function setChatPrivacy(chatId: string, settings: ChatPrivacySettin
 
 export async function clearChat(chatId: string): Promise<void> {
   await apiClearHistory(chatId);
+  await clearCachedChat(chatId).catch(() => {});
   await refreshChats();
 }
 
@@ -173,6 +226,7 @@ export async function removeChat(chatId: string): Promise<void> {
   emit();
   try {
     await apiDeleteChat(chatId);
+    await clearCachedChat(chatId).catch(() => {});
   } catch {
     chats = before;
     emit();
@@ -192,6 +246,17 @@ export async function removeChat(chatId: string): Promise<void> {
  */
 export function getCachedChat(chatId: string): ChatDTO | undefined {
   return chats.find((c) => c.id === chatId) ?? archived.find((c) => c.id === chatId);
+}
+
+/** The decrypted preview for this ciphertext, if it has been opened before. */
+export function getCachedPreview(chatId: string, source: string): string | undefined {
+  const known = previews.get(chatId);
+  return known?.source === source ? known.text : undefined;
+}
+
+export function rememberPreview(chatId: string, source: string, text: string): void {
+  previews.set(chatId, { source, text });
+  saveCachedPreview(chatId, source, text).catch(() => {});
 }
 
 /** Make a newly opened chat available before the next list refresh. */
@@ -231,5 +296,9 @@ export function resetChatStore(): void {
   archived = [];
   loaded = false;
   inFlight = null;
+  previews = new Map();
+  hydration = null;
+  fetched = { active: false, archived: false };
+  session += 1;
   emit();
 }
