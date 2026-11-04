@@ -148,6 +148,10 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="chat-info/[id]" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="report/[id]"
+              options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }}
+            />
             <Stack.Screen name="channel/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="channel-info/[id]" options={{ headerShown: false }} />
             <Stack.Screen

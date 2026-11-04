@@ -3,6 +3,7 @@ import { resetChatStore } from './chat-store';
 import { resetIncomingCall } from './incoming-call';
 import { resetBlocks } from './block-store';
 import { resetLives } from './live-store';
+import { resetNoContact } from './no-contact';
 import { unregisterPushWithServer } from './push';
 import { resetDialogs } from './dialog-store';
 import { resetAppLock } from './app-lock';
@@ -39,6 +40,7 @@ export async function resetAllStores(): Promise<void> {
     ['dialogs', resetDialogs],
     ['incoming call', resetIncomingCall],
     ['lives', resetLives],
+    ['no-contact', resetNoContact],
     ['blocks', resetBlocks],
     ['chats', resetChatStore],
     ['chat prefs', resetChatPrefsCache],

@@ -158,6 +158,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { useCurrentUser } from '@/data/auth-store';
 import { handleCallEvent } from '@/data/incoming-call';
 import { handleLiveEvent } from '@/data/live-store';
+import { NoContactBanner } from '@/components/chat/no-contact-banner';
+import { handleNoContactEvent, useNoContact } from '@/data/no-contact';
 import { t } from '@/i18n';
 
 const CHAT_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
@@ -218,6 +220,8 @@ function describeError(err: unknown): string {
   // reader can act on, and it would otherwise surface as a bare error name.
   const blocked = describeE2EEBlocked(err);
   if (blocked) return blocked;
+  // Neutral, like the banner: it names no one and gives no reason.
+  if (err instanceof ApiError && err.code === 'no_contact_period') return t('report.paused_body');
   if (err instanceof ApiError) return `${err.code}${err.message ? ` — ${err.message}` : ''}`;
   if (err instanceof Error) return err.message;
   return t('chats.action_failed_body');
@@ -669,6 +673,8 @@ useEffect(() => {
         if (handleCallEvent(ev.type, ev.payload)) return;
         // A broadcast likewise: it starts, ends and changes size on any screen.
         if (handleLiveEvent(ev.type, ev.payload)) return;
+        // A report puts a no-contact period on this chat, for both people.
+        if (handleNoContactEvent(ev.type, ev.payload)) return;
       if (ev.chat_id && ev.chat_id !== id) return;
       const payload = ev.payload as Record<string, unknown> | null | undefined;
 
@@ -886,6 +892,9 @@ useEffect(() => {
   const isPending = apiChatInfo?.status === 'pending';
   const isBlocked = apiChatInfo?.status === 'blocked';
   const isSelf = !!apiChatInfo?.is_self;
+  // A report keeps two people apart for a while. One-to-one only: a group is
+  // not two people, and the server never starts a period for one.
+  const noContactUntil = useNoContact(isGroup || isSelf ? undefined : id);
   const iSentRequest = isPending && apiChatInfo?.created_by === currentUser?.id;
   // Requester may send one intro message while pending; recipient only accept/block.
   const hasMyIntro = messages.some((m) => m.fromMe);
@@ -899,6 +908,7 @@ useEffect(() => {
     meIsGroupAdmin;
   const canCompose =
     !isBlocked &&
+    !noContactUntil &&
     canMessageByPolicy &&
     (!isPending || (iSentRequest && !hasMyIntro));
   const canCallByPolicy =
@@ -2833,7 +2843,9 @@ useEffect(() => {
               pointerEvents="none"
             />
             {/* Pending / blocked friend-request banner */}
-            {isBlocked ? (
+            {noContactUntil ? (
+              <NoContactBanner until={noContactUntil} />
+            ) : isBlocked ? (
               <View style={[styles.pendingBanner, { backgroundColor: colors.surface, borderTopColor: colors.divider }]}>
                 <Ionicons name="ban-outline" size={18} color={colors.danger} />
                 <Text style={[styles.pendingText, { color: colors.textSecondary }]} numberOfLines={2}>
@@ -2978,7 +2990,9 @@ useEffect(() => {
                     onChangeText={setDraft}
                     placeholder={
                       !canCompose
-                        ? iSentRequest
+                        ? noContactUntil
+                          ? t('report.paused_placeholder')
+                          : iSentRequest
                           ? t('friend_request.waiting_placeholder')
                           : isBlocked
                             ? t('friend_request.declined')

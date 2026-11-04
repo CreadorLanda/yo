@@ -51,6 +51,7 @@ import type { ChatPreview } from '@/data/mock';
 import { useTheme } from '@/hooks/use-theme';
 import { handleCallEvent } from '@/data/incoming-call';
 import { handleLiveEvent } from '@/data/live-store';
+import { handleNoContactEvent } from '@/data/no-contact';
 import { t } from '@/i18n';
 
 const BUILTIN_IDS = ['all', 'unread', 'read', 'groups', 'pending'];
@@ -120,6 +121,8 @@ export default function ChatsScreen() {
           if (handleCallEvent(evt?.type, evt?.payload)) return;
           // A broadcast likewise: it starts, ends and changes size on any screen.
           if (handleLiveEvent(evt?.type, evt?.payload)) return;
+          // A no-contact period starts for both people wherever they are.
+          if (handleNoContactEvent(evt?.type, evt?.payload)) return;
           applyRealtimeEvent(evt?.type);
         },
         () => {
