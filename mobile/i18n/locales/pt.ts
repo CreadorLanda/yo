@@ -976,6 +976,7 @@ export default {
     unblock_action: 'Desbloquear',
     unblock_title: 'Desbloquear {{name}}?',
     unblock_body: 'Volta a poder enviar-te mensagens e ligar-te. Se também te bloqueou, isso mantém-se.',
+    unblock_body_paused: 'Poderão voltar a enviar-te mensagens e a ligar-te quando a pausa de 24 horas acabar. Se também te bloquearam, isso mantém-se.',
     in_group_one: '{{name}} está neste grupo e tu bloqueaste esta pessoa.',
     in_group_many: '{{count}} pessoas aqui estão bloqueadas por ti.',
   },
