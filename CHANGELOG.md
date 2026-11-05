@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista
 
+#### Denúncias
+- Denunciar uma conversa tem agora o seu próprio ecrã: motivo, nota opcional e, se quiseres, as mensagens que servem de prova. Nada é enviado sem as escolheres e sem um acordo explícito, porque o servidor não lê as conversas; as provas ficam à parte, só a moderação as vê e são apagadas ao fim de 90 dias
+- Uma denúncia numa conversa direta inicia 24 horas sem contacto nos dois sentidos (mensagens, novas conversas e chamadas). Desbloquear não o levanta e uma denúncia repetida não o prolonga
+- As duas pessoas recebem o mesmo aviso neutro, "Conversa em pausa" com o tempo que falta, sem dizer quem denunciou nem porquê. A caixa de texto volta sozinha quando o período acaba
+
 #### Reacções
 - Catálogo Unicode pesquisável para mensagens, stories, posts e comentários, com tons de pele e sequências actuais
 - Limite uniforme de duas reacções por pessoa e item, aplicado no servidor e no cliente; formatos antigos de uma reacção continuam válidos

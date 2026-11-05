@@ -201,7 +201,7 @@ func TestSelfChatIsActiveIdempotentAndUnlimited(t *testing.T) {
 	if selfCount != 1 {
 		t.Fatalf("self chat count = %d, want 1", selfCount)
 	}
-	if err := svc.ReportChat(ctx, first, alice, "spam", "", false); !errors.Is(err, ErrInvalidReport) {
+	if _, err := svc.ReportChat(ctx, first, alice, ReportInput{Reason: "spam"}); !errors.Is(err, ErrInvalidReport) {
 		t.Fatalf("ReportChat(self): %v, want invalid_report", err)
 	}
 }

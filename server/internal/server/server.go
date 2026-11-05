@@ -368,8 +368,16 @@ type callBlocks struct {
 	chats  *messages.Repository
 }
 
+// EitherWay answers "must these two be kept apart". A block does, and so does a
+// no-contact period after a report, which an unblock does not lift. The calls
+// module asks one question and gets both reasons.
 func (c callBlocks) EitherWay(ctx context.Context, a, b uuid.UUID) (bool, error) {
-	return c.blocks.EitherWay(ctx, a, b)
+	blocked, err := c.blocks.EitherWay(ctx, a, b)
+	if err != nil || blocked {
+		return blocked, err
+	}
+	until, err := c.chats.CooldownUntil(ctx, a, b)
+	return until != nil, err
 }
 
 func (c callBlocks) PeerOf(ctx context.Context, chatID, userID uuid.UUID) (uuid.UUID, error) {

@@ -18,11 +18,9 @@ import {
   setDisappearing,
   listMessages,
   createChat,
-  reportChat,
   type ChatDTO,
   type ChatPermission,
   type ChatPrivacy,
-  type ReportReason,
 } from '@/data/api/messages';
 import { appAlert, appPrompt } from '@/data/dialog-store';
 import {
@@ -609,25 +607,10 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
       },
     ]);
 
-  const confirmReport = () =>
-    appAlert(t('chat_info.report', { name: chat?.name ?? '' }), t('chat_info.report_reason'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('chat_info.report_spam'), onPress: () => submitReport('spam') },
-      { text: t('chat_info.report_abuse'), onPress: () => submitReport('abuse') },
-      { text: t('chat_info.report_scam'), onPress: () => submitReport('scam') },
-    ]);
-
-  // Reporting blocks as well. Leaving the conversation open to someone you
-  // just reported is the outcome the report was meant to end.
-  const submitReport = (reason: ReportReason) => {
-    if (!id) return;
-    reportChat(id, reason, { block: true })
-      .then(() => {
-        void refreshChats();
-        appAlert(t('chat_info.report_sent'), t('chat_info.report_sent_body'));
-        router.back();
-      })
-      .catch(failed);
+  // Reporting has its own screen: a reason, optional messages as proof, and a
+  // clear account of what will be sent and what follows.
+  const confirmReport = () => {
+    if (id) router.push(`/report/${id}`);
   };
 
   const confirmLeaveGroup = () =>
