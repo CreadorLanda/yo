@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✏️ Changed (Alterado)
 
 #### Conversas
+- O cabeçalho da conversa, o de pesquisa e o de seleção deixam de ficar por baixo da barra de estado, e ficam à mesma altura do título das outras páginas
 - A lista de conversas e as mensagens abrem de imediato a partir do telemóvel, mesmo sem ligação, e a rede só acrescenta o que mudou. Abrir uma conversa deixa de voltar a decifrar e a pintar tudo: só as mensagens novas ou editadas são decifradas
 - As mensagens recebidas ficam guardadas assim que chegam, com reações e estrelas, e o que foi apagado ou expirou enquanto a conversa estava fechada já não volta a aparecer
 - Uma mensagem enviada sem ligação mantém-se visível ao reabrir a conversa e não desaparece quando a rede responde

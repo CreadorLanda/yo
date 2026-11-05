@@ -427,6 +427,7 @@ useEffect(() => {
     };
   }, [chatPrefs.wallpaper, themeLayout]);
 
+  const topInset = useSafeAreaInsets().top;
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recordPhase, setRecordPhase] = useState<'idle' | 'recording' | 'locked'>('idle');
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -2586,7 +2587,7 @@ useEffect(() => {
   const composeOpened = useOpenedOnce(composeKind != null);
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       {/* Selection-mode header replaces both the normal and the search header
@@ -2606,7 +2607,9 @@ useEffect(() => {
         header did, which is what keeps this one code path instead of two.
       */}
       <View
-        style={styles.headerFloat}
+        // The floating header is positioned absolutely, which ignores the padding of its
+        // parent, so the room for the status bar is its own rather than the parent's.
+        style={[styles.headerFloat, { paddingTop: topInset }]}
         onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
       >
         <GlassSurface
