@@ -169,6 +169,19 @@ side on launch and falls back to the row only when there is nothing to ask.
 
 ---
 
+## Opening the app and a chat
+
+What actually happens today, on the phone:
+
+- **Chat list.** The last list is kept in `chats` as the full DTO, in server order, with the decrypted preview beside the ciphertext it came from. It is shown on start and replaced when the network answers, so a cold start with no connection still has every chat. A preview is only decrypted again when the last message changes.
+- **First frame.** The chat list reads the top chats from disk into memory, so a chat already has its messages on its first render instead of drawing empty and filling in. The thread is an inverted list: it opens on the newest messages and builds older ones as they scroll in.
+- **Opening a chat.** Without that memory copy, the thread paints from `messages` first. The newest page is then fetched and compared with what is on disk: a message already opened keeps its stored plaintext, so only new or edited ones are decrypted. If nothing changed, the screen does not repaint.
+- **What a page still carries.** The newest 50 messages are always read, because receipts, reactions and deletions change on old messages too. Reading the page is cheap; decrypting it was the cost.
+- **Deletions.** Cached messages the server no longer returns are removed from disk and screen. Expired messages are filtered on read, so an offline open cannot show them.
+- **Live messages** are written to disk as they arrive. Our own sends are recorded by the outbox, which survives the app being killed and resumes on the next start.
+
+---
+
 ## Sync model
 
 ### Push (preferred)

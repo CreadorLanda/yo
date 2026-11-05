@@ -61,6 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✏️ Changed (Alterado)
 
+#### Conversas
+- A lista de conversas e as mensagens abrem de imediato a partir do telemóvel, mesmo sem ligação, e a rede só acrescenta o que mudou. Abrir uma conversa deixa de voltar a decifrar e a pintar tudo: só as mensagens novas ou editadas são decifradas
+- As mensagens recebidas ficam guardadas assim que chegam, com reações e estrelas, e o que foi apagado ou expirou enquanto a conversa estava fechada já não volta a aparecer
+- Uma mensagem enviada sem ligação mantém-se visível ao reabrir a conversa e não desaparece quando a rede responde
+- A conversa abre já com as mensagens e diretamente na mais recente, sem ecrã vazio nem scroll
+- O microfone só é pedido quando se vai gravar, e não ao abrir uma conversa. O primeiro toque pede a permissão e a gravação começa no toque seguinte
+
 #### Chamadas
 - Novo ecrã de chamada de vídeo no estilo do WhatsApp: a outra pessoa em ecrã inteiro, a tua câmara numa janela pequena que se arrasta para qualquer canto e troca com um toque, e um painel de controlos (altifalante, câmara, microfone, virar câmara e desligar) que desaparece ao fim de uns segundos e volta com um toque. O nome e o estado ficam no topo, com a linha de cifragem que mostra a impressão digital ao tocar. O aviso de chamada não cifrada mantém-se. Também no browser
 
