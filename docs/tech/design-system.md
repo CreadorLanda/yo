@@ -336,6 +336,21 @@ already says "this is the action".
 
 ---
 
+## 5.2 Call colours
+
+`CallColors` in `constants/theme.ts`. Calls are dark whatever the app's theme is.
+
+| Token | Use |
+|-------|-----|
+| `stage` | Screen background of a group call |
+| `tile` | Control dock and header buttons |
+| `tileHues` | Tile background for someone with no video, chosen from their identity |
+| `speaking` | Ring around whoever is talking |
+| `muted` | Muted microphone icon on a tile |
+| `scrim` | Name tag over a tile |
+
+---
+
 ## 6. Component recipes
 
 These are *examples* showing how tokens compose. Implement once in `mobile/components/ui/`.

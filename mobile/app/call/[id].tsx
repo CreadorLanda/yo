@@ -22,6 +22,7 @@ import {
   RoundControl,
   type Corner,
 } from '@/components/call/call-ui';
+import { GroupStage } from '@/components/call/group-stage';
 import { PeoplePicker, type PickablePerson } from '@/components/ui/people-picker';
 import { Text } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
@@ -109,6 +110,7 @@ export default function CallScreen() {
         mode={call.mode}
         e2eeKey={call.e2eeKey}
         isGroup={call.isGroup}
+        title={call.peerName}
         connectedAt={call.connectedAt}
         speakerOn={call.speaker}
         onDropE2EE={() => patchCall(id!, { e2eeKey: null })}
@@ -133,6 +135,7 @@ function CallStage({
   mode,
   e2eeKey,
   isGroup,
+  title,
   connectedAt,
   speakerOn,
   onDropE2EE,
@@ -141,6 +144,7 @@ function CallStage({
   mode: CallMode;
   e2eeKey: string | null;
   isGroup: boolean;
+  title: string;
   connectedAt: number | null;
   speakerOn: boolean;
   /**
@@ -316,6 +320,81 @@ function CallStage({
   const headerH = callSecurity === 'encrypted' ? 96 : 150;
   const reserve = { top: headerH, bottom: showChrome ? 150 : 24 };
 
+  const controls = (
+    <>
+      <RoundControl
+        icon={speakerOn ? 'volume-high' : 'volume-medium'}
+        active={speakerOn}
+        label={t('call.speaker')}
+        onPress={toggleSpeaker}
+      />
+      <RoundControl
+        icon={isCameraEnabled ? 'videocam' : 'videocam-off'}
+        active={!isCameraEnabled}
+        label={t('call.camera')}
+        onPress={() => void toggleCamera()}
+      />
+      <RoundControl
+        icon={isMicrophoneEnabled ? 'mic' : 'mic-off'}
+        active={!isMicrophoneEnabled}
+        label={t('call.mute')}
+        onPress={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
+      />
+      {isCameraEnabled ? (
+        <RoundControl icon="camera-reverse" label={t('call.flip_camera')} onPress={() => void flipCamera()} />
+      ) : null}
+      <RoundControl icon="call" label={t('call.hang_up')} danger onPress={endCall} />
+    </>
+  );
+
+  const securityNotice =
+    callSecurity !== 'encrypted' ? (
+      <View style={styles.e2eeWarning} accessibilityRole="alert" accessibilityLiveRegion="polite">
+        <Ionicons name="warning-outline" size={16} color={Palette.semantic.warning} />
+        <View style={styles.e2eeWarningCopy}>
+          <Text style={styles.e2eeWarningTitle}>
+            {callSecurity === 'group-unencrypted'
+              ? t('call.group_not_e2ee_title')
+              : t('call.not_e2ee_title')}
+          </Text>
+          <Text style={styles.e2eeWarningBody}>{t('call.not_e2ee_body')}</Text>
+        </View>
+      </View>
+    ) : null;
+
+  const peoplePicker = (
+    <PeoplePicker
+      visible={adding}
+      title={t('call.add_people')}
+      confirmLabel={t('common.done')}
+      excludeIds={participants.map((p) => p.identity)}
+      onClose={() => setAdding(false)}
+      onConfirm={(people) => void inviteMore(people)}
+    />
+  );
+
+  // More than two people is a room, not a conversation, and gets a tile each.
+  if (isGroup || others.length > 1) {
+    return (
+      <>
+        <GroupStage
+          title={title || peerName}
+          status={
+            connected
+              ? `${t('call.participants', { count: participants.length })} · ${status}`
+              : status
+          }
+          tiles={cameraTiles}
+          notice={securityNotice}
+          controls={controls}
+          onMinimize={leaveCallScreen}
+          onAddPeople={() => setAdding(true)}
+        />
+        {peoplePicker}
+      </>
+    );
+  }
+
   return (
     <View style={[styles.screen, { backgroundColor: '#0B0C10' }]}>
       <StatusBar style="light" />
@@ -441,58 +520,18 @@ function CallStage({
           <View />
         )}
 
-        {showChrome && callSecurity !== 'encrypted' ? (
-          <View style={styles.e2eeWarning} accessibilityRole="alert" accessibilityLiveRegion="polite">
-            <Ionicons name="warning-outline" size={16} color={Palette.semantic.warning} />
-            <View style={styles.e2eeWarningCopy}>
-              <Text style={styles.e2eeWarningTitle}>
-                {callSecurity === 'group-unencrypted'
-                  ? t('call.group_not_e2ee_title')
-                  : t('call.not_e2ee_title')}
-              </Text>
-              <Text style={styles.e2eeWarningBody}>{t('call.not_e2ee_body')}</Text>
-            </View>
-          </View>
-        ) : null}
+        {showChrome ? securityNotice : null}
 
         <View style={{ flex: 1 }} pointerEvents="none" />
 
         {showChrome ? (
           <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(180)} style={styles.panel}>
-            <RoundControl
-              icon={speakerOn ? 'volume-high' : 'volume-medium'}
-              active={speakerOn}
-              label={t('call.speaker')}
-              onPress={toggleSpeaker}
-            />
-            <RoundControl
-              icon={isCameraEnabled ? 'videocam' : 'videocam-off'}
-              active={!isCameraEnabled}
-              label={t('call.camera')}
-              onPress={() => void toggleCamera()}
-            />
-            <RoundControl
-              icon={isMicrophoneEnabled ? 'mic' : 'mic-off'}
-              active={!isMicrophoneEnabled}
-              label={t('call.mute')}
-              onPress={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
-            />
-            {isCameraEnabled ? (
-              <RoundControl icon="camera-reverse" label={t('call.flip_camera')} onPress={() => void flipCamera()} />
-            ) : null}
-            <RoundControl icon="call" label={t('call.hang_up')} danger onPress={endCall} />
+            {controls}
           </Animated.View>
         ) : null}
       </SafeAreaView>
 
-      <PeoplePicker
-        visible={adding}
-        title={t('call.add_people')}
-        confirmLabel={t('common.done')}
-        excludeIds={participants.map((p) => p.identity)}
-        onClose={() => setAdding(false)}
-        onConfirm={(people) => void inviteMore(people)}
-      />
+      {peoplePicker}
     </View>
   );
 }

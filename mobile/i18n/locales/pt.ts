@@ -992,6 +992,7 @@ export default {
     title: 'Filtros',
   },
   call: {
+    speaking: 'a falar',
     return_to_call: 'Toca para voltar à chamada',
     minimize: 'Minimizar chamada',
     flip_camera: 'Virar câmara',

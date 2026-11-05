@@ -77,7 +77,13 @@ export function CallRunner({ call }: { call: ActiveCall }) {
         // Don't connect the media room until the call type and encryption
         // state are known. Otherwise a group call briefly starts without
         // showing that the SFU can access its streams.
-        patchCall(chatId, { e2eeKey, isGroup: chat?.type === 'group' });
+        const isGroup = chat?.type === 'group';
+        patchCall(chatId, {
+          e2eeKey,
+          isGroup,
+          // A room is heard, not held to the ear, and goes by its own name.
+          ...(isGroup ? { speaker: true, peerName: chat?.title ?? '' } : {}),
+        });
         setGrant(g);
       } catch {
         if (!cancelled) patchCall(chatId, { failure: t('call.failed_to_join') });
@@ -136,7 +142,7 @@ export function CallRunner({ call }: { call: ActiveCall }) {
  * Split out because the LiveKit hooks only work under the provider.
  */
 function CallWatcher({ call }: { call: ActiveCall }) {
-  const { chatId, connectedAt, onScreen } = call;
+  const { chatId, connectedAt, isGroup, onScreen } = call;
   const room = useRoomContext();
   const participants = useParticipants();
   const { localParticipant, isCameraEnabled } = useLocalParticipant();
@@ -151,8 +157,8 @@ function CallWatcher({ call }: { call: ActiveCall }) {
   }, [chatId, room]);
 
   useEffect(() => {
-    if (firstName) patchCall(chatId, { peerName: firstName });
-  }, [chatId, firstName]);
+    if (firstName && !isGroup) patchCall(chatId, { peerName: firstName });
+  }, [chatId, firstName, isGroup]);
 
   // A call is connected when someone else is in it, not when this phone
   // reaches the SFU. For the caller that is immediately, while the other phone
