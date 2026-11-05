@@ -1041,6 +1041,8 @@ export default {
     paused_placeholder: 'Conversa em pausa',
   },
   call: {
+    return_to_call: 'Toca para voltar à chamada',
+    minimize: 'Minimizar chamada',
     flip_camera: 'Virar câmara',
     camera_off_peer: 'A câmara dela está desligada',
     ongoing_title: 'Chamada a decorrer',

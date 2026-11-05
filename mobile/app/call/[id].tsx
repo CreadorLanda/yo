@@ -3,17 +3,15 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   AudioSession,
-  LiveKitRoom,
+  RoomContext,
   VideoTrack,
-  registerGlobals,
   useLocalParticipant,
   useParticipants,
-  useRoomContext,
   useTracks,
 } from '@livekit/react-native';
-import { Track, type LocalVideoTrack } from 'livekit-client';
+import { Track, type LocalVideoTrack, type Room } from 'livekit-client';
 import { isTrackReference, type TrackReferenceOrPlaceholder } from '@livekit/react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,38 +23,30 @@ import {
   type Corner,
 } from '@/components/call/call-ui';
 import { PeoplePicker, type PickablePerson } from '@/components/ui/people-picker';
-import { startCallKeepAlive, stopCallKeepAlive } from '@/modules/call-keepalive';
 import { Text } from '@/components/ui/text';
 import { Palette, Radii, Spacing, Typography } from '@/constants/theme';
-import { callToken, hangupCall, inviteToCall, type CallGrant } from '@/data/api/calls';
+import {
+  beginCall,
+  endCall,
+  formatCallDuration,
+  patchCall,
+  useActiveCall,
+  useCallSeconds,
+  type CallMode,
+} from '@/data/active-call';
+import { inviteToCall } from '@/data/api/calls';
 import { getCallSecurityState } from '@/data/call-security';
-import { RING_TIMEOUT_MS } from '@/data/incoming-call';
-import { listChats } from '@/data/api/messages';
-import { callKeyFingerprint, callKeyFor } from '@/data/crypto/call-key';
+import { callKeyFingerprint } from '@/data/crypto/call-key';
 import { appAlert } from '@/data/dialog-store';
-import { availableMedia, type AvailableMedia } from '@/data/media-devices';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
-// WebRTC needs its globals installed before any of it is touched. Done at
-// module load rather than inside the component: a re-render must not
-// re-register, and the screen can be reached by deep link with nothing else
-// mounted.
-registerGlobals();
-
-type Mode = 'voice' | 'video';
-
 /**
- * A call.
+ * The screen of a call.
  *
- * This screen used to simulate one — three setTimeouts walked it from
- * "calling" to "connected" and a face from `data/mock` sat in the middle. It
- * looked exactly like a working call and could not carry a second of audio.
- *
- * The real thing: the server signs a token saying this user may join the room
- * named after this chat, the SFU relays the media, and the streams are
- * encrypted with a key derived from the conversation's own E2EE session —
- * which the server never sees. See server/internal/modules/calls.
+ * Only a view of it. The call itself runs in the root layout (see
+ * components/call/call-runner.tsx), so going back or leaving the app keeps it
+ * going, with the green bar as the way back.
  */
 export default function CallScreen() {
   const { id, mode, incoming } = useLocalSearchParams<{
@@ -64,92 +54,33 @@ export default function CallScreen() {
     mode?: string;
     incoming?: string;
   }>();
-  const callMode: Mode = mode === 'video' ? 'video' : 'voice';
+  const callMode: CallMode = mode === 'video' ? 'video' : 'voice';
   const { colors } = useTheme();
-
-  const [grant, setGrant] = useState<CallGrant | null>(null);
-  const [e2eeKey, setE2eeKey] = useState<string | null>(null);
-  const [isGroup, setIsGroup] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [media, setMedia] = useState<AvailableMedia>({ camera: false, microphone: true });
+  const active = useActiveCall();
+  const call = active?.chatId === id ? active : null;
 
   useEffect(() => {
     if (!id) return;
-    let cancelled = false;
+    beginCall({ chatId: id, mode: callMode, incoming: incoming === '1' });
+    patchCall(id, { onScreen: true });
+    return () => patchCall(id, { onScreen: false });
+  }, [id, callMode, incoming]);
 
-    (async () => {
-      try {
-        // Fetched now, not cached: the token lives five minutes and holding
-        // one is holding a key to the room.
-        // `incoming=1` means we are answering; anything else means we are
-        // placing the call and the other phones should ring.
-        const g = await callToken(id, { ring: incoming !== '1', mode: callMode });
-        if (cancelled) return;
-
-        // Join with the microphone that exists. The camera is never started
-        // here: an emulator may advertise one that fails when WebRTC opens it,
-        // which crashed the call screen. Video calls begin with the camera off
-        // and the person turns it on, where a failure is caught and explained.
-        const devices = await availableMedia();
-        if (cancelled) return;
-        setMedia(devices);
-
-        // The media key is derived from the pairwise session, so both sides
-        // arrive at the same bytes without anything being transmitted. A
-        // group has no single pairwise session; those calls run without the
-        // extra layer until the key is derived from the group's sender key.
-        const chat = (await listChats()).find((c) => c.id === id);
-        if (cancelled) return;
-        if (chat?.type !== 'group' && chat?.peer_user_id) {
-          const key = await callKeyFor(id, chat.peer_user_id);
-          if (cancelled) return;
-          setE2eeKey(key);
-        }
-        // Don't connect the media room until the call type and encryption
-        // state are known. Otherwise a group call briefly starts without
-        // showing that the SFU can access its streams.
-        setIsGroup(chat?.type === 'group');
-        setGrant(g);
-      } catch {
-        if (!cancelled) setFailure(t('call.failed_to_join'));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, incoming, callMode]);
-
-  // The audio session has to be running before the room connects, or the
-  // first seconds arrive with nowhere to play.
-  //
-  // The keep-alive goes up with it and comes down with it, because the two
-  // answer the same question from opposite ends: LiveKit's session routes the
-  // audio, and this stops the OS from taking the process away mid-call. On
-  // Android that is a foreground service; on iOS it is holding the
-  // AVAudioSession active. Without it, pressing home silenced the call and
-  // then ended it, and nothing here noticed — see #160.
+  // The call ended while this screen was showing.
+  const seen = useRef(false);
   useEffect(() => {
-    void AudioSession.startAudioSession();
-    startCallKeepAlive({
-      video: callMode === 'video',
-      title: t('call.ongoing_title'),
-      body: t('call.ongoing_body'),
-    });
-    return () => {
-      stopCallKeepAlive();
-      void AudioSession.stopAudioSession();
-    };
-  }, [callMode]);
+    if (call) seen.current = true;
+    else if (seen.current) leaveCallScreen();
+  }, [call]);
 
-  if (failure) {
+  if (call?.failure) {
     return (
       <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
         <StatusBar style="light" />
         <View style={styles.center}>
           <Ionicons name="cloud-offline-outline" size={44} color={colors.textMuted} />
-          <Text style={[styles.status, { color: colors.text }]}>{failure}</Text>
-          <Pressable onPress={() => router.back()} hitSlop={10}>
+          <Text style={[styles.status, { color: colors.text }]}>{call.failure}</Text>
+          <Pressable onPress={endCall} hitSlop={10}>
             <Text style={[styles.link, { color: colors.primary }]}>{t('common.close')}</Text>
           </Pressable>
         </View>
@@ -157,7 +88,7 @@ export default function CallScreen() {
     );
   }
 
-  if (!grant) {
+  if (!call?.room) {
     return (
       <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
         <StatusBar style="light" />
@@ -172,27 +103,23 @@ export default function CallScreen() {
   }
 
   return (
-    <LiveKitRoom
-      serverUrl={grant.url}
-      token={grant.token}
-      connect
-      audio={media.microphone}
-      video={false}
-      options={{ adaptiveStream: true, dynacast: true }}
-      {...(e2eeKey
-        ? { e2ee: { keyProviderOptions: { sharedKey: e2eeKey } } as never }
-        : {})}
-      onError={() => setFailure(t('call.failed_to_join'))}
-    >
+    <RoomContext.Provider value={call.room as Room}>
       <CallStage
         chatId={id!}
-        mode={callMode}
-        e2eeKey={e2eeKey}
-        isGroup={isGroup}
-        onDropE2EE={() => setE2eeKey(null)}
+        mode={call.mode}
+        e2eeKey={call.e2eeKey}
+        isGroup={call.isGroup}
+        connectedAt={call.connectedAt}
+        speakerOn={call.speaker}
+        onDropE2EE={() => patchCall(id!, { e2eeKey: null })}
       />
-    </LiveKitRoom>
+    </RoomContext.Provider>
   );
+}
+
+function leaveCallScreen() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/(tabs)');
 }
 
 /**
@@ -206,12 +133,16 @@ function CallStage({
   mode,
   e2eeKey,
   isGroup,
+  connectedAt,
+  speakerOn,
   onDropE2EE,
 }: {
   chatId: string;
-  mode: Mode;
+  mode: CallMode;
   e2eeKey: string | null;
   isGroup: boolean;
+  connectedAt: number | null;
+  speakerOn: boolean;
   /**
    * Give up the derived media key.
    *
@@ -220,7 +151,7 @@ function CallStage({
    */
   onDropE2EE: () => void;
 }) {
-  const room = useRoomContext();
+  const room = useContext(RoomContext);
   const participants = useParticipants();
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
 
@@ -234,10 +165,9 @@ function CallStage({
 
   const others = participants.filter((p) => p.identity !== localParticipant.identity);
 
-  const [seconds, setSeconds] = useState(0);
-  const [connected, setConnected] = useState(false);
+  const seconds = useCallSeconds(connectedAt);
+  const connected = !!connectedAt;
   const [adding, setAdding] = useState(false);
-  const startedAt = useRef<number | null>(null);
 
   // Looks: who fills the screen, where the small picture rests, whether the
   // controls are showing, and the speaker and lens choices.
@@ -245,36 +175,7 @@ function CallStage({
   const [corner, setCorner] = useState<Corner>('br');
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [chrome, setChrome] = useState(true);
-  const [speakerOn, setSpeakerOn] = useState(mode === 'video');
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
-
-  // A call is connected when someone else is in it, not when this phone
-  // reaches the SFU.
-  //
-  // RoomEvent.Connected fires as soon as we join, which for the caller is
-  // immediately — the other phone is still ringing. The screen showed a
-  // running duration for a call nobody had answered.
-  //
-  // Joining early is right: the caller has to be in the room to be heard the
-  // moment the other side arrives. What was wrong was calling that
-  // "connected".
-  const someoneElseHere = others.length > 0;
-  useEffect(() => {
-    if (!someoneElseHere || connected) return;
-    setConnected(true);
-    startedAt.current = Date.now();
-  }, [someoneElseHere, connected]);
-
-  // Timed from the wall clock, not by counting ticks. An interval that misses
-  // a beat while the app is backgrounded would drift, and a call timer that
-  // disagrees with the phone's is a small thing people notice.
-  useEffect(() => {
-    if (!connected) return;
-    const tick = setInterval(() => {
-      if (startedAt.current) setSeconds(Math.floor((Date.now() - startedAt.current) / 1000));
-    }, 1000);
-    return () => clearInterval(tick);
-  }, [connected]);
 
   /**
    * Turn the camera on or off mid-call.
@@ -297,67 +198,6 @@ function CallStage({
       );
     }
   };
-
-  /**
-   * Leave the call.
-   *
-   * Disconnecting from the SFU used to be the whole of it, and the server was
-   * never told — so the call ran on until the four-hour sweep. The report goes
-   * first, because router.back() unmounts this screen and anything started
-   * after it may never run.
-   *
-   * Not awaited: hanging up must not wait on the network, and the server
-   * treats a repeat or a miss as a no-op. The sweep is still there for the
-   * phone that dies mid-call.
-   */
-  const reported = useRef(false);
-  const reportLeaving = useCallback(() => {
-    if (reported.current) return;
-    reported.current = true;
-    void hangupCall(chatId).catch(() => {});
-  }, [chatId]);
-
-  const hangUp = useCallback(() => {
-    reportLeaving();
-    void room.disconnect();
-    router.back();
-  }, [reportLeaving, room]);
-
-  // Every other way out: the back gesture, a notification, the system taking
-  // the screen away. The button is not the only exit, and a call left by any
-  // other door was still running as far as the server knew.
-  useEffect(() => reportLeaving, [reportLeaving]);
-
-  /**
-   * Nobody came.
-   *
-   * The caller had no timeout at all: a call declined, ignored, or ringing a
-   * phone that was switched off left them watching "waiting for others"
-   * indefinitely. The other phone stops ringing after RING_TIMEOUT_MS, so
-   * this is the same moment seen from the other end — one number for one
-   * decision, rather than two that can disagree.
-   */
-  useEffect(() => {
-    if (connected) return;
-    const giveUp = setTimeout(() => {
-      appAlert(t('call.no_answer_title'), t('call.no_answer_body'));
-      hangUp();
-    }, RING_TIMEOUT_MS);
-    return () => clearTimeout(giveUp);
-  }, [connected, hangUp]);
-
-  /**
-   * Everyone else left.
-   *
-   * The room does not close itself: the last person sat in an empty call
-   * watching a timer count up, with no sign the other side had gone. Only
-   * after connecting, or the caller would hang up on themselves in the second
-   * before the callee answers.
-   */
-  useEffect(() => {
-    if (!connected || others.length > 0) return;
-    hangUp();
-  }, [connected, others.length, hangUp]);
 
   // useTracks hands back placeholders for participants who have not published
   // yet. They have no publication, so they cannot be drawn as video: they
@@ -397,14 +237,10 @@ function CallStage({
     }
   }, []);
   useEffect(() => {
-    void route(mode === 'video');
-  }, [route, mode]);
+    void route(speakerOn);
+  }, [route, speakerOn]);
 
-  const toggleSpeaker = () => {
-    const next = !speakerOn;
-    setSpeakerOn(next);
-    void route(next);
-  };
+  const toggleSpeaker = () => patchCall(chatId, { speaker: !speakerOn });
 
   const flipCamera = async () => {
     const next = facing === 'user' ? 'environment' : 'user';
@@ -464,8 +300,8 @@ function CallStage({
         ? others[0].name || others[0].identity
         : t('call.participants', { count: others.length + 1 });
   const status = connected
-    ? formatDuration(seconds)
-    : room.state === 'connected'
+    ? formatCallDuration(seconds)
+    : room?.state === 'connected'
       ? mode === 'video'
         ? t('call.ringing')
         : t('call.calling')
@@ -558,6 +394,15 @@ function CallStage({
       <SafeAreaView style={styles.chrome} edges={['top', 'bottom']} pointerEvents="box-none">
         {showChrome ? (
           <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(180)} style={styles.header}>
+            <Pressable
+              onPress={leaveCallScreen}
+              hitSlop={10}
+              style={styles.headerBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t('call.minimize')}
+            >
+              <Ionicons name="chevron-down" size={22} color="#FFFFFF" />
+            </Pressable>
             <View style={styles.headerText}>
               <Text style={styles.peerName} numberOfLines={1}>
                 {peerName}
@@ -635,7 +480,7 @@ function CallStage({
             {isCameraEnabled ? (
               <RoundControl icon="camera-reverse" label={t('call.flip_camera')} onPress={() => void flipCamera()} />
             ) : null}
-            <RoundControl icon="call" label={t('call.hang_up')} danger onPress={hangUp} />
+            <RoundControl icon="call" label={t('call.hang_up')} danger onPress={endCall} />
           </Animated.View>
         ) : null}
       </SafeAreaView>
@@ -650,12 +495,6 @@ function CallStage({
       />
     </View>
   );
-}
-
-function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({

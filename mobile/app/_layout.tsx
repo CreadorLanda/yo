@@ -6,7 +6,10 @@ import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { CallHost } from '@/components/call/call-host';
+import { OngoingCallBar } from '@/components/call/ongoing-call-bar';
 import { AppToast } from '@/components/ui/app-toast';
 import { DialogHost } from '@/components/ui/dialog-host';
 import { IncomingCallHost } from '@/components/ui/incoming-call';
@@ -135,6 +138,10 @@ export default function RootLayout() {
         {/* Opaque app-coloured backstop behind every native screen — if a
             transition ever exposes a gap, this shows, never the white window. */}
         <View style={{ flex: 1, backgroundColor: palette.background }}>
+          <OngoingCallBar />
+          {/* Its own provider so the insets are measured from below the bar:
+              screens would otherwise add the status bar a second time. */}
+          <SafeAreaProvider style={{ flex: 1 }}>
           <Stack
             screenOptions={{
               contentStyle: { backgroundColor: palette.background },
@@ -224,6 +231,8 @@ export default function RootLayout() {
             />
             <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: false }} />
           </Stack>
+          </SafeAreaProvider>
+          <CallHost />
           {/*
             Covers the app until boot resolves, and says so while it does.
             `booted` starts the exit; `splashGone` removes the cover once the
