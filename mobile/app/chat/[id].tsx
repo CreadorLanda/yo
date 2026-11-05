@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import {
   RecordingPresets,
+  getRecordingPermissionsAsync,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioPlayer,
@@ -17,7 +18,7 @@ import { allowScreenCaptureAsync, preventScreenCaptureAsync } from 'expo-screen-
 import { openBrowserAsync } from 'expo-web-browser';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -73,7 +74,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StateTransition } from '@/components/ui/state-transition';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { dandaraReply, dandaraSuggestions } from '@/data/dandara';
-import { markChatRead, refreshChats, useArchivedChats, useChats } from '@/data/chat-store';
+import { getCachedChat, markChatRead, refreshChats, useChat } from '@/data/chat-store';
 import type { StickerDTO } from '@/data/api/stickers';
 import { noteStickerUsed, refreshStickerPacks, useStickerPacks } from '@/data/sticker-store';
 import { removeSticker, saveSticker } from '@/data/api/stickers';
@@ -125,18 +126,24 @@ import {
   decryptMessageContent,
   mapApiMessage,
   STICKER_BUBBLE_SIZE,
+  formatMsgTime,
   serverMessageId,
 } from '@/data/message-map';
 import { linkReplies } from '@/data/reply-link';
 import { ensureLocal, mediaIdFromURL, useCacheState } from '@/data/media-cache';
 import {
+  deleteCachedMessage,
   listPendingSends,
   loadCachedMessages,
   markCachedMessageOpened,
+  removeCachedMessages,
   saveCachedMessages,
   trimCachedChat,
 } from '@/data/db/messages';
 import { useActiveCall } from '@/data/active-call';
+import { mergeThread, reusableBody, sameThread, staleCachedIds } from '@/data/message-sync';
+import { peekThread, rememberThread } from '@/data/thread-cache';
+import { useOpenedOnce, useStableCallback } from '@/hooks/use-stable-callback';
 import { queueTextMessage, retrySend, subscribeOutbox } from '@/data/outbox';
 import {
   E2EEUnavailable,
@@ -159,6 +166,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { useCurrentUser } from '@/data/auth-store';
 import { handleCallEvent } from '@/data/incoming-call';
 import { handleLiveEvent } from '@/data/live-store';
+import { NoContactBanner } from '@/components/chat/no-contact-banner';
+import { handleNoContactEvent, useNoContact } from '@/data/no-contact';
 import { t } from '@/i18n';
 
 const CHAT_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
@@ -210,6 +219,9 @@ const ATTACH_ITEMS: { key: string; icon: keyof typeof Ionicons.glyphMap; color: 
  * envelopes — they carry the `soc1g.` prefix, so a group message would have
  * been mapped straight from its ciphertext.
  */
+/** Messages read per open. Disk is asked for twice this to judge what went stale. */
+const HISTORY_PAGE = 50;
+
 function needsDecrypt(content?: string | null): boolean {
   return !!content && (content.startsWith('soc1.') || isGroupEnvelope(content));
 }
@@ -219,6 +231,8 @@ function describeError(err: unknown): string {
   // reader can act on, and it would otherwise surface as a bare error name.
   const blocked = describeE2EEBlocked(err);
   if (blocked) return blocked;
+  // Neutral, like the banner: it names no one and gives no reason.
+  if (err instanceof ApiError && err.code === 'no_contact_period') return t('report.paused_body');
   if (err instanceof ApiError) return `${err.code}${err.message ? ` — ${err.message}` : ''}`;
   if (err instanceof Error) return err.message;
   return t('chats.action_failed_body');
@@ -232,6 +246,11 @@ function formatDuration(totalSec: number): string {
 }
 
 type ReactionEntry = { emoji: string; count: number; mine: boolean };
+
+const NO_REACTIONS: ReactionEntry[] = [];
+
+/** The header is the same height in every chat: measured once, it costs no redraw. */
+let lastHeaderH = 0;
 
 type GroupedMessage = Message & {
   isFirstInGroup: boolean;
@@ -276,13 +295,9 @@ const FORWARD_MANY = 5;
 
 export default function ChatScreen() {
   const { id, game: openGame } = useLocalSearchParams<{ id: string; game?: string }>();
-  const { chats: storeChats } = useChats();
-const archivedChats = useArchivedChats();
-
-  const apiChatInfo: ChatDTO | null = useMemo(
-    () => storeChats.find((c) => c.id === id) ?? archivedChats.find((c) => c.id === id) ?? null,
-    [storeChats, archivedChats, id],
-  );
+  // This chat, not the list. Every refresh of the list used to redraw the whole
+  // thread, and opening a chat triggers several of them.
+  const apiChatInfo = useChat(id);
   // Undefined while the chat is still unknown — the distinction the load
   // effect depends on. A group has no single peer and must not wait for one
   // that never arrives.
@@ -331,14 +346,17 @@ useEffect(() => {
     return mentionIdentifiers.filter((identifier) => lower.includes(`@${identifier.toLowerCase()}`));
   }, [mentionIdentifiers]);
   // Only the assistant thread seeds from fixtures; real chats load from the API.
+  // From memory when it can be, so the first frame already has the thread.
   const [messages, setMessages] = useState<Message[]>(() =>
-    id === DANDARA.id ? MESSAGES[DANDARA.id] ?? [] : [],
+    id === DANDARA.id ? MESSAGES[DANDARA.id] ?? [] : peekThread(id)?.messages ?? [],
   );
   const [draft, setDraft] = useState('');
   const [searchMode, setSearchMode] = useState(false);
   const [query, setQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState<ChatSearchFilter>('all');
-  const [reactionsMap, setReactionsMap] = useState<Record<string, ReactionEntry[]>>({});
+  const [reactionsMap, setReactionsMap] = useState<Record<string, ReactionEntry[]>>(
+    () => peekThread(id)?.reactions ?? {},
+  );
   const [menuTarget, setMenuTarget] = useState<MenuTarget | null>(null);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [showAttach, setShowAttach] = useState(false);
@@ -418,7 +436,11 @@ useEffect(() => {
   const dandaraTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<GroupedMessage>>(null);
   // Measured, not assumed — see the header block in the tree below.
-  const [headerH, setHeaderH] = useState(0);
+  const [headerH, setHeaderHeight] = useState(lastHeaderH);
+  const setHeaderH = useCallback((height: number) => {
+    lastHeaderH = height;
+    setHeaderHeight(height);
+  }, []);
   const composerInputRef = useRef<TextInputHandle>(null);
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
@@ -440,11 +462,8 @@ useEffect(() => {
   }));
 
   useEffect(() => {
-    requestRecordingPermissionsAsync()
-      .then((r) => {
-        recordPermRef.current = r.granted;
-      })
-      .catch(() => {});
+    // The microphone is asked for by beginRecording, when someone goes to record.
+    // Asking here put a system dialog over every chat that was merely opened.
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -458,12 +477,11 @@ useEffect(() => {
   useEffect(() => {
     if (!id || !meId) return;
     let cancelled = false;
-    Promise.all([loadCachedMessages(id, 50), listPendingSends(id)])
+    Promise.all([loadCachedMessages(id, HISTORY_PAGE), listPendingSends(id)])
       .then(([cached, pending]) => {
-        // Seed only — the network result replaces this wholesale, and
-        // overwriting live messages with stale rows would be a regression.
-        // Pending sends are the exception: nothing else will ever paint
-        // them, since the server has never heard of them.
+        // Seed only: if the network already painted, its result is newer.
+        // Pending sends are the exception, since nothing else will ever
+        // paint them: the server has never heard of them.
         if (cancelled || (cached.length === 0 && pending.length === 0)) return;
         // Quotes reconstructed here too: the cache stores the decrypted DTO,
         // which carries reply_to_id but no quoted text.
@@ -476,7 +494,7 @@ useEffect(() => {
             id: p.id,
             text: p.text,
             fromMe: true,
-            timestamp: new Date(p.createdAt).toLocaleTimeString(),
+            timestamp: formatMsgTime(p.createdAt),
             status: p.status === 'failed' ? 'failed' : 'sending',
             replyTo: replyToMsg
               ? {
@@ -489,7 +507,20 @@ useEffect(() => {
               : undefined,
           };
         });
-        setMessages(linkReplies([...cachedMapped, ...pendingMapped]));
+        setMessages((prev) => {
+          if (prev.length === 0) return linkReplies([...cachedMapped, ...pendingMapped]);
+          const missing = pendingMapped.filter((p) => !prev.some((m) => m.id === p.id));
+          return missing.length > 0 ? [...prev, ...missing] : prev;
+        });
+        setReactionsMap((prev) => {
+          const next = { ...prev };
+          for (const m of cached) {
+            if (m.reactions?.length && !next[String(m.id)]) {
+              next[String(m.id)] = collapseReactions(m.reactions, meId);
+            }
+          }
+          return sameThread(Object.entries(prev), Object.entries(next)) ? prev : next;
+        });
       })
       .catch((err) => {
         // Loud on purpose. Swallowing this is how a completely dead local
@@ -558,9 +589,19 @@ useEffect(() => {
       if (chatType === 'direct' && !apiChatInfo?.peer_user_id) return;
     }
 
-    listMessages(id, 50)
-      .then(async (apiMsgs) => {
-        if (cancelled || !apiMsgs || apiMsgs.length === 0) return;
+    Promise.all([listMessages(id, HISTORY_PAGE), loadCachedMessages(id, HISTORY_PAGE * 2).catch(() => [])])
+      .then(async ([apiMsgs, cached]) => {
+        if (cancelled || !apiMsgs) return;
+        // Whatever the server stopped returning goes from disk and screen, or
+        // a message deleted while this chat was closed would come back on
+        // every open.
+        const stale = isAIChat ? [] : staleCachedIds(cached, apiMsgs, HISTORY_PAGE);
+        removeCachedMessages(stale).catch(() => {});
+        if (apiMsgs.length === 0) {
+          if (stale.length > 0) setMessages((prev) => mergeThread(prev, [], stale));
+          return;
+        }
+        const cachedById = new Map(cached.map((c) => [c.id, c]));
         // API returns newest-first; UI expects chronological (oldest first).
         const ordered = [...apiMsgs].reverse();
         const peerId = apiChatInfo?.peer_user_id;
@@ -571,6 +612,21 @@ useEffect(() => {
         // even though the material to read it was right there.
         const decrypted: { dto: MessageDTO; body: string; msg: Message }[] = [];
         for (const m of ordered) {
+          // Already opened once: the page is only here for what changed around
+          // it (receipts, reactions), so the body comes from disk and only new
+          // or edited messages pay for a decrypt.
+          const known = reusableBody(m, cachedById.get(m.id));
+          if (known != null) {
+            const plainDTO = { ...m, content: known };
+            const mapped = mapApiMessage(plainDTO, meId);
+            const mentions = mentionsIn(known);
+            decrypted.push({
+              dto: plainDTO,
+              body: known,
+              msg: mentions.length > 0 ? { ...mapped, mentions } : mapped,
+            });
+            continue;
+          }
           const base = mapApiMessage(m, meId);
           if (base.text === '🔒 …' || needsDecrypt(m.content)) {
             const plain = await decryptMessageContent(m, meId, peerId);
@@ -597,11 +653,15 @@ useEffect(() => {
               next[String(m.id)] = collapseReactions(m.reactions, meId);
             }
           }
-          return next;
+          return sameThread(Object.entries(prev), Object.entries(next)) ? prev : next;
         });
         if (cancelled) return;
         const mapped = decrypted.map((d) => d.msg);
-        setMessages(linkReplies(mapped));
+        // Nothing new means nothing to paint: the thread from disk stays put.
+        setMessages((prev) => {
+          const next = linkReplies(mergeThread(prev, mapped, stale));
+          return sameThread(prev, next) ? prev : next;
+        });
 
         // Write through in the background: the screen is already correct, so
         // a slow disk must not hold it up, and a failure here costs only the
@@ -613,12 +673,14 @@ useEffect(() => {
           .then(() => trimCachedChat(id))
           .catch(() => {});
 
-        // Ack delivery for inbound, then mark the latest as read.
+        // Ack delivery for what is new, then mark the latest as read. Anything
+        // already on disk was acked when it arrived.
         const inboundIds = ordered
           .filter((m) => m.sender_id !== meId && !m.deleted_at)
           .map((m) => m.id);
         if (inboundIds.length > 0) {
-          postReceipts(id, inboundIds, 'delivered').catch(() => {});
+          const unacked = inboundIds.filter((mid) => !cachedById.has(mid));
+          if (unacked.length > 0) postReceipts(id, unacked, 'delivered').catch(() => {});
           const last = inboundIds[inboundIds.length - 1];
           markRead(id, last).catch(() => {});
           postReceipts(id, [last], 'read').catch(() => {});
@@ -670,6 +732,8 @@ useEffect(() => {
         if (handleCallEvent(ev.type, ev.payload)) return;
         // A broadcast likewise: it starts, ends and changes size on any screen.
         if (handleLiveEvent(ev.type, ev.payload)) return;
+        // A report puts a no-contact period on this chat, for both people.
+        if (handleNoContactEvent(ev.type, ev.payload)) return;
       if (ev.chat_id && ev.chat_id !== id) return;
       const payload = ev.payload as Record<string, unknown> | null | undefined;
 
@@ -686,6 +750,7 @@ useEffect(() => {
             syncGroupKeys(id).catch(() => {});
           }
           let mapped = mapApiMessage(dto, meId);
+          let plainBody = dto.content;
           if (mapped.text === '🔒 …' || needsDecrypt(dto.content)) {
             // Re-mapped from the decrypted body, not patched. Assigning to
             // `text` alone left everything else derived from the envelope, so
@@ -693,7 +758,13 @@ useEffect(() => {
             // with no attachment — while the same message rendered correctly
             // after a reload, which is the history path a few lines up.
             const plain = await decryptMessageContent(dto, meId, peerId);
+            plainBody = plain;
             mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(plain) };
+          }
+          // On disk straight away, so it is there on the next open with no
+          // decrypt and no network. Our own sends are the outbox's to record.
+          if (!mapped.fromMe) {
+            saveCachedMessages(id, [{ dto: { ...dto, content: plainBody }, body: plainBody }]).catch(() => {});
           }
           setMessages((prev) => {
             if (prev.some((m) => m.id === mapped.id)) return prev;
@@ -728,6 +799,7 @@ useEffect(() => {
       if (ev.type === 'message.deleted' && payload) {
         const dto = payload as unknown as MessageDTO;
         const mid = String(dto.id);
+        deleteCachedMessage(mid).catch(() => {});
         setMessages((prev) =>
           prev.map((m) =>
             m.id === mid
@@ -849,10 +921,21 @@ useEffect(() => {
     };
   }, [id, meId, isGroup, apiChatInfo?.peer_user_id, mentionsIn]);
 
-  // Keep the latest message (and typing bubble) in view.
+  // What the next open of this chat starts from.
+  useEffect(() => {
+    if (id && id !== DANDARA.id) rememberThread(id, messages, reactionsMap);
+  }, [id, messages, reactionsMap]);
+
+  // Keep the latest message (and typing bubble) in view. The thread is inverted,
+  // so offset 0 is the end, and a chat that has just opened is already there.
+  const landedRef = useRef(false);
   useEffect(() => {
     if (searchMode) return;
-    const tId = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+    if (!landedRef.current) {
+      landedRef.current = true;
+      return;
+    }
+    const tId = setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 80);
     return () => clearTimeout(tId);
   }, [messages.length, dandaraTyping, peerTyping, searchMode]);
 
@@ -887,6 +970,9 @@ useEffect(() => {
   const isPending = apiChatInfo?.status === 'pending';
   const isBlocked = apiChatInfo?.status === 'blocked';
   const isSelf = !!apiChatInfo?.is_self;
+  // A report keeps two people apart for a while. One-to-one only: a group is
+  // not two people, and the server never starts a period for one.
+  const noContactUntil = useNoContact(isGroup || isSelf ? undefined : id);
   const iSentRequest = isPending && apiChatInfo?.created_by === currentUser?.id;
   // Requester may send one intro message while pending; recipient only accept/block.
   const hasMyIntro = messages.some((m) => m.fromMe);
@@ -900,6 +986,7 @@ useEffect(() => {
     meIsGroupAdmin;
   const canCompose =
     !isBlocked &&
+    !noContactUntil &&
     canMessageByPolicy &&
     (!isPending || (iSentRequest && !hasMyIntro));
   const canCallByPolicy =
@@ -982,6 +1069,9 @@ useEffect(() => {
   }, [visible, searchActive, trimmedQuery, searchFilter]);
 
   const grouped = useMemo(() => groupMessages(filtered), [filtered]);
+  // Newest first for the inverted thread. Drawing from the end means a chat
+  // opens on its last messages, and older ones are only built as they scroll in.
+  const newestFirst = useMemo(() => [...grouped].reverse(), [grouped]);
 
   const appendMessage = (
     msg: Omit<Message, 'id' | 'timestamp' | 'fromMe' | 'status'> & {
@@ -1045,12 +1135,17 @@ useEffect(() => {
   const beginRecording = async () => {
     if (refuseMessageType('audio')) return;
     if (!recordPermRef.current) {
+      const current = await getRecordingPermissionsAsync().catch(() => null);
+      recordPermRef.current = !!current?.granted;
+    }
+    if (!recordPermRef.current) {
+      // This press only asks. The dialog takes the finger off the button, so
+      // carrying on would start the microphone with nobody holding it. The
+      // next press records.
       const r = await requestRecordingPermissionsAsync().catch(() => null);
       recordPermRef.current = !!r?.granted;
-      if (!recordPermRef.current) {
-        recActive.value = false;
-        return;
-      }
+      recActive.value = false;
+      return;
     }
     try {
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
@@ -1531,7 +1626,7 @@ useEffect(() => {
       appAlert(t('chat.privacy_restricted_title'), t('chat.privacy_forwarding_body'));
       return;
     }
-    const dest = storeChats.find((c) => c.id === destChatId);
+    const dest = getCachedChat(destChatId);
     const toSend = [...forwardTargets];
 
     Haptics.selectionAsync().catch(() => {});
@@ -2423,6 +2518,73 @@ useEffect(() => {
     </>
   );
 
+  const threadNotice = (
+    <View style={styles.threadHeader}>
+      {isGroup && group ? (
+        <HistoryBanner
+          enabled={group.historyEnabled}
+          viewOnly={group.historyMode === 'view-only'}
+          shown={visible.filter((m) => m.historical).length}
+          limit={group.historyLimit}
+        />
+      ) : layout.datePillStyle === 'hidden' ? null : (
+        <View
+          style={[
+            styles.dayPill,
+            layout.datePillStyle === 'text' && { backgroundColor: 'transparent' },
+            layout.datePillStyle === 'pill' && {
+              backgroundColor: chrome.datePillBg || colors.surface,
+            },
+            !layout.centerDatePills && { alignSelf: 'flex-start' },
+          ]}
+        >
+          <Text style={[styles.dayPillText, { color: chrome.datePillText || colors.textSecondary }]}>
+            {t('chat.today')}
+          </Text>
+        </View>
+      )}
+      <View style={[styles.e2eNotice, { backgroundColor: colors.surface }]}>
+        <Ionicons
+          name={isAIChat ? 'sparkles' : 'lock-closed'}
+          size={11}
+          color={colors.textSecondary}
+        />
+        <Text style={[styles.e2eNoticeText, { color: colors.textSecondary }]}>
+          {isAIChat ? t('chat.ai_disclaimer') : t('chat.encrypted_notice')}
+        </Text>
+      </View>
+    </View>
+  );
+  const typingRow =
+    dandaraTyping || (peerTyping && layout.showTypingDots !== false) ? (
+      <TypingBubble recording={peerActivity === 'recording'} />
+    ) : null;
+
+
+
+  // Stable, so a memoised bubble keeps its props and only redraws when the
+  // message itself changes. Otherwise every keystroke redraws the whole thread.
+  const stableOpenViewer = useStableCallback(openViewer);
+  const stableToggleSelect = useStableCallback(toggleSelect);
+  const stableOpenMenu = useStableCallback(openMenu);
+  const stableReact = useStableCallback(handleReact);
+  const stableReply = useStableCallback(replyFromSwipe);
+  const stableVote = useStableCallback(handleVote);
+  const stablePlay = useStableCallback(handlePlayGame);
+  const stableViewOnce = useStableCallback(handleViewOnce);
+  const stableRetry = useStableCallback(handleRetry);
+  const stableLinkPress = useStableCallback(handleLinkPress);
+
+  // Closed sheets stay out of the first render. The editor alone was a quarter
+  // of a second of every chat open, with nothing to edit.
+  const editorOpened = useOpenedOnce(!!editorAsset);
+  const stickersOpened = useOpenedOnce(showStickers);
+  const infoOpened = useOpenedOnce(infoMessageId != null);
+  const deleteOpened = useOpenedOnce(deleteTargets.length > 0);
+  const forwardOpened = useOpenedOnce(forwardTargets.length > 0);
+  const attachOpened = useOpenedOnce(showAttach);
+  const composeOpened = useOpenedOnce(composeKind != null);
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -2715,7 +2877,14 @@ useEffect(() => {
           <StateTransition transitionKey={searchMode} style={styles.flex}>
           <FlatList
             ref={listRef}
-            data={grouped}
+            data={searchMode ? grouped : newestFirst}
+            inverted={!searchMode}
+            initialNumToRender={10}
+            // Rows off screen are built a few at a time. In one big batch they
+            // block everything else a chat does in its first seconds.
+            maxToRenderPerBatch={3}
+            updateCellsBatchingPeriod={120}
+            windowSize={5}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) =>
               item.call ? (
@@ -2743,69 +2912,35 @@ useEffect(() => {
                   msg={item}
                   isGroup={isGroup}
                   query={searching ? trimmedQuery : ''}
-                  reactions={reactionsMap[item.id] ?? []}
-                  onOpenMedia={openViewer}
+                  reactions={reactionsMap[item.id] ?? NO_REACTIONS}
+                  onOpenMedia={stableOpenViewer}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.id)}
-                  onToggleSelect={toggleSelect}
-                  onOpenMenu={openMenu}
-                  onReact={handleReact}
-                  onReply={replyFromSwipe}
-                  onVote={handleVote}
-                  onPlay={handlePlayGame}
-                  onViewOnce={handleViewOnce}
+                  onToggleSelect={stableToggleSelect}
+                  onOpenMenu={stableOpenMenu}
+                  onReact={stableReact}
+                  onReply={stableReply}
+                  onVote={stableVote}
+                  onPlay={stablePlay}
+                  onViewOnce={stableViewOnce}
                   revealed={revealed}
-                  onRetry={handleRetry}
-                onLinkPress={handleLinkPress}
+                  onRetry={stableRetry}
+                  onLinkPress={stableLinkPress}
                 />
               )
             }
-            contentContainerStyle={[styles.threadContent, { paddingTop: headerH + Spacing.md }]}
+            contentContainerStyle={[
+              styles.threadContent,
+              // Inverted, top and bottom swap: this keeps the first message
+              // clear of the header either way.
+              searchMode
+                ? { paddingTop: headerH + Spacing.md }
+                : { paddingTop: Spacing.lg, paddingBottom: headerH + Spacing.md },
+            ]}
             keyboardShouldPersistTaps="handled"
-            ListHeaderComponent={
-              searchMode ? null : (
-                <View style={styles.threadHeader}>
-                  {isGroup && group ? (
-                    <HistoryBanner
-                      enabled={group.historyEnabled}
-                      viewOnly={group.historyMode === 'view-only'}
-                      shown={visible.filter((m) => m.historical).length}
-                      limit={group.historyLimit}
-                    />
-                  ) : layout.datePillStyle === 'hidden' ? null : (
-                    <View
-                      style={[
-                        styles.dayPill,
-                        layout.datePillStyle === 'text' && { backgroundColor: 'transparent' },
-                        layout.datePillStyle === 'pill' && {
-                          backgroundColor: chrome.datePillBg || colors.surface,
-                        },
-                        !layout.centerDatePills && { alignSelf: 'flex-start' },
-                      ]}
-                    >
-                      <Text style={[styles.dayPillText, { color: chrome.datePillText || colors.textSecondary }]}>
-                        {t('chat.today')}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={[styles.e2eNotice, { backgroundColor: colors.surface }]}>
-                    <Ionicons
-                      name={isAIChat ? 'sparkles' : 'lock-closed'}
-                      size={11}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={[styles.e2eNoticeText, { color: colors.textSecondary }]}>
-                      {isAIChat ? t('chat.ai_disclaimer') : t('chat.encrypted_notice')}
-                    </Text>
-                  </View>
-                </View>
-              )
-            }
-            ListFooterComponent={
-              dandaraTyping || (peerTyping && layout.showTypingDots !== false) ? (
-                <TypingBubble recording={peerActivity === 'recording'} />
-              ) : null
-            }
+            // Inverted, the list header sits at the bottom, by the newest message.
+            ListHeaderComponent={searchMode ? null : typingRow}
+            ListFooterComponent={searchMode ? typingRow : threadNotice}
             ListEmptyComponent={
               searchActive ? (
                 <EmptyState
@@ -2847,7 +2982,9 @@ useEffect(() => {
               pointerEvents="none"
             />
             {/* Pending / blocked friend-request banner */}
-            {isBlocked ? (
+            {noContactUntil ? (
+              <NoContactBanner until={noContactUntil} />
+            ) : isBlocked ? (
               <View style={[styles.pendingBanner, { backgroundColor: colors.surface, borderTopColor: colors.divider }]}>
                 <Ionicons name="ban-outline" size={18} color={colors.danger} />
                 <Text style={[styles.pendingText, { color: colors.textSecondary }]} numberOfLines={2}>
@@ -2992,7 +3129,9 @@ useEffect(() => {
                     onChangeText={setDraft}
                     placeholder={
                       !canCompose
-                        ? iSentRequest
+                        ? noContactUntil
+                          ? t('report.paused_placeholder')
+                          : iSentRequest
                           ? t('friend_request.waiting_placeholder')
                           : isBlocked
                             ? t('friend_request.declined')
@@ -3065,22 +3204,26 @@ useEffect(() => {
             </View>
 
             {/* Full-screen editor for any picked photo or video */}
-            <MediaEditor
-              asset={editorAsset}
-              mode={editorMode}
-              onCancel={() => {
-                setEditorAsset(null);
-                setPendingAsset(null);
-              }}
-              onDone={handleEditorDone}
-            />
+            {editorOpened ? (
+              <MediaEditor
+                asset={editorAsset}
+                mode={editorMode}
+                onCancel={() => {
+                  setEditorAsset(null);
+                  setPendingAsset(null);
+                }}
+                onDone={handleEditorDone}
+              />
+            ) : null}
 
             {/* Sticker tray, docked under the composer like the keyboard */}
-            <StickerPicker
-              visible={showStickers && canCompose}
-              onPick={sendSticker}
-              height={320}
-            />
+            {stickersOpened ? (
+              <StickerPicker
+                visible={showStickers && canCompose}
+                onPick={sendSticker}
+                height={320}
+              />
+            ) : null}
           </View>
         )}
       </KeyboardAvoidingView>
@@ -3123,7 +3266,7 @@ useEffect(() => {
       ) : null}
 
       {/* Who received and read this message */}
-      {id ? (
+      {id && infoOpened ? (
         <MessageInfoSheet
           chatId={id}
           messageId={infoMessageId}
@@ -3148,34 +3291,42 @@ useEffect(() => {
       )}
 
       {/* Delete confirmation */}
-      <DeleteMessageModal
-        targets={deleteTargets}
-        onCancel={() => setDeleteTargets([])}
-        onConfirm={confirmDelete}
-      />
+      {deleteOpened ? (
+        <DeleteMessageModal
+          targets={deleteTargets}
+          onCancel={() => setDeleteTargets([])}
+          onConfirm={confirmDelete}
+        />
+      ) : null}
 
       {/* Forward to another chat */}
-      <ForwardPicker
-        count={forwardTargets.length}
-        excludeChatId={id}
-        onClose={() => setForwardTargets([])}
-        onPick={forwardTo}
-        onPickStory={forwardTargets.length === 1 ? forwardToStory : undefined}
-      />
+      {forwardOpened ? (
+        <ForwardPicker
+          count={forwardTargets.length}
+          excludeChatId={id}
+          onClose={() => setForwardTargets([])}
+          onPick={forwardTo}
+          onPickStory={forwardTargets.length === 1 ? forwardToStory : undefined}
+        />
+      ) : null}
 
       {/* Attachment menu */}
-      <AttachSheet
-        visible={showAttach}
-        onClose={() => setShowAttach(false)}
-        onPick={handleAttachPick}
-      />
+      {attachOpened ? (
+        <AttachSheet
+          visible={showAttach}
+          onClose={() => setShowAttach(false)}
+          onPick={handleAttachPick}
+        />
+      ) : null}
 
       {/* Attachment compose sheets */}
-      <AttachmentComposer
-        kind={composeKind}
-        onClose={() => setComposeKind(null)}
-        onSend={sendAttachment}
-      />
+      {composeOpened ? (
+        <AttachmentComposer
+          kind={composeKind}
+          onClose={() => setComposeKind(null)}
+          onSend={sendAttachment}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -4147,7 +4298,21 @@ function BubbleBody({
   );
 }
 
-function Bubble({
+type BubbleProps = Parameters<typeof BubbleView>[0];
+
+/**
+ * Handlers are stable, so the props only differ when something on the row does.
+ * `msg` is compared by value: grouping rebuilds every object whenever one
+ * message changes, and identity alone would redraw the whole thread.
+ */
+const Bubble = memo(BubbleView, (a: BubbleProps, b: BubbleProps) => {
+  for (const key of Object.keys(b) as (keyof BubbleProps)[]) {
+    if (key !== 'msg' && a[key] !== b[key]) return false;
+  }
+  return a.msg === b.msg || JSON.stringify(a.msg) === JSON.stringify(b.msg);
+});
+
+function BubbleView({
   msg,
   isGroup,
   query,
