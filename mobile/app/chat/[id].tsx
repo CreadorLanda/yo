@@ -136,6 +136,7 @@ import {
   saveCachedMessages,
   trimCachedChat,
 } from '@/data/db/messages';
+import { useActiveCall } from '@/data/active-call';
 import { queueTextMessage, retrySend, subscribeOutbox } from '@/data/outbox';
 import {
   E2EEUnavailable,
@@ -2138,6 +2139,7 @@ useEffect(() => {
    * Fetched once per chat open. Cheap, and the alternative — a request per
    * call row — is not.
    */
+  const callRunning = !!useActiveCall();
   const [callLog, setCallLog] = useState<Record<string, CallLogEntry>>({});
   useEffect(() => {
     if (!id) return;
@@ -2153,7 +2155,9 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [id, messages.length]);
+    // A call keeps running while this screen is open, so its row is only final
+    // once the call ends.
+  }, [id, messages.length, callRunning]);
 
   // ── Truth or Dare room ───────────────────────────────────────────────────
   const [gameOpen, setGameOpen] = useState(false);

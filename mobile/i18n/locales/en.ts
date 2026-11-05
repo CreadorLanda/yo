@@ -992,6 +992,8 @@ export default {
     title: 'Filters',
   },
   call: {
+    return_to_call: 'Tap to return to the call',
+    minimize: 'Minimize call',
     flip_camera: 'Flip camera',
     camera_off_peer: 'Their camera is off',
     ongoing_title: 'Call in progress',
