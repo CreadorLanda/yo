@@ -2791,6 +2791,16 @@ useEffect(() => {
                   <Ionicons name="home" size={20} color={colors.text} />
                 </Pressable>
               ) : null}
+              {!isAIChat && canCallByPolicy && isGroup ? (
+                <Pressable
+                  hitSlop={8}
+                  style={styles.iconBtn}
+                  onPress={() => router.push(`/call/${id!}?mode=voice`)}
+                  accessibilityLabel={t('call.voice_call')}
+                >
+                  <Ionicons name="call-outline" size={20} color={colors.text} />
+                </Pressable>
+              ) : null}
               {isGroup ? (
                 <Pressable
                   hitSlop={8}

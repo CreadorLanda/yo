@@ -18,3 +18,4 @@ Uma chamada sobrevive ao seu ecrã. `data/active-call.ts` é a chamada, `compone
 - O Android mantém-na viva com o serviço em primeiro plano de `modules/call-keepalive`, que precisa da permissão do microfone, por isso esta é pedida antes de a chamada começar.
 - A câmara desliga-se ao sair do ecrã da chamada ou da app, e volta ao regressar. Uma câmara desligada pela pessoa fica desligada.
 - O WebRTC só é carregado quando há uma chamada. A web mantém o seu próprio ecrã de chamada.
+- Uma chamada com três ou mais pessoas, e qualquer chamada de grupo, usa `components/call/group-stage.tsx`: um cartão por pessoa, um anel em quem está a falar e toque para focar. A divisão do palco está em `data/call-grid.ts`. As chamadas a dois mantêm o seu layout.

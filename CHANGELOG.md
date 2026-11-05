@@ -71,6 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Chamadas
 - Voltar atrás ou sair da app já não termina a chamada: ela continua em segundo plano e uma barra verde no topo, acima do nome e da foto da conversa, mostra a pessoa e o tempo. Um toque volta à chamada e o botão vermelho termina-a. O ecrã da chamada ganhou um botão para minimizar
 - Numa videochamada a câmara desliga-se ao sair do ecrã ou da app e volta ao regressar
+- Novo ecrã de chamada de grupo ao estilo do Discord: um cartão por pessoa com vídeo ou avatar colorido, anel verde em quem está a falar, microfone desligado à vista e toque num cartão para o pôr em grande. Uma chamada a dois passa a este ecrã quando entra uma terceira pessoa
+- Os grupos têm botão de chamada no cabeçalho
 - A linha da chamada na conversa mostra a hora e a duração certas assim que a chamada termina
 - Novo ecrã de chamada de vídeo no estilo do WhatsApp: a outra pessoa em ecrã inteiro, a tua câmara numa janela pequena que se arrasta para qualquer canto e troca com um toque, e um painel de controlos (altifalante, câmara, microfone, virar câmara e desligar) que desaparece ao fim de uns segundos e volta com um toque. O nome e o estado ficam no topo, com a linha de cifragem que mostra a impressão digital ao tocar. O aviso de chamada não cifrada mantém-se. Também no browser
 
