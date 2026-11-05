@@ -191,4 +191,11 @@ func (s *Sweeper) sweep(ctx context.Context) {
 	if n > 0 {
 		log.Info().Int64("removed", n).Msg("disappearing messages swept")
 	}
+	// Report evidence is kept for a review window, then dropped here with the
+	// same timer: one worker for everything that expires in this module.
+	if purged, err := s.svc.repo.PurgeExpiredReportData(ctx); err != nil {
+		log.Error().Err(err).Msg("report data purge failed")
+	} else if purged > 0 {
+		log.Info().Int64("removed", purged).Msg("expired report data purged")
+	}
 }

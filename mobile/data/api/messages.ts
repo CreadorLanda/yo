@@ -341,25 +341,43 @@ export function acceptChat(chatId: string) {
   return api.post<ChatDTO>(`/api/chats/${chatId}/accept`);
 }
 
-export type ReportReason = 'spam' | 'abuse' | 'scam' | 'other';
+export type ReportReason = 'spam' | 'abuse' | 'scam' | 'impersonation' | 'other';
+
+/** A message copy the reporter chose to send, after agreeing to it. */
+export type ReportEvidence = { message_id: number; body: string };
+
+export type ReportResult = {
+  /** End of the no-contact period, for a one-to-one report. */
+  no_contact_until?: string;
+  blocked: boolean;
+  evidence_count: number;
+};
 
 /**
  * File a moderation report against a chat.
  *
- * `block` in the same call because reporting someone and still hearing from
- * them afterwards is the outcome nobody wants; two separate taps means some
- * people only manage the first.
+ * In a one-to-one chat the server also keeps the two people apart for 24 hours,
+ * in both directions, even if the reporter later unblocks. `block` on top of
+ * that is optional. `evidence` is sent only with `consent: true`; message
+ * bodies are decrypted on this phone and leave it only on that yes.
  */
 export function reportChat(
   chatId: string,
   reason: ReportReason,
-  opts: { note?: string; block?: boolean } = {},
+  opts: { note?: string; block?: boolean; consent?: boolean; evidence?: ReportEvidence[] } = {},
 ) {
-  return api.post<void>(`/api/chats/${chatId}/report`, {
+  return api.post<ReportResult>(`/api/chats/${chatId}/report`, {
     reason,
     note: opts.note ?? '',
     block: opts.block ?? false,
+    consent: opts.consent ?? false,
+    evidence: opts.evidence ?? [],
   });
+}
+
+/** When the no-contact period of a one-to-one chat ends, or null if none runs. */
+export function getNoContact(chatId: string) {
+  return api.get<{ until: string | null }>(`/api/chats/${chatId}/no-contact`);
 }
 
 /** Block/decline a chat */

@@ -8,7 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { refreshBlocks, unblock, useBlocked } from '@/data/block-store';
+import { useChats } from '@/data/chat-store';
 import { appAlert } from '@/data/dialog-store';
+import { getNoContactUntil } from '@/data/no-contact';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -25,24 +27,33 @@ import { t } from '@/i18n';
 export default function BlockedScreen() {
   const { colors } = useTheme();
   const blocked = useBlocked();
+  const { chats } = useChats();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     refreshBlocks().finally(() => setLoading(false));
   }, []);
 
-  const confirmUnblock = (userId: string, name: string) =>
-    appAlert(t('blocked.unblock_title', { name }), t('blocked.unblock_body'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('blocked.unblock_action'),
-        onPress: () => {
-          unblock(userId).catch(() =>
-            appAlert(t('chats.action_failed_title'), t('chats.action_failed_body')),
-          );
+  const confirmUnblock = (userId: string, name: string) => {
+    // A no-contact period outlives the block, so say that it still applies.
+    const chat = chats.find((c) => c.type === 'direct' && c.peer_user_id === userId);
+    const paused = chat ? getNoContactUntil(chat.id) !== null : false;
+    appAlert(
+      t('blocked.unblock_title', { name }),
+      t(paused ? 'blocked.unblock_body_paused' : 'blocked.unblock_body'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('blocked.unblock_action'),
+          onPress: () => {
+            unblock(userId).catch(() =>
+              appAlert(t('chats.action_failed_title'), t('chats.action_failed_body')),
+            );
+          },
         },
-      },
-    ]);
+      ],
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['top']}>

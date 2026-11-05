@@ -258,4 +258,21 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    name: '010_list_cache',
+    sql: `
+      -- The chat list, so it can be shown before the network answers. The
+      -- whole DTO as JSON, in the server order, plus the decrypted preview
+      -- and the ciphertext it came from.
+      ALTER TABLE chats ADD COLUMN dto TEXT;
+      ALTER TABLE chats ADD COLUMN position INTEGER;
+      ALTER TABLE chats ADD COLUMN preview TEXT;
+      ALTER TABLE chats ADD COLUMN preview_src TEXT;
+
+      -- Part of the DTO like everything else here. Without them a cached read
+      -- shows a thread with no reactions or stars until the network catches up.
+      ALTER TABLE messages ADD COLUMN reactions TEXT;
+      ALTER TABLE messages ADD COLUMN is_starred INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];

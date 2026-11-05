@@ -4,6 +4,7 @@ import { resetChatStore } from './chat-store';
 import { resetIncomingCall } from './incoming-call';
 import { resetBlocks } from './block-store';
 import { resetLives } from './live-store';
+import { resetNoContact } from './no-contact';
 import { unregisterPushWithServer } from './push';
 import { resetDialogs } from './dialog-store';
 import { resetAppLock } from './app-lock';
@@ -15,6 +16,7 @@ import { resetGroupStore } from './group-store';
 import { clearMediaCache } from './media-cache';
 import { resetStickerStore } from './sticker-store';
 import { resetStoryStore } from './story-store';
+import { resetThreads } from './thread-cache';
 
 /**
  * Everything that has to go when a session ends.
@@ -42,8 +44,10 @@ export async function resetAllStores(): Promise<void> {
     ['dialogs', resetDialogs],
     ['incoming call', resetIncomingCall],
     ['lives', resetLives],
+    ['no-contact', resetNoContact],
     ['blocks', resetBlocks],
     ['chats', resetChatStore],
+    ['threads', resetThreads],
     ['chat prefs', resetChatPrefsCache],
     ['locks', relockAll],
     ['app-lock', resetAppLock],

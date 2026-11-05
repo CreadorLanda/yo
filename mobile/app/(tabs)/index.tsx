@@ -25,7 +25,9 @@ import { displayChatName } from '@/data/chat-identity';
 import { getCurrentUser } from '@/data/auth-store';
 import {
   applyRealtimeEvent,
+  getCachedPreview,
   refreshChats,
+  rememberPreview,
   useArchivedChats,
   removeChat,
   setChatSettings,
@@ -39,6 +41,8 @@ import { anonInbox, type AnonThread } from '@/data/api/stories';
 import { useRevealedChats } from '@/data/chat-lock';
 import { decryptMessageContent } from '@/data/message-map';
 import { isMachineText, previewShape } from '@/data/message-preview';
+import { isSealedBody } from '@/data/message-sync';
+import { prefetchThreads } from '@/data/thread-prefetch';
 import { bootstrapGroups } from '@/data/group-store';
 import {
   addCustomFilter,
@@ -51,6 +55,7 @@ import type { ChatPreview } from '@/data/mock';
 import { useTheme } from '@/hooks/use-theme';
 import { handleCallEvent } from '@/data/incoming-call';
 import { handleLiveEvent } from '@/data/live-store';
+import { handleNoContactEvent } from '@/data/no-contact';
 import { t } from '@/i18n';
 
 const BUILTIN_IDS = ['all', 'unread', 'read', 'groups', 'pending'];
@@ -120,6 +125,8 @@ export default function ChatsScreen() {
           if (handleCallEvent(evt?.type, evt?.payload)) return;
           // A broadcast likewise: it starts, ends and changes size on any screen.
           if (handleLiveEvent(evt?.type, evt?.payload)) return;
+          // A no-contact period starts for both people wherever they are.
+          if (handleNoContactEvent(evt?.type, evt?.payload)) return;
           applyRealtimeEvent(evt?.type);
         },
         () => {
@@ -161,6 +168,15 @@ export default function ChatsScreen() {
     return `${shape.icon} ${t(shape.key)}`;
   }, []);
 
+  // The chats at the top are the ones about to be opened: having them in memory
+  // is what lets a chat draw its messages on the very first frame.
+  useEffect(() => {
+    const me = getCurrentUser()?.id;
+    if (!me) return;
+    const ids = apiChats.filter((c) => !lockedIds.has(c.id)).slice(0, 12).map((c) => c.id);
+    void prefetchThreads(ids, me);
+  }, [apiChats, lockedIds]);
+
   // Decrypt the last-message previews. The server decrypts its own at-rest
   // layer, but client-side E2EE envelopes still arrive as `soc1.…` and
   // would otherwise render as ciphertext in the list.
@@ -177,6 +193,8 @@ export default function ChatsScreen() {
           // Non-text messages never need decrypting — they get a label.
           const label = previewLabel(c);
           if (label) return [c.id, label] as const;
+          const known = getCachedPreview(c.id, lm.content);
+          if (known != null) return [c.id, known] as const;
           const text = await decryptMessageContent(
           {
             id: 0,
@@ -193,6 +211,7 @@ export default function ChatsScreen() {
           // without a case, still must not put a record in front of anybody
           // — which is exactly how {"kind":"poll",…} reached this list once.
           if (isMachineText(text)) return [c.id, t('chat.message')] as const;
+          if (!isSealedBody(text)) rememberPreview(c.id, lm.content, text);
           return [c.id, text] as const;
         }),
       );
