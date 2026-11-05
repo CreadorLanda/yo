@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+import { Avatar } from '@/components/ui/avatar';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -92,11 +92,7 @@ export function ViewersSheet({
                 const left = item.emojis ?? (item.emoji ? [item.emoji] : []);
                 return (
                   <View style={styles.row}>
-                    <Image
-                      source={{ uri: item.avatar_uri ?? '' }}
-                      style={styles.avatar}
-                      contentFit="cover"
-                    />
+                    <Avatar uri={item.avatar_uri} id={item.user_id} username={item.username} size={44} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.name} numberOfLines={1}>
                         {item.display_name || item.username}
