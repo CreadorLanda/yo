@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { Avatar } from '@/components/ui/avatar';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -696,10 +697,11 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
       >
         {/* Identity */}
         <View style={styles.identity}>
-          <Image
-            source={{ uri: chat.avatarUri }}
-            style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}
-            contentFit="cover"
+          <Avatar
+            uri={chat.avatarUri}
+            id={apiChat?.peer_user_id ?? chat.id}
+            username={chat.name}
+            size={132}
           />
           <View style={styles.identityNameRow}>
             <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
@@ -1018,11 +1020,7 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
                       pressed && { backgroundColor: colors.surfaceMuted },
                     ]}
                   >
-                    <Image
-                      source={{ uri: g.avatarUri }}
-                      style={[styles.rowAvatar, { backgroundColor: colors.surfaceMuted }]}
-                      contentFit="cover"
-                    />
+                    <Avatar uri={g.avatarUri} id={g.id} username={g.name} size={36} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
                         {g.name}
@@ -1117,11 +1115,7 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
                         />
                       </Pressable>
                     ) : null}
-                    <Image
-                      source={{ uri: m.avatarUri }}
-                      style={[styles.rowAvatar, { backgroundColor: colors.surfaceMuted }]}
-                      contentFit="cover"
-                    />
+                    <Avatar uri={m.avatarUri} id={m.id} username={m.name} size={36} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
                         {m.name}

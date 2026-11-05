@@ -901,7 +901,7 @@ function ChatRow({ chat, onManage }: { chat: ChatPreview; onManage: () => void }
             a list of grey circles is a list you cannot read at a glance. */}
         <Avatar
           uri={chat.avatarUri}
-          id={chat.peerUserId}
+          id={chat.peerUserId ?? chat.id}
           username={chat.name}
           size={avatar}
         />

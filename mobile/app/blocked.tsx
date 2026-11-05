@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -11,6 +10,7 @@ import { refreshBlocks, unblock, useBlocked } from '@/data/block-store';
 import { useChats } from '@/data/chat-store';
 import { appAlert } from '@/data/dialog-store';
 import { getNoContactUntil } from '@/data/no-contact';
+import { Avatar } from '@/components/ui/avatar';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -88,13 +88,7 @@ export default function BlockedScreen() {
                   i < blocked.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
                 ]}
               >
-                {b.avatar_uri ? (
-                  <Image source={{ uri: b.avatar_uri }} style={styles.avatar} contentFit="cover" />
-                ) : (
-                  <View style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}>
-                    <Ionicons name="person" size={18} color={colors.textMuted} />
-                  </View>
-                )}
+                <Avatar uri={b.avatar_uri} id={b.user_id} username={b.username} size={40} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
                     {b.display_name || b.username}
