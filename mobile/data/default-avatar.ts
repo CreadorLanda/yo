@@ -48,7 +48,15 @@ export function defaultAvatarSvg(seed: string, size = 96): string {
     return hit;
   }
 
-  const svg = createAvatar(lorelei, { seed, size }).toString();
+  // Two things DiceBear adds are removed, because react-native-svg drew an empty circle
+  // with them there. The `<mask>` that clips to the viewBox hides the whole picture on
+  // Android; the component already clips to a circle. The licence block is RDF the
+  // parser has no use for, and the licence is stated in DEFAULT_AVATAR_LICENSE.
+  const svg = createAvatar(lorelei, { seed, size })
+    .toString()
+    .replace(/<metadata[\s\S]*?<\/metadata>/, '')
+    .replace(/<mask id="viewboxMask">[\s\S]*?<\/mask>/, '')
+    .replace(/ mask="url\(#viewboxMask\)"/, '');
 
   if (cache.size >= MAX_CACHED) {
     const oldest = cache.keys().next().value;

@@ -2742,7 +2742,7 @@ useEffect(() => {
               <View>
                 <Avatar
                   uri={chat?.avatarUri || apiChatInfo?.avatar_url}
-                  id={apiChatInfo?.peer_user_id}
+                  id={apiChatInfo?.peer_user_id ?? apiChatInfo?.id}
                   username={chat?.name || apiChatInfo?.title}
                   size={40}
                 />
@@ -4419,10 +4419,11 @@ function BubbleView({
 
   const avatarNode = showAvatar ? (
     msg.isLastInGroup ? (
-      <Image
-        source={{ uri: msg.senderAvatarUri }}
-        style={[styles.senderAvatar, { backgroundColor: colors.surfaceMuted }]}
-        contentFit="cover"
+      <Avatar
+        uri={msg.senderAvatarUri}
+        id={msg.senderId}
+        username={msg.senderName}
+        size={styles.senderAvatar.width}
       />
     ) : (
       <View style={styles.senderAvatarSpacer} />

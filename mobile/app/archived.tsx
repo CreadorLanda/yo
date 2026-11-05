@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -13,6 +12,7 @@ import type { ChatDTO } from '@/data/api/messages';
 import { useRevealedChats } from '@/data/chat-lock';
 import { useLockedChatIds } from '@/data/chat-prefs';
 import { refreshChats, setChatSettings, useArchivedChats } from '@/data/chat-store';
+import { Avatar } from '@/components/ui/avatar';
 import { useTheme } from '@/hooks/use-theme';
 import { displayChatName } from '@/data/chat-identity';
 import { t } from '@/i18n';
@@ -97,10 +97,11 @@ export default function ArchivedScreen() {
               pressed && { backgroundColor: colors.surfaceMuted },
             ]}
           >
-            <Image
-              source={{ uri: item.avatar_url ?? '' }}
-              style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}
-              contentFit="cover"
+            <Avatar
+              uri={item.avatar_url}
+              id={item.peer_user_id ?? item.id}
+              username={item.title ?? item.peer_username}
+              size={48}
             />
             <View style={{ flex: 1 }}>
               <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>

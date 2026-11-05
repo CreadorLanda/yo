@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -20,6 +19,7 @@ import {
 } from '@/data/api/channels';
 import { getCurrentUser } from '@/data/auth-store';
 import { useChannel } from '@/data/channel-store';
+import { Avatar } from '@/components/ui/avatar';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -256,11 +256,7 @@ export default function ChannelMembersScreen() {
                     pressed && manageable && { backgroundColor: colors.surfaceMuted },
                   ]}
                 >
-                  <Image
-                    source={{ uri: m.avatar_uri ?? '' }}
-                    style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}
-                    contentFit="cover"
-                  />
+                  <Avatar uri={m.avatar_uri} id={m.user_id} username={m.username} size={44} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
                       {m.display_name || m.username}
