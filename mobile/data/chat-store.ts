@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
 
 import {
   clearChatHistory as apiClearHistory,
@@ -17,6 +17,7 @@ import {
   type CachedPreview,
 } from './db/chats';
 import { clearCachedChat } from './db/messages';
+import { forgetThread } from './thread-cache';
 
 /**
  * Chat list store.
@@ -216,6 +217,7 @@ export async function setChatPrivacy(chatId: string, settings: ChatPrivacySettin
 
 export async function clearChat(chatId: string): Promise<void> {
   await apiClearHistory(chatId);
+  forgetThread(chatId);
   await clearCachedChat(chatId).catch(() => {});
   await refreshChats();
 }
@@ -226,6 +228,7 @@ export async function removeChat(chatId: string): Promise<void> {
   emit();
   try {
     await apiDeleteChat(chatId);
+    forgetThread(chatId);
     await clearCachedChat(chatId).catch(() => {});
   } catch {
     chats = before;
@@ -280,6 +283,25 @@ export function useChats(): { chats: ChatDTO[]; loaded: boolean } {
     () => chats,
   );
   return { chats: list, loaded };
+}
+
+/**
+ * One chat, from either list. Keeps the same object until something in it
+ * changes, because a refresh hands back new objects for every chat, and a screen
+ * showing one of them should not redraw for the others.
+ */
+export function useChat(chatId: string | undefined): ChatDTO | null {
+  const last = useRef<ChatDTO | null>(null);
+  const read = () => {
+    const next = (chatId ? getCachedChat(chatId) : undefined) ?? null;
+    if (next === last.current) return next;
+    if (next && last.current && JSON.stringify(next) === JSON.stringify(last.current)) {
+      return last.current;
+    }
+    last.current = next;
+    return next;
+  };
+  return useSyncExternalStore(subscribe, read, read);
 }
 
 export function useArchivedChats(): ChatDTO[] {

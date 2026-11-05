@@ -42,6 +42,7 @@ import { useRevealedChats } from '@/data/chat-lock';
 import { decryptMessageContent } from '@/data/message-map';
 import { isMachineText, previewShape } from '@/data/message-preview';
 import { isSealedBody } from '@/data/message-sync';
+import { prefetchThreads } from '@/data/thread-prefetch';
 import { bootstrapGroups } from '@/data/group-store';
 import {
   addCustomFilter,
@@ -163,6 +164,15 @@ export default function ChatsScreen() {
     }
     return `${shape.icon} ${t(shape.key)}`;
   }, []);
+
+  // The chats at the top are the ones about to be opened: having them in memory
+  // is what lets a chat draw its messages on the very first frame.
+  useEffect(() => {
+    const me = getCurrentUser()?.id;
+    if (!me) return;
+    const ids = apiChats.filter((c) => !lockedIds.has(c.id)).slice(0, 12).map((c) => c.id);
+    void prefetchThreads(ids, me);
+  }, [apiChats, lockedIds]);
 
   // Decrypt the last-message previews. The server decrypts its own at-rest
   // layer, but client-side E2EE envelopes still arrive as `soc1.…` and

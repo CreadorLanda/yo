@@ -14,6 +14,7 @@ import { resetGroupStore } from './group-store';
 import { clearMediaCache } from './media-cache';
 import { resetStickerStore } from './sticker-store';
 import { resetStoryStore } from './story-store';
+import { resetThreads } from './thread-cache';
 
 /**
  * Everything that has to go when a session ends.
@@ -41,6 +42,7 @@ export async function resetAllStores(): Promise<void> {
     ['lives', resetLives],
     ['blocks', resetBlocks],
     ['chats', resetChatStore],
+    ['threads', resetThreads],
     ['chat prefs', resetChatPrefsCache],
     ['locks', relockAll],
     ['app-lock', resetAppLock],

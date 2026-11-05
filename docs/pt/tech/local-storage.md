@@ -151,7 +151,8 @@ Migrações em `mobile/db/migrations/*.sql`, aplicadas no primeiro arranque e em
 O que acontece hoje, no telemóvel:
 
 - **Lista de conversas.** A última lista fica em `chats` como DTO completo, pela ordem do servidor, com a pré-visualização decifrada ao lado do texto cifrado de origem. É mostrada ao arrancar e substituída quando a rede responde, por isso um arranque a frio sem ligação tem todas as conversas. Uma pré-visualização só volta a ser decifrada quando a última mensagem muda.
-- **Abrir uma conversa.** A conversa é pintada primeiro a partir de `messages`. Depois a página mais recente é pedida e comparada com o disco: uma mensagem já aberta mantém o texto guardado, por isso só as novas ou editadas são decifradas. Se nada mudou, o ecrã não volta a pintar.
+- **Primeiro frame.** A lista de conversas lê do disco para memória as conversas do topo, por isso uma conversa já tem as mensagens no primeiro render, em vez de aparecer vazia e encher depois. A conversa é uma lista invertida: abre nas mensagens mais recentes e constrói as antigas à medida que entram no ecrã.
+- **Abrir uma conversa.** Sem essa cópia em memória, a conversa é pintada primeiro a partir de `messages`. Depois a página mais recente é pedida e comparada com o disco: uma mensagem já aberta mantém o texto guardado, por isso só as novas ou editadas são decifradas. Se nada mudou, o ecrã não volta a pintar.
 - **O que a página ainda traz.** As 50 mensagens mais recentes são sempre lidas, porque recibos, reações e apagamentos também mudam em mensagens antigas. Ler a página é barato; o custo era decifrá-la.
 - **Apagamentos.** As mensagens em cache que o servidor deixou de devolver saem do disco e do ecrã. As mensagens expiradas são filtradas na leitura, por isso uma abertura offline não as mostra.
 - **Mensagens em direto** são gravadas no disco à chegada. Os nossos envios são registados pelo outbox, que sobrevive à morte da app e retoma no arranque seguinte.
