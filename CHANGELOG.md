@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ❌️ Added (Adicionado)
 
+#### Localização
+- Partilhar a localização a sério numa conversa ou grupo: a posição atual, ou em direto durante 15 minutos, 1 hora ou até ser desligada. A folha mostra um mapa da tua posição antes de enviares, a bolha mostra o mapa, e tocar abre a aplicação de mapas
+- A localização em direto atualiza a mesma mensagem, para na hora marcada ou quando quiseres, a partir da própria bolha, e continua com a app em segundo plano através de uma notificação. A posição segue cifrada de ponta a ponta e o servidor nunca vê coordenadas
+- O mapa vem do OpenStreetMap, que fica a saber que zona foi mostrada mas não quem a vê. A lista de locais próximos, que era inventada, foi retirada
+- Uma edição recebida passa a ser decifrada ao chegar, em vez de aparecer como um cadeado até reabrir a conversa
+
 #### Credenciais
 - Registo aceita email opcional com verificação por código; definições permitem alterar/remover email e alterar telefone com reautenticação, OTP de destino, conflitos genéricos, limite de tentativas e revogação de sessões após troca do telefone
 - Os desafios de email e telefone guardam apenas hashes dos códigos, expiram, são de uso único e enviam notificações de segurança após alterações concluídas

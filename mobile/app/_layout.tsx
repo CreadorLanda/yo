@@ -26,6 +26,7 @@ import {
 import { bootstrapAppLock, noteBackgrounded, noteForegrounded } from '@/data/app-lock';
 import { bootstrapAuth } from '@/data/auth-store';
 import { ensureKeysPublished } from '@/data/crypto';
+import { resumeLiveShares } from '@/data/live-location';
 import { ensureOutboxRunning } from '@/data/outbox';
 import { registerPushWithServer } from '@/data/push';
 import { bootstrapThemes } from '@/data/theme-store';
@@ -80,6 +81,8 @@ export default function RootLayout() {
           // and again on every foreground — not just on reopening the one
           // chat that queued it.
           ensureOutboxRunning();
+          // A share that was running when the app was closed carries on, if it still may.
+          void resumeLiveShares();
         } else {
           // Send signed-out users to onboarding explicitly rather than
           // relying on the anchor to resolve "/". A standalone build opens

@@ -109,7 +109,7 @@ export function queueTextMessage(input: {
 /** Resolve a chat's identity from the in-memory chat list — no fetch, so a
  * cold drain while offline fails fast instead of stalling on a request that
  * cannot succeed anyway. */
-async function encryptForChat(chatId: string, text: string): Promise<string> {
+export async function encryptForChat(chatId: string, text: string): Promise<string> {
   const chat = getCachedChat(chatId);
   if (!chat) throw new E2EEUnavailable('peer_unknown');
 
