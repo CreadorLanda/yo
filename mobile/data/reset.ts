@@ -1,4 +1,5 @@
 import { endCall } from './active-call';
+import { stopAllLiveShares } from './live-location';
 import { resetChatPrefsCache } from './chat-prefs';
 import { resetChatStore } from './chat-store';
 import { resetIncomingCall } from './incoming-call';
@@ -41,6 +42,7 @@ export async function resetAllStores(): Promise<void> {
     ['push token', unregisterPushWithServer],
     // Before the session goes: the hangup has to be accepted by the server.
     ['call', endCall],
+    ['live location', stopAllLiveShares],
     ['dialogs', resetDialogs],
     ['incoming call', resetIncomingCall],
     ['lives', resetLives],

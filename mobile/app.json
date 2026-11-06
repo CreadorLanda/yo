@@ -82,6 +82,15 @@
         }
       ],
       "expo-video",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "ZwoSocial uses your location only when you choose to share it in a chat.",
+          "isAndroidForegroundServiceEnabled": true,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
+        }
+      ],
       "expo-dev-client",
       [
         "expo-build-properties",

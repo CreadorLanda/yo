@@ -144,6 +144,7 @@ import { useActiveCall } from '@/data/active-call';
 import { mergeThread, reusableBody, sameThread, staleCachedIds } from '@/data/message-sync';
 import { peekThread, rememberThread } from '@/data/thread-cache';
 import { useOpenedOnce, useStableCallback } from '@/hooks/use-stable-callback';
+import { LiveLocationError, startLiveShare, stopLiveShare } from '@/data/live-location';
 import { queueTextMessage, retrySend, subscribeOutbox } from '@/data/outbox';
 import {
   E2EEUnavailable,
@@ -792,8 +793,19 @@ useEffect(() => {
 
       if (ev.type === 'message.edited' && payload) {
         const dto = payload as unknown as MessageDTO;
-        const mapped = mapApiMessage(dto, meId);
-        setMessages((prev) => prev.map((m) => (m.id === mapped.id ? { ...m, ...mapped } : m)));
+        // Decrypted like a new message: an edit arrives sealed too, and mapped as it
+        // came it showed as a lock until the chat was reopened. A live location is
+        // nothing but edits, so it would never have moved.
+        void (async () => {
+          let mapped = mapApiMessage(dto, meId);
+          let plain = dto.content;
+          if (mapped.text === '🔒 …' || needsDecrypt(dto.content)) {
+            plain = await decryptMessageContent(dto, meId, apiChatInfo?.peer_user_id);
+            mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(plain) };
+          }
+          saveCachedMessages(id, [{ dto: { ...dto, content: plain }, body: plain }]).catch(() => {});
+          setMessages((prev) => prev.map((m) => (m.id === mapped.id ? { ...m, ...mapped } : m)));
+        })();
         return;
       }
 
@@ -2109,6 +2121,31 @@ useEffect(() => {
     }
   };
 
+  /**
+   * Share a live position. The message is sent and then kept up to date by
+   * data/live-location.ts, which works whether or not this screen is open.
+   */
+  const shareLive = async (durationMs: number | null) => {
+    if (!id || isAIChat || refuseMessageType('location')) return;
+    try {
+      const { dto, attachment } = await startLiveShare(id, durationMs);
+      setComposeKind(null);
+      setMessages((prev) =>
+        prev.some((m) => m.id === String(dto.id))
+          ? prev
+          : [...prev, mapApiMessage({ ...dto, content: JSON.stringify(attachment) }, meId)],
+      );
+      void refreshChats();
+    } catch (err) {
+      if (err instanceof LiveLocationError) {
+        const key = err.reason === 'permission' ? 'permission' : err.reason === 'services' ? 'services' : 'error';
+        appAlert(t(`location.${key}_title`), t(`location.${key}_body`));
+      } else {
+        appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+      }
+    }
+  };
+
   const pickDocument = async () => {
     if (refuseMessageType('document')) return;
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
@@ -2575,6 +2612,9 @@ useEffect(() => {
   const stableViewOnce = useStableCallback(handleViewOnce);
   const stableRetry = useStableCallback(handleRetry);
   const stableLinkPress = useStableCallback(handleLinkPress);
+  const stableStopLive = useStableCallback(() => {
+    if (id) void stopLiveShare(id);
+  });
 
   // Closed sheets stay out of the first render. The editor alone was a quarter
   // of a second of every chat open, with nothing to edit.
@@ -2929,6 +2969,7 @@ useEffect(() => {
                   revealed={revealed}
                   onRetry={stableRetry}
                   onLinkPress={stableLinkPress}
+                  onStopLive={stableStopLive}
                 />
               )
             }
@@ -3328,6 +3369,7 @@ useEffect(() => {
           kind={composeKind}
           onClose={() => setComposeKind(null)}
           onSend={sendAttachment}
+          onShareLive={isAIChat ? undefined : shareLive}
         />
       ) : null}
     </SafeAreaView>
@@ -3592,7 +3634,7 @@ function MetaRow({
   const ttl = relativeRemaining(msg.expiresAt);
   return (
     <View style={[styles.metaRow, onMedia && styles.metaOverlay]}>
-      {msg.edited ? (
+      {msg.edited && msg.attachment?.kind !== 'location' ? (
         <Text style={[styles.metaTime, { color: dim }]}>{t('chat.edited')} ·</Text>
       ) : null}
       {msg.isStarred ? <Ionicons name="star" size={11} color={onMedia ? '#FFFFFF' : colors.warning} /> : null}
@@ -4055,6 +4097,7 @@ function BubbleBody({
   onLongPressMedia,
   onRetry,
   onLinkPress,
+  onStopLive,
 }: {
   msg: GroupedMessage;
   mine: boolean;
@@ -4069,6 +4112,7 @@ function BubbleBody({
   onLongPressMedia?: () => void;
   onRetry?: (msgId: string) => void;
   onLinkPress?: (url: string) => void;
+  onStopLive?: () => void;
 }) {
   const { colors, chat, metrics, layout } = useTheme();
   const isAudio = msg.media?.type === 'audio';
@@ -4264,6 +4308,8 @@ function BubbleBody({
         <AttachmentBubble
           attachment={msg.attachment}
           mine={mine}
+          messageId={msg.id}
+          onStopLive={onStopLive}
           onVote={onVote}
           onPlay={onPlay}
           onLongPress={onLongPressMedia}
@@ -4333,6 +4379,7 @@ function BubbleView({
   onOpenMedia,
   onRetry,
   onLinkPress,
+  onStopLive,
 }: {
   msg: GroupedMessage;
   isGroup: boolean;
@@ -4351,6 +4398,7 @@ function BubbleView({
   onOpenMedia: (msg: Message) => void;
   onRetry?: (msgId: string) => void;
   onLinkPress?: (url: string) => void;
+  onStopLive?: () => void;
 }) {
   const { colors, chat: chrome, layout, metrics } = useTheme();
   const mine = msg.fromMe;
@@ -4517,6 +4565,7 @@ function BubbleView({
               onLongPressMedia={handleLongPress}
               onRetry={onRetry}
               onLinkPress={onLinkPress}
+              onStopLive={onStopLive}
             />
           </Pressable>
 
