@@ -174,6 +174,13 @@ export type MessageAttachment =
       live?: boolean;
       /** ISO timestamp when the live share expires (only meaningful when live=true). */
       expiresAt?: string;
+      /** Where. Absent on older messages, which show only their text. */
+      lat?: number;
+      lng?: number;
+      /** Metres, as reported by the device. */
+      accuracy?: number;
+      /** ISO timestamp of the last position, so a silent share can be told from a live one. */
+      updatedAt?: string;
     }
   | { kind: 'contact'; name: string; detail: string; avatarUri?: string }
   | {
