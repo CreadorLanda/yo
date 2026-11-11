@@ -269,6 +269,7 @@ export type Message = {
         actorId: string;
         targetIds?: string[];
         targetId?: string;
+        targetName?: string;
         role?: string;
         achievementId?: string;
       };

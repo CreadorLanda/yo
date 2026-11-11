@@ -379,6 +379,7 @@ export default {
     group_created: '{{actor}} created the group',
     group_members_added: '{{actor}} added {{members}}',
     group_member_removed: '{{actor}} removed {{member}}',
+    group_member_left: '{{member}} left the group',
     group_role_changed: '{{actor}} changed {{member}} to {{role}}',
     group_admin_handoff: '{{oldAdmin}} handed admin to {{newAdmin}}',
     group_achievement_created: '{{actor}} created an achievement',

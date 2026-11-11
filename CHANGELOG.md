@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✏️ Changed (Alterado)
 
 #### Conversas
+- Eventos de entrada, saída e remoção em grupos mostram os nomes corretos e atualizam a conversa em tempo real; o aviso de membros bloqueados só aparece quando há alguém bloqueado
 - O cabeçalho da conversa, o de pesquisa e o de seleção deixam de ficar por baixo da barra de estado, e ficam à mesma altura do título das outras páginas
 - Conversas e grupos sem foto passam a mostrar uma cara gerada em vez de um círculo vazio, na lista, no cabeçalho, no Chat info, nos membros, nos arquivados, no reencaminhar e nos bloqueados. A cara gerada não aparecia no Android
 - A lista de conversas e as mensagens abrem de imediato a partir do telemóvel, mesmo sem ligação, e a rede só acrescenta o que mudou. Abrir uma conversa deixa de voltar a decifrar e a pintar tudo: só as mensagens novas ou editadas são decifradas

@@ -107,7 +107,14 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
           event,
           actorId,
           ...(event === 'members_added' ? { targetIds: ids } : {}),
-          ...(event === 'member_removed' ? { targetId: parts[3] } : {}),
+          ...(event === 'member_removed'
+            ? {
+                targetId: parts[3],
+                ...(parts[4]
+                  ? { targetName: decodeURIComponent(parts.slice(4).join(':')) }
+                  : {}),
+              }
+            : {}),
           ...(event === 'role_changed' ? { targetId: parts[3], role: parts[4] } : {}),
           ...(event === 'admin_handoff' ? { targetId: parts[3] } : {}),
           ...(event === 'achievement_created' ? { achievementId: parts[3] } : {}),
