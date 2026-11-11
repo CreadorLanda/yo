@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -137,7 +138,13 @@ func (r *Repository) ApplyMemberChanges(ctx context.Context, chatID, actor uuid.
 		return uuid.Nil, err
 	}
 	for _, id := range targets {
-		if err := insertSystemTx(ctx, tx, chatID, actor, fmt.Sprintf("group:member_removed:%s:%s", actor, id)); err != nil {
+		var name string
+		if err := tx.QueryRow(ctx, `
+			SELECT COALESCE(NULLIF(display_name, ''), username, '') FROM users WHERE id = $1
+		`, id).Scan(&name); err != nil {
+			return uuid.Nil, err
+		}
+		if err := insertSystemTx(ctx, tx, chatID, actor, fmt.Sprintf("group:member_removed:%s:%s:%s", actor, id, url.PathEscape(name))); err != nil {
 			return uuid.Nil, err
 		}
 	}

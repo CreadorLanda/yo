@@ -27,11 +27,50 @@ var (
 )
 
 type Service struct {
-	repo *Repository
+	repo        *Repository
+	broadcaster Broadcaster
+}
+
+type Broadcaster interface {
+	PublishJSON(userIDs []uuid.UUID, typ, chatID string, payload any)
 }
 
 func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
+}
+
+func (s *Service) WithBroadcaster(b Broadcaster) *Service {
+	s.broadcaster = b
+	return s
+}
+
+func (s *Service) announceMemberChange(ctx context.Context, groupID uuid.UUID, removed ...uuid.UUID) {
+	if s.broadcaster == nil {
+		return
+	}
+	members, err := s.repo.ListMembers(ctx, groupID)
+	if err != nil {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(members)+len(removed))
+	seen := make(map[uuid.UUID]struct{}, len(members)+len(removed))
+	for _, member := range members {
+		if _, ok := seen[member.UserID]; ok {
+			continue
+		}
+		seen[member.UserID] = struct{}{}
+		ids = append(ids, member.UserID)
+	}
+	for _, id := range removed {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	s.broadcaster.PublishJSON(ids, "group.members.changed", groupID.String(), map[string]string{
+		"group_id": groupID.String(),
+	})
 }
 
 func (s *Service) toGroup(row groupRow, members []Member) Group {
@@ -261,7 +300,11 @@ func (s *Service) AddMembers(ctx context.Context, groupID, actor uuid.UUID, user
 	if len(addedIDs) == 0 {
 		return s.load(ctx, groupID)
 	}
-	return s.load(ctx, groupID)
+	group, err := s.load(ctx, groupID)
+	if err == nil {
+		s.announceMemberChange(ctx, groupID)
+	}
+	return group, err
 }
 
 func (s *Service) RemoveMember(ctx context.Context, groupID, actor, target uuid.UUID) (Group, error) {
@@ -294,6 +337,7 @@ func (s *Service) RemoveMember(ctx context.Context, groupID, actor, target uuid.
 		return Group{}, err
 	}
 	// If actor left, they can no longer load the group — return empty-ish ok via Get error.
+	s.announceMemberChange(ctx, groupID, target)
 	if actor == target {
 		return Group{ID: groupID}, nil
 	}
@@ -344,7 +388,11 @@ func (s *Service) BulkMemberChanges(ctx context.Context, groupID, actor uuid.UUI
 		}
 		return Group{}, err
 	}
-	return s.load(ctx, groupID)
+	group, err := s.load(ctx, groupID)
+	if err == nil && req.Action == "remove" {
+		s.announceMemberChange(ctx, groupID, req.UserIDs...)
+	}
+	return group, err
 }
 
 func (s *Service) CreateAchievement(ctx context.Context, groupID, actor uuid.UUID, req CreateAchievementRequest) (Achievement, error) {
