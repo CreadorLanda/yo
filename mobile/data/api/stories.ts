@@ -2,6 +2,7 @@ import type { StoryReactionCount } from '@/data/story-reactions';
 
 import { api } from './client';
 import { mediaFileURL } from './media';
+import { parseStoryCaption } from '@/data/story-composition';
 
 export type StoryKind = 'image' | 'video' | 'text' | 'audio' | 'poll' | 'question';
 export type StoryVisibility = 'public' | 'contacts' | 'close';
@@ -107,13 +108,14 @@ export function deleteStory(id: string) {
   return api.del<void>(`/api/stories/${id}`);
 }
 
-/** Map API story → UI Story shape used by tabs/stories. */
+/** Map API story → UI Story shape, including its structured composition. */
 export function mapStoryDTO(s: StoryDTO): import('@/data/mock').Story {
   // Media stories use real URLs; text/audio use accent as the visual (no stock photos).
   const cover =
-    s.media_url && (s.kind === 'image' || s.kind === 'video' || s.kind === 'audio')
+    s.media_url && (s.kind === 'image' || s.kind === 'video' || s.kind === 'audio' || s.kind === 'text')
       ? mediaFileURL(s.media_url)
       : '';
+  const composition = parseStoryCaption(s.kind, s.caption);
   const leftMs = new Date(s.expires_at).getTime() - Date.now();
   const leftH = Math.max(0, Math.round(leftMs / 3600000));
   return {
@@ -124,7 +126,8 @@ export function mapStoryDTO(s: StoryDTO): import('@/data/mock').Story {
     avatarUri: s.author_avatar || '',
     coverUri: cover,
     kind: s.kind,
-    caption: s.caption,
+    caption: composition.displayCaption,
+    composition,
     postedAt: relativeTime(s.created_at),
     expiresIn: leftH > 0 ? `${leftH}h left` : 'expiring',
     durationSec: s.duration_sec || 5,
