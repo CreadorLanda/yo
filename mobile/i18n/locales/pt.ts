@@ -1289,6 +1289,7 @@ export default {
     sent_as_anon: ' · publicado como anónimo',
     comments: 'Comentários',
     comments_count: '{{count}} comentários',
+    view_replies: 'Ver {{count}} respostas',
     no_comments: 'Ainda sem comentários. Sê o primeiro.',
     comment_placeholder: 'Escreve um comentário…',
     comment_public: 'Comentar',

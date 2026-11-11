@@ -1289,6 +1289,7 @@ export default {
     sent_as_anon: ' · posted anonymously',
     comments: 'Comments',
     comments_count: '{{count}} comments',
+    view_replies: 'View {{count}} replies',
     no_comments: 'No comments yet. Be the first.',
     comment_placeholder: 'Write a comment…',
     comment_public: 'Comment',
