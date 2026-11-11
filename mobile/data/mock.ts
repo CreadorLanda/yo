@@ -588,6 +588,8 @@ export type ChannelReaction = {
 export type ChannelComment = {
   id: string;
   parentId?: string;
+  /** Present only for identified comments; anonymous author ids never leave the API. */
+  authorId?: string;
   text: string;
   timestamp: string;
   anonymous: boolean;

@@ -36,6 +36,7 @@ function mapCommentDTO(c: ChannelCommentDTO): ChannelComment {
   return {
     id: c.id,
     parentId: c.parent_id,
+    authorId: c.anonymous ? undefined : c.author_id,
     text: c.text,
     timestamp: 'now',
     anonymous: c.anonymous,
