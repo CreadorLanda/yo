@@ -7,6 +7,9 @@ import { Platform } from 'react-native';
 
 import { Palette } from '@/constants/theme';
 import { markRead } from '@/data/api/messages';
+import { bootstrapChatPrefs, getChatPrefs } from '@/data/chat-prefs';
+import { isRevealed } from '@/data/chat-lock';
+import { bootstrapAuth } from '@/data/auth-store';
 import {
   presentMessageNotification,
   type MessagePushData,
@@ -200,34 +203,40 @@ export function listenForNotificationReplies(): () => void {
     const chatId = data?.chat_id;
     if (!chatId) return;
 
-    if (response.actionIdentifier === 'reply') {
-      const text = (response as { userText?: string }).userText ?? '';
-      if (!text.trim()) return;
-      void sendQuickReply(chatId, text).catch((err) => {
-        // Reaching here now means the reply was never even queued — no
-        // session, or the local database would not open. A send that merely
-        // fails is the outbox's problem, and it keeps the message.
-        console.warn('[push] quick reply not queued:', err);
-      });
-      return;
-    }
+    void (async () => {
+      if (!(await bootstrapAuth())) return;
+      if (!(await bootstrapChatPrefs())) return;
+      if (getChatPrefs(chatId).locked && !isRevealed(chatId)) return;
 
-    // Tapping an incoming-call notification answers it. `incoming` is what
-    // stops the answering phone asking the server to ring everyone again.
-    if (data?.type === 'call.incoming') {
-      const mode = (data as { mode?: string }).mode === 'video' ? 'video' : 'voice';
-      router.push(`/call/${chatId}?mode=${mode}&incoming=1`);
-      return;
-    }
-
-    if (response.actionIdentifier === 'mark_read') {
-      // The id the notification was raised for. Without it there is nothing
-      // to mark: the read receipt names a message, not a chat.
-      const messageId = Number(data?.message_id);
-      if (Number.isFinite(messageId) && messageId > 0) {
-        void markRead(chatId, messageId).catch(() => {});
+      if (response.actionIdentifier === 'reply') {
+        const text = (response as { userText?: string }).userText ?? '';
+        if (!text.trim()) return;
+        void sendQuickReply(chatId, text).catch((err) => {
+          // Reaching here now means the reply was never even queued — no
+          // session, or the local database would not open. A send that merely
+          // fails is the outbox's problem, and it keeps the message.
+          console.warn('[push] quick reply not queued:', err);
+        });
+        return;
       }
-    }
+
+      // Tapping an incoming-call notification answers it. `incoming` is what
+      // stops the answering phone asking the server to ring everyone again.
+      if (data?.type === 'call.incoming') {
+        const mode = (data as { mode?: string }).mode === 'video' ? 'video' : 'voice';
+        router.push(`/call/${chatId}?mode=${mode}&incoming=1`);
+        return;
+      }
+
+      if (response.actionIdentifier === 'mark_read') {
+        // The id the notification was raised for. Without it there is nothing
+        // to mark: the read receipt names a message, not a chat.
+        const messageId = Number(data?.message_id);
+        if (Number.isFinite(messageId) && messageId > 0) {
+          void markRead(chatId, messageId).catch(() => {});
+        }
+      }
+    })();
   });
   return () => sub.remove();
 }

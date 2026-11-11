@@ -1,7 +1,10 @@
 import * as Notifications from 'expo-notifications';
 
 import { decryptMessageContent } from '@/data/message-map';
-import { getCurrentUser } from '@/data/auth-store';
+import { bootstrapAuth, getCurrentUser } from '@/data/auth-store';
+import { bootstrapChatPrefs, getChatPrefs } from '@/data/chat-prefs';
+import { canNotifyForChat } from '@/data/chat-lock-policy';
+import { isRevealed } from '@/data/chat-lock';
 import { t } from '@/i18n';
 
 /**
@@ -50,13 +53,20 @@ export function setOpenChat(chatId: string | null): void {
  */
 export async function presentMessageNotification(data: MessagePushData): Promise<boolean> {
   if (data?.type !== 'message.new' || !data.chat_id) return false;
+  const me = (getCurrentUser() ?? await bootstrapAuth())?.id;
+  if (!me) return false;
+
+  // Read device-local lock settings before decrypting or scheduling a push.
+  // If secure storage cannot be read, stay silent rather than risk exposing a
+  // locked conversation through the sender name or message body.
+  if (!(await bootstrapChatPrefs())) return false;
+  if (!canNotifyForChat(getChatPrefs(data.chat_id).locked, isRevealed(data.chat_id))) return false;
 
   // Never notify about the conversation the reader is looking at.
   if (openChatId && openChatId === data.chat_id) return false;
 
   // Nor about your own message, which arrives on your other devices.
-  const me = getCurrentUser()?.id;
-  if (me && data.sender_id === me) return false;
+  if (data.sender_id === me) return false;
 
   let body = data.content ?? '';
   if (data.encrypted === '1' && data.content) {

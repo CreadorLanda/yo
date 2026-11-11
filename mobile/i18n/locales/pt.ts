@@ -559,6 +559,7 @@ export default {
     lock_code_placeholder: '••••',
     lock_code_hint: 'Mínimo 4 dígitos. Sem este código não há como aceder às conversas trancadas.',
     lock_wrong_code: 'Código incorreto',
+    lock_storage_error: 'Não foi possível abrir esta conversa com segurança porque as definições do dispositivo não puderam ser lidas.',
     lock_set_title: 'Conversa trancada',
     lock_set_body: 'Deixa de aparecer na lista. Para a encontrares, escreve o código na pesquisa.',
     lock_chat: 'Trancar conversa',
