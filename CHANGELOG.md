@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reacções persistentes adicionadas a comentários de stories e canais
 
 #### Canais
-- Respostas públicas a comentários ficam guardadas no servidor e associadas ao comentário original; respostas privadas continuam fora desta entrega
+- Respostas públicas a comentários ficam guardadas no servidor; respostas privadas a comentários identificados seguem por conversa cifrada e não aparecem no thread público
 #### Privacidade das conversas
 - Controlos de privacidade avançada por conversa: bloquear reencaminhamento, proteger capturas de ecrã quando a plataforma suporta, confirmar abertura de links, restringir mensagens/chamadas a administradores em grupos e limitar tipos de mensagem. As regras são persistidas e aplicadas no servidor; a proteção de captura é explicitamente best-effort no Android e não é prometida no iOS/web.
 #### Privacidade
