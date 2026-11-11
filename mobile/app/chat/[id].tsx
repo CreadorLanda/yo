@@ -166,7 +166,7 @@ import { canOpenChat } from '@/data/chat-lock-policy';
 import { unlockWithCode, useRevealedChats } from '@/data/chat-lock';
 import { bubbleRadii } from '@/data/theme-store';
 import { useTheme } from '@/hooks/use-theme';
-import { bootstrapAuth, useCurrentUser } from '@/data/auth-store';
+import { useCurrentUser } from '@/data/auth-store';
 import { handleCallEvent } from '@/data/incoming-call';
 import { handleLiveEvent } from '@/data/live-store';
 import { NoContactBanner } from '@/components/chat/no-contact-banner';
@@ -305,7 +305,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    void bootstrapAuth().then((user) => user ? bootstrapChatPrefs() : false).then((ok) => {
+    void bootstrapChatPrefs().then((ok) => {
       if (cancelled) return;
       setPrefsReady(ok);
       setPrefsFailed(!ok);

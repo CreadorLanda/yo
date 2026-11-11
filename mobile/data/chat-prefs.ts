@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 
 import { deleteThemeImage } from './theme-assets';
-import { getCurrentUser } from './auth-store';
+import { bootstrapAuth, getCurrentUser } from './auth-store';
 import type { WallpaperAnimation } from './theme-model';
 
 /**
@@ -93,6 +93,10 @@ function normalize(value: unknown): Record<string, ChatPrefs> {
 
 /** Load once at startup. Corrupt storage falls back to defaults, never throws. */
 export function bootstrapChatPrefs(): Promise<boolean> {
+  return bootstrapAuth().then(() => bootstrapChatPrefsForAccount());
+}
+
+function bootstrapChatPrefsForAccount(): Promise<boolean> {
   const account = accountKey();
   if (bootedFor === account) return Promise.resolve(true);
   if (booting && bootingFor === account) return booting;
