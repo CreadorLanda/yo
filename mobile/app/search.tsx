@@ -14,6 +14,7 @@ import { searchUsers, type PublicUser } from '@/data/api/users';
 import { isValidCode, unlockWithCode, useRevealedChats } from '@/data/chat-lock';
 import { searchNotes } from '@/data/db/notes';
 import { useLockedChatIds } from '@/data/chat-prefs';
+import { findLockedChatMatches } from '@/data/chat-lock-policy';
 import { upsertChat, useChats } from '@/data/chat-store';
 import { useCurrentUser } from '@/data/auth-store';
 import { appAlert } from '@/data/dialog-store';
@@ -92,6 +93,16 @@ export default function SearchScreen() {
   const revealed = useRevealedChats();
   const { chats } = useChats();
   const revealedChats = chats.filter((c) => lockedIds.has(c.id) && revealed.has(c.id));
+  const lockedChatMatches = findLockedChatMatches(
+    chats.map((c) => ({
+      ...c,
+      name: displayChatName(c, t('chats.saved_messages'), ''),
+      username: c.peer_username,
+    })),
+    lockedIds,
+    revealed,
+    query,
+  );
 
   /**
    * Note hits must respect the lock too.
@@ -222,6 +233,39 @@ export default function SearchScreen() {
                 </View>
                 <Ionicons name="bookmark-outline" size={20} color={colors.primary} />
               </Pressable>
+            ) : null}
+            {lockedChatMatches.length > 0 ? (
+              <View>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                  {t('chats.locked_section')}
+                </Text>
+                {lockedChatMatches.map((c) => (
+                  <Pressable
+                    key={c.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={displayChatName(c, t('chats.saved_messages'), '')}
+                    onPress={() => router.push(`/chat/${c.id}`)}
+                    style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surfaceMuted }]}
+                  >
+                    <Avatar
+                      uri={c.avatar_url ?? ''}
+                      id={c.id}
+                      username={c.peer_username ?? ''}
+                      size={44}
+                      style={styles.avatar}
+                    />
+                    <View style={styles.text}>
+                      <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+                        {c.name}
+                      </Text>
+                      <Text style={[styles.username, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {c.peer_username ? `@${c.peer_username.replace(/^@/, '')}` : t('chat_info.lock_chat')}
+                      </Text>
+                    </View>
+                    <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+                  </Pressable>
+                ))}
+              </View>
             ) : null}
             {visibleNoteHits.length > 0 ? (
               <View>

@@ -559,6 +559,7 @@ export default {
     lock_code_placeholder: '••••',
     lock_code_hint: 'At least 4 digits. Without this code there is no way into locked chats.',
     lock_wrong_code: 'Wrong code',
+    lock_storage_error: 'This chat could not be opened safely because its device settings could not be read.',
     lock_set_title: 'Chat locked',
     lock_set_body: 'It no longer appears in the list. To find it, type your code in search.',
     lock_chat: 'Lock chat',

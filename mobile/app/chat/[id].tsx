@@ -161,7 +161,9 @@ import { callHistory, type CallLogEntry } from '@/data/api/calls';
 import { setOpenChat } from '@/data/notification-builder';
 import { describeE2EEBlocked, reportE2EEBlocked } from '@/data/e2ee-blocked';
 import { getGroup, type GroupMemberDTO } from '@/data/api/groups';
-import { useChatPrefs } from '@/data/chat-prefs';
+import { bootstrapChatPrefs, useChatPrefs } from '@/data/chat-prefs';
+import { canOpenChat } from '@/data/chat-lock-policy';
+import { unlockWithCode, useRevealedChats } from '@/data/chat-lock';
 import { bubbleRadii } from '@/data/theme-store';
 import { useTheme } from '@/hooks/use-theme';
 import { useCurrentUser } from '@/data/auth-store';
@@ -295,6 +297,98 @@ function nowTime(): string {
 const FORWARD_MANY = 5;
 
 export default function ChatScreen() {
+  const { id } = useLocalSearchParams<{ id: string; game?: string }>();
+  const chatPrefs = useChatPrefs(id);
+  const revealed = useRevealedChats();
+  const [prefsReady, setPrefsReady] = useState(false);
+  const [prefsFailed, setPrefsFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void bootstrapChatPrefs().then((ok) => {
+      if (cancelled) return;
+      setPrefsReady(ok);
+      setPrefsFailed(!ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!prefsReady) {
+    if (prefsFailed) return <ChatLockUnavailable onBack={() => router.replace('/(tabs)')} />;
+    return <SafeAreaView style={styles.safe} />;
+  }
+
+  const lockedIds = chatPrefs.locked ? new Set([id]) : new Set<string>();
+  if (!canOpenChat(id, lockedIds, revealed)) return <ChatLockGate chatId={id} />;
+  return <ChatScreenContent />;
+}
+
+function ChatLockGate({ chatId }: { chatId: string }) {
+  const { colors } = useTheme();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [wrongCode, setWrongCode] = useState(false);
+
+  const unlock = async () => {
+    setBusy(true);
+    const ok = await unlockWithCode(code, [chatId]).catch(() => false);
+    setBusy(false);
+    if (ok) return;
+    setCode('');
+    setWrongCode(true);
+  };
+
+  return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      <View style={styles.lockGate}>
+        <Ionicons name="lock-closed-outline" size={36} color={colors.primary} />
+        <Text style={[styles.lockGateTitle, { color: colors.text }]}>{t('chat_info.lock_enter_code')}</Text>
+        <Text style={[styles.lockGateHint, { color: colors.textSecondary }]}>{t('chat_info.lock_code_hint')}</Text>
+        <TextInput
+          value={code}
+          onChangeText={(value) => { setCode(value); setWrongCode(false); }}
+          placeholder={t('chat_info.lock_code_placeholder')}
+          placeholderTextColor={colors.textMuted}
+          secureTextEntry
+          keyboardType="number-pad"
+          autoFocus
+          style={[styles.lockGateInput, { color: colors.text, backgroundColor: colors.surfaceMuted }]}
+          accessibilityLabel={t('chat_info.lock_enter_code')}
+        />
+        {wrongCode ? <Text style={[styles.lockGateError, { color: colors.danger }]}>{t('chat_info.lock_wrong_code')}</Text> : null}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void unlock()}
+          disabled={busy || !code.trim()}
+          style={[styles.lockGateButton, { backgroundColor: colors.primary }, (busy || !code.trim()) && styles.disabled]}
+        >
+          <Text style={[styles.lockGateButtonText, { color: colors.onPrimary }]}>{t('common.confirm')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.replace('/(tabs)')}>
+          <Text style={[styles.lockGateCancel, { color: colors.textSecondary }]}>{t('common.cancel')}</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function ChatLockUnavailable({ onBack }: { onBack: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      <View style={styles.lockGate}>
+        <Text style={[styles.lockGateHint, { color: colors.textSecondary }]}>{t('chat_info.lock_storage_error')}</Text>
+        <Pressable accessibilityRole="button" onPress={onBack}>
+          <Text style={[styles.lockGateCancel, { color: colors.primary }]}>{t('common.cancel')}</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function ChatScreenContent() {
   const { id, game: openGame } = useLocalSearchParams<{ id: string; game?: string }>();
   // This chat, not the list. Every refresh of the list used to redraw the whole
   // thread, and opening a chat triggers several of them.
@@ -4980,6 +5074,15 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   flex: { flex: 1 },
   fallback: { ...Typography.body, padding: Spacing.xl },
+  lockGate: { flex: 1, justifyContent: 'center', alignItems: 'stretch', padding: Spacing.xl, gap: Spacing.md },
+  lockGateTitle: { ...Typography.body, fontWeight: '700', textAlign: 'center' },
+  lockGateHint: { ...Typography.caption, textAlign: 'center' },
+  lockGateInput: { ...Typography.body, padding: Spacing.md, borderRadius: Radii.md, textAlign: 'center' },
+  lockGateError: { ...Typography.caption, textAlign: 'center' },
+  lockGateButton: { alignItems: 'center', justifyContent: 'center', minHeight: 48, borderRadius: Radii.md },
+  lockGateButtonText: { ...Typography.body, fontWeight: '700' },
+  lockGateCancel: { ...Typography.body, textAlign: 'center', padding: Spacing.sm },
+  disabled: { opacity: 0.55 },
 
   header: {
     flexDirection: 'row',

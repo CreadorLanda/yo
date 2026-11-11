@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 
 import { deleteThemeImage } from './theme-assets';
-import { getCurrentUser } from './auth-store';
+import { bootstrapAuth, getCurrentUser } from './auth-store';
 import type { WallpaperAnimation } from './theme-model';
 
 /**
@@ -40,6 +40,8 @@ const DEFAULTS: ChatPrefs = { locked: false, filesVisible: true };
 
 let prefs: Record<string, ChatPrefs> = {};
 let bootedFor: string | null = null;
+let bootingFor: string | null = null;
+let booting: Promise<boolean> | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -90,23 +92,41 @@ function normalize(value: unknown): Record<string, ChatPrefs> {
 }
 
 /** Load once at startup. Corrupt storage falls back to defaults, never throws. */
-export async function bootstrapChatPrefs(): Promise<void> {
+export function bootstrapChatPrefs(): Promise<boolean> {
+  return bootstrapAuth().then(() => bootstrapChatPrefsForAccount());
+}
+
+function bootstrapChatPrefsForAccount(): Promise<boolean> {
   const account = accountKey();
-  if (bootedFor === account) return;
-  bootedFor = account;
+  if (bootedFor === account) return Promise.resolve(true);
+  if (booting && bootingFor === account) return booting;
   prefs = {};
-  try {
-    const raw = await SecureStore.getItemAsync(storageKey(account));
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (accountKey() !== account) return;
-    if (parsed && typeof parsed === 'object') {
-      prefs = normalize(parsed);
-      emit();
+  bootingFor = account;
+  booting = (async () => {
+    try {
+      const raw = await SecureStore.getItemAsync(storageKey(account));
+      if (accountKey() !== account) return false;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          prefs = normalize(parsed);
+          emit();
+        }
+      }
+      bootedFor = account;
+      return true;
+    } catch {
+      /* unreadable or malformed — fail closed for callers that expose data */
+      prefs = {};
+      return false;
+    } finally {
+      if (bootingFor === account) {
+        booting = null;
+        bootingFor = null;
+      }
     }
-  } catch {
-    /* unreadable or malformed — start clean rather than block the app */
-  }
+  })();
+  return booting;
 }
 
 async function persist(account = accountKey()) {
@@ -189,6 +209,8 @@ export function useLockedChatIds(): Set<string> {
 export function resetChatPrefsCache(): void {
   prefs = {};
   bootedFor = null;
+  booting = null;
+  bootingFor = null;
   void SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
   emit();
 }
