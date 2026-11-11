@@ -449,6 +449,7 @@ export type Story = {
   coverUri: string;
   kind: StoryKind;
   caption: string;
+  composition?: import('@/data/story-composition').ParsedStoryCaption;
   postedAt: string;
   expiresIn: string;
   durationSec: number;

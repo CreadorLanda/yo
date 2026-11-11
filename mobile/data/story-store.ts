@@ -13,6 +13,7 @@ import {
 } from '@/data/api/stories';
 import type { Story } from '@/data/mock';
 import { applyMyReactions } from '@/data/story-reactions';
+import { parseStoryCaption } from '@/data/story-composition';
 import { showToast } from '@/data/toast-store';
 import { t } from '@/i18n';
 
@@ -41,7 +42,7 @@ function subscribe(l: () => void) {
 export type StoryPublishInput = {
   kind: StoryKind;
   caption: string;
-  /** Local file URI for image/video/audio (uploaded in background). */
+  /** Local file URI for image/video/audio or a text-story background. */
   localMediaUri?: string | null;
   mediaMimeType?: string;
   audioDurationMs?: number;
@@ -210,9 +211,10 @@ export function useHasUploadingStory(): boolean {
 export function queueStoryPublish(input: StoryPublishInput): string {
   const localId = `pending_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
   const coverUri =
-    input.localMediaUri && (input.kind === 'image' || input.kind === 'video')
+    input.localMediaUri && (input.kind === 'image' || input.kind === 'video' || input.kind === 'text')
       ? input.localMediaUri
       : '';
+  const composition = parseStoryCaption(input.kind, input.caption);
 
   const optimistic: Story = {
     id: localId,
@@ -221,7 +223,8 @@ export function queueStoryPublish(input: StoryPublishInput): string {
     avatarUri: input.authorAvatar || '',
     coverUri,
     kind: input.kind,
-    caption: input.caption,
+    caption: composition.displayCaption,
+    composition,
     postedAt: 'now',
     expiresIn: '24h left',
     durationSec: input.durationSec ?? 5,
@@ -264,7 +267,7 @@ async function runPublish(localId: string, input: StoryPublishInput): Promise<vo
     let mediaUrl: string | undefined;
     if (
       input.localMediaUri &&
-      (input.kind === 'image' || input.kind === 'video' || input.kind === 'audio')
+      (input.kind === 'image' || input.kind === 'video' || input.kind === 'audio' || input.kind === 'text')
     ) {
       const up = await uploadMedia({
         uri: input.localMediaUri,
@@ -299,7 +302,7 @@ async function runPublish(localId: string, input: StoryPublishInput): Promise<vo
 
     const mapped = mapStoryDTO(dto);
     // Prefer local preview until remote media is ready; keep server cover when present.
-    if (!mapped.coverUri && input.localMediaUri && (input.kind === 'image' || input.kind === 'video')) {
+    if (!mapped.coverUri && input.localMediaUri && (input.kind === 'image' || input.kind === 'video' || input.kind === 'text')) {
       mapped.coverUri = input.localMediaUri;
     } else if (mapped.coverUri) {
       mapped.coverUri = mediaFileURL(mapped.coverUri);

@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Stories
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista
+- Stories aceitam votações com duas ou três opções, stickers de pergunta e menção que se podem posicionar, fundos de imagem para textos e comentários que expandem cinco de cada vez
 
 #### Denúncias
 - Denunciar uma conversa tem agora o seu próprio ecrã: motivo, nota opcional e, se quiseres, as mensagens que servem de prova. Nada é enviado sem as escolheres e sem um acordo explícito, porque o servidor não lê as conversas; as provas ficam à parte, só a moderação as vê e são apagadas ao fim de 90 dias
