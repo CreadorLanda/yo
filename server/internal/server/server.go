@@ -136,7 +136,7 @@ func New(cfg config.Config) (*Server, error) {
 	// Native E2E-encrypted messaging (push for offline peers via notifSvc).
 	msgRepo := messages.NewRepository(pg, cfg.Crypto.MessageKey)
 	groupsRepo := groups.NewRepository(pg)
-	groupsSvc := groups.NewService(groupsRepo)
+	groupsSvc := groups.NewService(groupsRepo).WithBroadcaster(hub)
 	// Blocking, which both messages and calls consult through a narrow
 	// interface rather than importing this module.
 	blocksRepo := blocks.NewRepo(pg)

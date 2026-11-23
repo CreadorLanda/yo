@@ -69,6 +69,7 @@ import { mapApiMessage } from '@/data/message-map';
 import { type ChatPreview, type Message } from '@/data/mock';
 import { displayChatName } from '@/data/chat-identity';
 import { block, blockedAmong, refreshBlocks, useBlocked } from '@/data/block-store';
+import { blockedGroupNoticeKey } from '@/data/group-membership-policy';
 import { persistThemeImage } from '@/data/theme-assets';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -1061,17 +1062,17 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
                 another is not a reason to end their conversation. Being told
                 is what makes allowing it fair.
               */}
-              {blockedHere.length > 0 ? (
+              {blockedGroupNoticeKey(blockedHere.length) ? (
                 <>
                   <Divider colors={colors} />
                   <View style={[styles.row, { gap: Spacing.sm }]}>
                     <Ionicons name="ban-outline" size={18} color={colors.textSecondary} />
                     <Text style={[styles.blockNotice, { color: colors.textSecondary }]}>
                       {blockedHere.length === 1
-                        ? t('blocked.in_group_one', {
+                        ? t(blockedGroupNoticeKey(blockedHere.length)!, {
                             name: blockedHere[0].display_name || blockedHere[0].username,
                           })
-                        : t('blocked.in_group_many', { count: blockedHere.length })}
+                        : t(blockedGroupNoticeKey(blockedHere.length)!, { count: blockedHere.length })}
                     </Text>
                   </View>
                 </>

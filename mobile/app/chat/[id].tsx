@@ -81,6 +81,7 @@ import { removeSticker, saveSticker } from '@/data/api/stickers';
 import { showToast } from '@/data/toast-store';
 import { MAX_REACTIONS_PER_ITEM, searchEmojiCatalogue } from '@/data/reactions';
 import { refreshGroup, useGroup } from '@/data/group-store';
+import { groupMemberRemovalLabel } from '@/data/group-membership-policy';
 import {
   encodeMediaContent,
   mediaFileURL,
@@ -739,6 +740,22 @@ useEffect(() => {
       if (ev.chat_id && ev.chat_id !== id) return;
       const payload = ev.payload as Record<string, unknown> | null | undefined;
 
+      if (ev.type === 'group.members.changed' && isGroup) {
+        refreshGroup(id).catch(() => {});
+        void listMessages(id, 20).then((dtos) => {
+          const systemMessages = (dtos ?? [])
+            .filter((dto) => dto.message_type === 'system')
+            .reverse()
+            .map((dto) => mapApiMessage(dto, meId));
+          setMessages((prev) => {
+            const known = new Set(prev.map((message) => message.id));
+            return [...prev, ...systemMessages.filter((message) => !known.has(message.id))];
+          });
+        }).catch(() => {});
+        syncGroupKeys(id).catch(() => {});
+        return;
+      }
+
       if (ev.type === 'message.new' && payload) {
         const dto = payload as unknown as MessageDTO;
         if (String(dto.chat_id) !== id && ev.chat_id !== id) return;
@@ -750,6 +767,7 @@ useEffect(() => {
           // generation the departing member still holds.
           if (isGroup && dto.message_type === 'system') {
             syncGroupKeys(id).catch(() => {});
+            refreshGroup(id).catch(() => {});
           }
           let mapped = mapApiMessage(dto, meId);
           let plainBody = dto.content;
@@ -3430,12 +3448,16 @@ function SystemDivider({
         ? t('chat.you')
         : groupMembers.find((member) => member.id === id)?.name ?? t('chat.deleted_user');
     const actor = nameFor(ev.actorId);
-    const target = nameFor(ev.targetId);
+    const target = ev.actorId === ev.targetId
+      ? nameFor(ev.targetId)
+      : ev.targetName || nameFor(ev.targetId);
     const targets = (ev.targetIds ?? []).map(nameFor).join(', ');
     let label = t('chat.group_changed');
     if (ev.event === 'created') label = t('chat.group_created', { actor });
     if (ev.event === 'members_added') label = t('chat.group_members_added', { actor, members: targets });
-    if (ev.event === 'member_removed') label = t('chat.group_member_removed', { actor, member: target });
+    if (ev.event === 'member_removed') {
+      label = groupMemberRemovalLabel(ev.actorId, ev.targetId ?? '', actor, target, t);
+    }
     if (ev.event === 'role_changed') label = t('chat.group_role_changed', { actor, member: target, role: ev.role ?? '' });
     if (ev.event === 'admin_handoff') label = t('chat.group_admin_handoff', { oldAdmin: actor, newAdmin: target });
     if (ev.event === 'achievement_created') label = t('chat.group_achievement_created', { actor });
