@@ -81,7 +81,7 @@ import { removeSticker, saveSticker } from '@/data/api/stickers';
 import { showToast } from '@/data/toast-store';
 import { MAX_REACTIONS_PER_ITEM, searchEmojiCatalogue } from '@/data/reactions';
 import { refreshGroup, useGroup } from '@/data/group-store';
-import { groupMemberRemovalLabel } from '@/data/group-membership-policy';
+import { groupEventTargetName, groupMemberRemovalLabel } from '@/data/group-membership-policy';
 import {
   encodeMediaContent,
   mediaFileURL,
@@ -3543,9 +3543,11 @@ function SystemDivider({
         ? t('chat.you')
         : groupMembers.find((member) => member.id === id)?.name ?? t('chat.deleted_user');
     const actor = nameFor(ev.actorId);
-    const target = ev.actorId === ev.targetId
-      ? nameFor(ev.targetId)
-      : ev.targetName || nameFor(ev.targetId);
+    const target = groupEventTargetName(
+      { id: ev.targetId, snapshotName: ev.targetName, isYou: mine && ev.targetId === msg.senderId },
+      nameFor,
+      t('chat.you'),
+    );
     const targets = (ev.targetIds ?? []).map(nameFor).join(', ');
     let label = t('chat.group_changed');
     if (ev.event === 'created') label = t('chat.group_created', { actor });

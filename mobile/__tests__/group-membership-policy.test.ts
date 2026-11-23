@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test';
 
-import { blockedGroupNoticeKey, groupMemberRemovalLabel } from '@/data/group-membership-policy';
+import {
+  blockedGroupNoticeKey,
+  groupEventTargetName,
+  groupMemberRemovalLabel,
+} from '@/data/group-membership-policy';
 
 test('blocked member notice is absent, singular, or plural for zero, one, and many', () => {
   expect(blockedGroupNoticeKey(0)).toBeUndefined();
@@ -21,4 +25,16 @@ test('group removal and leave events render the actor and target without placeho
   expect(groupMemberRemovalLabel('member-id', 'member-id', 'Bia', 'Bia', translate)).toBe(
     'Bia left the group',
   );
+});
+
+test('a member who left is named from the event, not the roster they are gone from', () => {
+  const roster = (id: string | undefined) => (id === 'admin-id' ? 'Ana' : 'Deleted user');
+
+  expect(
+    groupEventTargetName({ id: 'member-id', snapshotName: 'Bia', isYou: false }, roster, 'You'),
+  ).toBe('Bia');
+  expect(groupEventTargetName({ id: 'admin-id', isYou: false }, roster, 'You')).toBe('Ana');
+  expect(
+    groupEventTargetName({ id: 'me-id', snapshotName: 'Tester', isYou: true }, roster, 'You'),
+  ).toBe('You');
 });
