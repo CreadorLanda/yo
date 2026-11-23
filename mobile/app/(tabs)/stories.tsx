@@ -24,6 +24,7 @@ import Animated, {
 import { TabScene } from '@/components/ui/tab-scene';
 import { Text } from '@/components/ui/text';
 import { Palette, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
+import { useCurrentUser } from '@/data/auth-store';
 import type { Story } from '@/data/mock';
 import { refreshRunningLives, useRunningLives } from '@/data/live-store';
 import type { Live } from '@/data/api/lives';
@@ -50,11 +51,15 @@ export default function StoriesScreen() {
   const stories = useStories();
   const loading = useStoriesLoading();
   const lives = useRunningLives();
+  const meId = useCurrentUser()?.id;
 
+  // Keyed on the account: the tab mounts before sign-in, so the first load
+  // has no session and has to run again once there is one.
   useEffect(() => {
+    if (!meId) return;
     bootstrapStories().catch(() => {});
     refreshRunningLives().catch(() => {});
-  }, []);
+  }, [meId]);
 
   const mine = useMemo(() => stories.filter((s) => s.isOwn), [stories]);
   const others = useMemo(() => stories.filter((s) => !s.isOwn), [stories]);

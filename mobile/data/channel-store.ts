@@ -155,7 +155,9 @@ export async function bootstrapChannels(): Promise<void> {
     apiBooted = true;
     emit();
   } catch {
-    apiBooted = true;
+    // Left unbooted so the next call retries. The first call can run before
+    // sign-in and fail with a 401; marking it done hid every channel until
+    // the app restarted.
   }
 }
 
