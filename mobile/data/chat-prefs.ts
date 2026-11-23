@@ -91,6 +91,11 @@ function normalize(value: unknown): Record<string, ChatPrefs> {
   return out;
 }
 
+/** True once this account's lock settings were read, so a gate need not wait a frame. */
+export function chatPrefsReady(): boolean {
+  return getCurrentUser() != null && bootedFor === accountKey();
+}
+
 /** Load once at startup. Corrupt storage falls back to defaults, never throws. */
 export function bootstrapChatPrefs(): Promise<boolean> {
   return bootstrapAuth().then(() => bootstrapChatPrefsForAccount());

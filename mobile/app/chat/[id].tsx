@@ -161,7 +161,7 @@ import { callHistory, type CallLogEntry } from '@/data/api/calls';
 import { setOpenChat } from '@/data/notification-builder';
 import { describeE2EEBlocked, reportE2EEBlocked } from '@/data/e2ee-blocked';
 import { getGroup, type GroupMemberDTO } from '@/data/api/groups';
-import { bootstrapChatPrefs, useChatPrefs } from '@/data/chat-prefs';
+import { bootstrapChatPrefs, chatPrefsReady, useChatPrefs } from '@/data/chat-prefs';
 import { canOpenChat } from '@/data/chat-lock-policy';
 import { unlockWithCode, useRevealedChats } from '@/data/chat-lock';
 import { bubbleRadii } from '@/data/theme-store';
@@ -300,10 +300,11 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string; game?: string }>();
   const chatPrefs = useChatPrefs(id);
   const revealed = useRevealedChats();
-  const [prefsReady, setPrefsReady] = useState(false);
+  const [prefsReady, setPrefsReady] = useState(chatPrefsReady);
   const [prefsFailed, setPrefsFailed] = useState(false);
 
   useEffect(() => {
+    if (prefsReady) return;
     let cancelled = false;
     void bootstrapChatPrefs().then((ok) => {
       if (cancelled) return;
@@ -313,7 +314,7 @@ export default function ChatScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [prefsReady]);
 
   if (!prefsReady) {
     if (prefsFailed) return <ChatLockUnavailable onBack={() => router.replace('/(tabs)')} />;

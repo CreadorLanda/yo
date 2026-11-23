@@ -205,6 +205,17 @@ export function listenForNotificationReplies(): () => void {
 
     void (async () => {
       if (!(await bootstrapAuth())) return;
+
+      // Tapping an incoming-call notification answers it. `incoming` is what
+      // stops the answering phone asking the server to ring everyone again.
+      // A call is not the history: the phone already rang with the caller's
+      // name, so a locked chat must not leave the tap doing nothing.
+      if (data?.type === 'call.incoming') {
+        const mode = (data as { mode?: string }).mode === 'video' ? 'video' : 'voice';
+        router.push(`/call/${chatId}?mode=${mode}&incoming=1`);
+        return;
+      }
+
       if (!(await bootstrapChatPrefs())) return;
       if (getChatPrefs(chatId).locked && !isRevealed(chatId)) return;
 
@@ -217,14 +228,6 @@ export function listenForNotificationReplies(): () => void {
           // fails is the outbox's problem, and it keeps the message.
           console.warn('[push] quick reply not queued:', err);
         });
-        return;
-      }
-
-      // Tapping an incoming-call notification answers it. `incoming` is what
-      // stops the answering phone asking the server to ring everyone again.
-      if (data?.type === 'call.incoming') {
-        const mode = (data as { mode?: string }).mode === 'video' ? 'video' : 'voice';
-        router.push(`/call/${chatId}?mode=${mode}&incoming=1`);
         return;
       }
 
