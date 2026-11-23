@@ -44,6 +44,14 @@ import { FilteredCamera, type FilteredCameraHandle } from '@/components/media/fi
 import type { StoryVisibility } from '@/data/mock';
 import { useProfile } from '@/data/profile-store';
 import { queueStoryPublish } from '@/data/story-store';
+import {
+  buildMentionCaption,
+  buildPollCaption,
+  buildQuestionCaption,
+  clampStoryPosition,
+  pollValidationError,
+  type StoryPosition,
+} from '@/data/story-composition';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -119,8 +127,9 @@ export default function CreateStoryScreen() {
   const [frontCamera, setFrontCamera] = useState(false);
   const [activeTool, setActiveTool] = useState<EditTool>(null);
   const [sticker, setSticker] = useState<StickerKind>(null);
-  const [pollA, setPollA] = useState(t('stories.poll_yes'));
-  const [pollB, setPollB] = useState(t('stories.poll_no'));
+  const [pollOptions, setPollOptions] = useState([t('stories.poll_yes'), t('stories.poll_no')]);
+  const [mentionHandle, setMentionHandle] = useState('');
+  const [stickerPosition, setStickerPosition] = useState<StoryPosition>({ x: 0.5, y: 0.4 });
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [audioRecording, setAudioRecording] = useState(false);
@@ -252,6 +261,15 @@ export default function CreateStoryScreen() {
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     enterEdit({ uri: asset.uri, video: asset.type === 'video' });
+  };
+
+  const chooseTextBackground = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
+    if (result.canceled || !result.assets[0]) return;
+    setMediaUri(result.assets[0].uri);
+    setTextOnly(true);
+    setIsVideo(false);
+    setIsAudio(false);
   };
 
   const stopAudioRecording = async () => {
@@ -414,14 +432,13 @@ export default function CreateStoryScreen() {
 
   const buildInteractiveCaption = (): string => {
     if (sticker === 'poll') {
-      return JSON.stringify({
-        q: caption.trim(),
-        a: (pollA || t('stories.poll_yes')).trim(),
-        b: (pollB || t('stories.poll_no')).trim(),
-      });
+      return buildPollCaption(caption, pollOptions, stickerPosition, mentionHandle);
     }
     if (sticker === 'question') {
-      return JSON.stringify({ q: caption.trim() });
+      return buildQuestionCaption(caption, stickerPosition, mentionHandle);
+    }
+    if (sticker === 'mention') {
+      return buildMentionCaption(caption, mentionHandle, stickerPosition);
     }
     return caption.trim();
   };
@@ -444,13 +461,18 @@ export default function CreateStoryScreen() {
    */
   const publish = async () => {
     if (publishLock.current) return;
+    if (sticker === 'mention' && !mentionHandle.trim()) {
+      appAlert(t('stories.mention'), t('stories.mention_handle'));
+      return;
+    }
 
     let kind: 'image' | 'video' | 'text' | 'audio' | 'poll' | 'question' = 'text';
 
     if (sticker === 'poll') {
       kind = 'poll';
-      if (!caption.trim()) {
-        appAlert(t('stories.poll_mode'), t('stories.poll_placeholder'));
+      const validation = pollValidationError(caption, pollOptions);
+      if (validation) {
+        appAlert(t('stories.poll_mode'), t('stories.poll_invalid_options'));
         return;
       }
     } else if (sticker === 'question') {
@@ -467,9 +489,11 @@ export default function CreateStoryScreen() {
       }
     } else if (isAudio && mediaUri) {
       kind = 'audio';
+    } else if (sticker === 'mention' && mediaUri && !textOnly) {
+      kind = isVideo ? 'video' : 'image';
     } else if (mediaUri) {
       kind = isVideo ? 'video' : 'image';
-    } else if (caption.trim()) {
+    } else if (caption.trim() || (sticker === 'mention' && mentionHandle.trim())) {
       kind = 'text';
     } else {
       appAlert(t('stories.sent_notice'), 'Pick a photo, video, audio, or write something.');
@@ -486,7 +510,9 @@ export default function CreateStoryScreen() {
       mediaUri && !isVideo && !isAudio ? await bakeFilter(mediaUri, filter) : mediaUri;
 
     const bodyCaption =
-      kind === 'poll' || kind === 'question' ? buildInteractiveCaption() : caption.trim();
+      sticker === 'poll' || sticker === 'question' || sticker === 'mention'
+        ? buildInteractiveCaption()
+        : caption.trim();
 
     queueStoryPublish({
       kind,
@@ -724,7 +750,7 @@ export default function CreateStoryScreen() {
   }
 
   // ── EDIT ─────────────────────────────────────────────────────────────────
-  const solidBg = textOnly || isAudio || sticker === 'poll' || sticker === 'question';
+  const solidBg = isAudio || sticker === 'poll' || sticker === 'question' || (textOnly && !mediaUri);
   return (
     <View
       style={[
@@ -747,6 +773,7 @@ export default function CreateStoryScreen() {
         )
       ) : null}
       {!solidBg && mediaUri ? <View style={styles.editScrim} /> : null}
+      {!solidBg && textOnly && mediaUri ? <View style={styles.textImageScrim} /> : null}
       {solidBg ? (
         <>
           <View style={[StyleSheet.absoluteFill, { backgroundColor: isAudio ? '#12141A' : accent }]} />
@@ -766,6 +793,13 @@ export default function CreateStoryScreen() {
                 icon="color-palette-outline"
               />
             )}
+            {textOnly ? (
+              <RoundBtn
+                onPress={chooseTextBackground}
+                icon="image-outline"
+                accessibilityLabel={t('stories.choose_background_image')}
+              />
+            ) : null}
           </View>
         </View>
 
@@ -838,7 +872,7 @@ export default function CreateStoryScreen() {
               autoFocus={textOnly || activeTool === 'text'}
               style={[styles.storyTextInput, textOnly && styles.storyTextInputLarge]}
             />
-          ) : mediaUri && !textOnly && !sticker ? (
+          ) : mediaUri && !textOnly && sticker !== 'poll' && sticker !== 'question' ? (
             <Pressable onPress={() => setActiveTool('text')} style={styles.captionTapZone}>
               {caption ? (
                 <Text style={styles.overlayCaption}>{caption}</Text>
@@ -846,39 +880,6 @@ export default function CreateStoryScreen() {
                 <Text style={styles.overlayCaptionHint}>{t('stories.tap_add_text')}</Text>
               )}
             </Pressable>
-          ) : null}
-
-          {sticker === 'poll' ? (
-            <Animated.View entering={FadeInDown.springify()} style={styles.pollCard}>
-              <Text style={styles.stickerEyebrow}>{t('stories.poll_mode')}</Text>
-              <TextInput
-                value={caption}
-                onChangeText={setCaption}
-                placeholder={t('stories.poll_placeholder')}
-                placeholderTextColor="rgba(17,24,39,0.4)"
-                style={styles.stickerTitle}
-              />
-              <PollOption value={pollA} onChange={setPollA} />
-              <PollOption value={pollB} onChange={setPollB} />
-            </Animated.View>
-          ) : null}
-
-          {sticker === 'question' ? (
-            <Animated.View entering={FadeInDown.springify()} style={styles.questionCard}>
-              <Text style={styles.stickerEyebrow}>{t('stories.question_mode')}</Text>
-              <TextInput
-                value={caption}
-                onChangeText={setCaption}
-                placeholder={t('stories.question_placeholder')}
-                placeholderTextColor="rgba(17,24,39,0.4)"
-                style={styles.stickerTitle}
-              />
-              <View style={styles.answerBox}>
-                <Text style={[styles.answerHint, { color: colors.primary }]}>
-                  {t('stories.answer_placeholder')}
-                </Text>
-              </View>
-            </Animated.View>
           ) : null}
 
           {isVideo ? (
@@ -913,8 +914,9 @@ export default function CreateStoryScreen() {
               label={t('stories.mention')}
               icon="at"
               onPress={() => {
-                setCaption((c) => (c.includes('@') ? c : `${c} @`.trimStart()));
-                setActiveTool('text');
+                setStickerPosition({ x: 0.5, y: 0.58 });
+                setSticker('mention');
+                setActiveTool(null);
               }}
             />
             <StickerChip
@@ -938,6 +940,116 @@ export default function CreateStoryScreen() {
           </Animated.View>
         ) : null}
       </SafeAreaView>
+
+      {sticker === 'poll' ? (
+        <DraggableStoryElement
+          position={stickerPosition}
+          onPositionChange={setStickerPosition}
+          minY={insets.top + 150}
+          maxY={H - Math.max(insets.bottom, 14) - 390}
+        >
+          <Animated.View entering={FadeInDown.springify()} style={[styles.pollCard, { backgroundColor: colors.surface }]}>
+            <View style={styles.dragHintRow}>
+              <Ionicons name="move" size={13} color={colors.textSecondary} />
+              <Text style={[styles.dragHint, { color: colors.textSecondary }]}>{t('stories.move_sticker')}</Text>
+            </View>
+            <Text style={[styles.stickerEyebrow, { color: colors.textSecondary }]}>{t('stories.poll_mode')}</Text>
+            <TextInput
+              value={caption}
+              onChangeText={setCaption}
+              placeholder={t('stories.poll_placeholder')}
+              placeholderTextColor="rgba(17,24,39,0.4)"
+              style={[styles.stickerTitle, { color: colors.text }]}
+            />
+            {pollOptions.map((option, index) => (
+              <View key={`poll-option-${index}`} style={styles.pollOptionRow}>
+                <View style={{ flex: 1 }}>
+                  <PollOption
+                    value={option}
+                    placeholder={t('stories.poll_option', { index: index + 1 })}
+                    onChange={(value) => setPollOptions((current) => current.map((item, i) => i === index ? value : item))}
+                  />
+                </View>
+                {pollOptions.length > 2 ? (
+                  <Pressable
+                    onPress={() => setPollOptions((current) => current.filter((_, i) => i !== index))}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('stories.poll_remove_option')}
+                  >
+                    <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                ) : null}
+              </View>
+            ))}
+            {pollOptions.length < 3 ? (
+              <Pressable
+                onPress={() => setPollOptions((current) => current.length < 3 ? [...current, ''] : current)}
+                style={[styles.pollOptionAdd, { borderColor: colors.border }]}
+                accessibilityRole="button"
+              >
+                <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                <Text style={[styles.pollOptionAddText, { color: colors.primary }]}>{t('stories.poll_add_option')}</Text>
+              </Pressable>
+            ) : null}
+          </Animated.View>
+        </DraggableStoryElement>
+      ) : null}
+
+      {sticker === 'question' ? (
+        <DraggableStoryElement
+          position={stickerPosition}
+          onPositionChange={setStickerPosition}
+          minY={insets.top + 150}
+          maxY={H - Math.max(insets.bottom, 14) - 390}
+        >
+          <Animated.View entering={FadeInDown.springify()} style={[styles.questionCard, { backgroundColor: colors.surface }]}>
+            <View style={styles.dragHintRow}>
+              <Ionicons name="move" size={13} color={colors.textSecondary} />
+              <Text style={[styles.dragHint, { color: colors.textSecondary }]}>{t('stories.move_sticker')}</Text>
+            </View>
+            <Text style={[styles.stickerEyebrow, { color: colors.textSecondary }]}>{t('stories.question_mode')}</Text>
+            <TextInput
+              value={caption}
+              onChangeText={setCaption}
+              placeholder={t('stories.question_placeholder')}
+              placeholderTextColor="rgba(17,24,39,0.4)"
+              style={[styles.stickerTitle, { color: colors.text }]}
+            />
+            <View style={styles.answerBox}>
+              <Text style={[styles.answerHint, { color: colors.primary }]}>
+                {t('stories.answer_placeholder')}
+              </Text>
+            </View>
+          </Animated.View>
+        </DraggableStoryElement>
+      ) : null}
+
+      {sticker === 'mention' ? (
+        <DraggableStoryElement
+          position={stickerPosition}
+          onPositionChange={setStickerPosition}
+          minY={insets.top + 110}
+          maxY={H - Math.max(insets.bottom, 14) - 340}
+        >
+          <View style={[styles.mentionSticker, { backgroundColor: colors.surface }]}>
+            <View style={styles.dragHintRow}>
+              <Ionicons name="move" size={13} color={colors.textSecondary} />
+              <Text style={[styles.dragHint, { color: colors.textSecondary }]}>{t('stories.move_sticker')}</Text>
+            </View>
+            <Text style={[styles.mentionPrefix, { color: colors.primary }]}>@</Text>
+            <TextInput
+              value={mentionHandle}
+              onChangeText={setMentionHandle}
+              placeholder={t('stories.mention_handle')}
+              placeholderTextColor="rgba(17,24,39,0.4)"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={40}
+              style={[styles.mentionInput, { color: colors.text }]}
+            />
+          </View>
+        </DraggableStoryElement>
+      ) : null}
 
       {/* Share footer: audience + toggles + share */}
       <View style={[styles.shareFooter, { paddingBottom: Math.max(insets.bottom, 14) }]}>
@@ -1086,14 +1198,18 @@ function RoundBtn({
   icon,
   onPress,
   active,
+  accessibilityLabel,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   active?: boolean;
+  accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       style={[styles.roundBtn, active && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
       hitSlop={6}
     >
@@ -1280,11 +1396,79 @@ function StickerChip({
   );
 }
 
-function PollOption({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function PollOption({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (v: string) => void;
+}) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.pollOption}>
-      <TextInput value={value} onChangeText={onChange} style={styles.pollOptionInput} maxLength={28} />
+    <View style={[styles.pollOption, { backgroundColor: colors.surfaceMuted }]}>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textSecondary}
+        style={[styles.pollOptionInput, { color: colors.text }]}
+        maxLength={28}
+      />
     </View>
+  );
+}
+
+function DraggableStoryElement({
+  position,
+  onPositionChange,
+  minY,
+  maxY,
+  children,
+}: {
+  position: StoryPosition;
+  onPositionChange: (position: StoryPosition) => void;
+  minY: number;
+  maxY: number;
+  children: React.ReactNode;
+}) {
+  const x = useSharedValue(position.x * W);
+  const y = useSharedValue(position.y * H);
+  const startX = useSharedValue(x.value);
+  const startY = useSharedValue(y.value);
+
+  useEffect(() => {
+    x.value = position.x * W;
+    y.value = position.y * H;
+  }, [position.x, position.y, x, y]);
+
+  const drag = Gesture.Pan()
+    .onBegin(() => {
+      startX.value = x.value;
+      startY.value = y.value;
+    })
+    .onUpdate((event) => {
+      x.value = Math.min(W - 160, Math.max(160, startX.value + event.translationX));
+      y.value = Math.min(Math.max(minY, maxY), Math.max(minY, startY.value + event.translationY));
+    })
+    .onEnd(() => {
+      runOnJS(onPositionChange)({ x: x.value / W, y: y.value / H });
+    });
+
+  const animatedPosition = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: x.value - W / 2 },
+      { translateY: y.value - H / 2 },
+    ],
+  }));
+
+  return (
+    <GestureDetector gesture={drag}>
+      <Animated.View style={[styles.draggableOverlay, animatedPosition]}>
+        {children}
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -1485,6 +1669,7 @@ const styles = StyleSheet.create({
   },
   editChrome: { flex: 1 },
   editScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.18)' },
+  textImageScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.38)' },
   textOrbA: {
     position: 'absolute',
     width: 260,
@@ -1579,6 +1764,41 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   stickerTitle: { ...Typography.h3, color: '#111827', paddingVertical: 0 },
+  draggableOverlay: {
+    position: 'absolute',
+    left: W / 2,
+    top: H / 2,
+    width: Math.min(320, W - 32),
+    marginLeft: -Math.min(160, (W - 32) / 2),
+  },
+  dragHintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  dragHint: { ...Typography.micro, fontWeight: '600' },
+  pollOptionRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  pollOptionAdd: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderStyle: 'dashed',
+    borderRadius: Radii.lg,
+  },
+  pollOptionAddText: { ...Typography.caption, fontWeight: '700' },
+  mentionSticker: {
+    width: '100%',
+    minHeight: 112,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: Radii.xl,
+    gap: Spacing.xs,
+  },
+  mentionPrefix: { ...Typography.h2, fontWeight: '800' },
+  mentionInput: { ...Typography.bodyStrong, minWidth: 170, textAlign: 'center' },
   pollOption: {
     minHeight: 46,
     borderRadius: Radii.lg,

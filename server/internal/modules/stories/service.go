@@ -18,6 +18,7 @@ var (
 	ErrInvalidVis   = errors.New("invalid_visibility")
 	ErrNeedMedia    = errors.New("media_required")
 	ErrEmptyCaption = errors.New("empty_caption")
+	ErrInvalidPoll  = errors.New("invalid_poll_options")
 )
 
 type Service struct {
@@ -94,6 +95,9 @@ func (s *Service) Create(ctx context.Context, author uuid.UUID, req CreateReques
 	// Text-like kinds need a caption (poll/question store options in caption).
 	if (kind == KindText || kind == KindPoll || kind == KindQuestion) && caption == "" {
 		return Story{}, ErrEmptyCaption
+	}
+	if kind == KindPoll && !validatePollCaption(caption) {
+		return Story{}, ErrInvalidPoll
 	}
 	if (kind == KindImage || kind == KindVideo || kind == KindAudio) && strings.TrimSpace(req.MediaURL) == "" {
 		return Story{}, ErrNeedMedia

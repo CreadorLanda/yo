@@ -16,6 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
+  Dimensions,
   FlatList,
   Keyboard,
   Modal,
@@ -59,8 +60,10 @@ import {
 import { upsertChat } from '@/data/chat-store';
 import { encryptForPeerOrFail, ensureKeysPublished } from '@/data/crypto';
 import type { Story, StoryComment } from '@/data/mock';
-import { toggleReaction } from '@/data/story-reactions';
 import { MAX_REACTIONS_PER_ITEM } from '@/data/reactions';
+import { nextVisibleCommentCount, visibleCommentBatch } from '@/data/story-comment-pagination';
+import { parseStoryCaption } from '@/data/story-composition';
+import { toggleReaction } from '@/data/story-reactions';
 import {
   bootstrapStories,
   ensureStory,
@@ -69,30 +72,17 @@ import {
   setStoryReactions,
   useStories,
 } from '@/data/story-store';
+import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
 type ReplyMode = 'comment' | 'private';
 
-/** Poll/question captions may be plain text or JSON `{ q, a?, b? }`. */
-function parseInteractiveCaption(
-  caption: string,
-  kind: string,
-): { q: string; a?: string; b?: string } {
-  const trimmed = (caption || '').trim();
-  if ((kind === 'poll' || kind === 'question') && trimmed.startsWith('{')) {
-    try {
-      const o = JSON.parse(trimmed) as { q?: string; a?: string; b?: string };
-      return { q: o.q || trimmed, a: o.a, b: o.b };
-    } catch {
-      /* fall through */
-    }
-  }
-  return { q: trimmed };
-}
+const { width: STORY_WIDTH, height: STORY_HEIGHT } = Dimensions.get('window');
 
 export default function StoryViewerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const allStories = useStories();
   // Include own stories so "Your frame" opens the real API story.
   const visibleStories = allStories;
@@ -551,12 +541,12 @@ export default function StoryViewerScreen() {
   }
 
   const isTextStory =
-    story.kind === 'text' ||
+    (story.kind === 'text' && !story.coverUri) ||
     story.kind === 'poll' ||
     story.kind === 'question' ||
     !story.coverUri;
   const isAudio = story.kind === 'audio';
-  const interactive = parseInteractiveCaption(story.caption, story.kind);
+  const interactive = story.composition ?? parseStoryCaption(story.kind, story.caption);
   const displayName = story.isAnonymous ? t('stories.anonymous_author') : story.user;
   const commentsEnabled = story.allowComments !== false;
   const totalComments = comments.length + comments.reduce((n, c) => n + (c.replies?.length ?? 0), 0);
@@ -590,6 +580,7 @@ export default function StoryViewerScreen() {
             ) : null}
             <View style={styles.vignetteTop} />
             <View style={styles.vignetteBottom} />
+            {story.kind === 'text' ? <View style={styles.textStoryImageContrast} /> : null}
           </>
         )}
 
@@ -715,24 +706,29 @@ export default function StoryViewerScreen() {
             ) : null}
 
             {story.kind === 'poll' ? (
-              <View style={styles.pollPreview}>
+              <View style={[styles.pollPreview, interactive.position && {
+                transform: [
+                  { translateX: (interactive.position.x - 0.5) * STORY_WIDTH },
+                  { translateY: (interactive.position.y - 0.42) * STORY_HEIGHT },
+                ],
+              }]}>
                 <Text style={styles.pollEyebrow}>{t('stories.poll_mode')}</Text>
-                <Text style={styles.pollQuestion}>{interactive.q || story.caption}</Text>
-                <View style={styles.pollOpt}>
-                  <Text style={styles.pollOptText}>
-                    {interactive.a || t('stories.poll_yes')}
-                  </Text>
-                </View>
-                <View style={styles.pollOpt}>
-                  <Text style={styles.pollOptText}>
-                    {interactive.b || t('stories.poll_no')}
-                  </Text>
-                </View>
+                <Text style={styles.pollQuestion}>{interactive.question || story.caption}</Text>
+                {(interactive.options?.length ? interactive.options : [t('stories.poll_yes'), t('stories.poll_no')]).map((option, index) => (
+                  <View key={`story-poll-option-${index}`} style={styles.pollOpt}>
+                    <Text style={styles.pollOptText}>{option}</Text>
+                  </View>
+                ))}
               </View>
             ) : story.kind === 'question' ? (
-              <View style={styles.pollPreview}>
+              <View style={[styles.pollPreview, interactive.position && {
+                transform: [
+                  { translateX: (interactive.position.x - 0.5) * STORY_WIDTH },
+                  { translateY: (interactive.position.y - 0.42) * STORY_HEIGHT },
+                ],
+              }]}>
                 <Text style={styles.pollEyebrow}>{t('stories.question_mode')}</Text>
-                <Text style={styles.pollQuestion}>{interactive.q || story.caption}</Text>
+                <Text style={styles.pollQuestion}>{interactive.question || story.caption}</Text>
                 <View style={[styles.pollOpt, { backgroundColor: '#EEF2FF' }]}>
                   <Text style={[styles.pollOptText, { color: story.accent }]}>
                     {t('stories.answer_placeholder')}
@@ -743,6 +739,16 @@ export default function StoryViewerScreen() {
               <Text style={[styles.caption, isTextStory && styles.textCaption]}>
                 {story.caption}
               </Text>
+            ) : null}
+            {interactive.mention ? (
+              <View style={[styles.mentionTag, { backgroundColor: colors.surface }, interactive.position && {
+                transform: [
+                  { translateX: (interactive.position.x - 0.5) * STORY_WIDTH },
+                  { translateY: (interactive.position.y - 0.42) * STORY_HEIGHT },
+                ],
+              }]}>
+                <Text style={[styles.mentionTagText, { color: colors.text }]}>@{interactive.mention}</Text>
+              </View>
             ) : null}
           </View>
 
@@ -1062,7 +1068,13 @@ function CommentsSheet({
 }) {
   const [draft, setDraft] = useState('');
   const [anon, setAnon] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(5);
   const canAnon = story.allowAnonymousReplies !== false;
+  const displayedComments = visibleCommentBatch(comments, visibleCount);
+
+  useEffect(() => {
+    if (visible) setVisibleCount(5);
+  }, [visible, story.id]);
 
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -1078,7 +1090,9 @@ function CommentsSheet({
                 <Text style={styles.sheetTitle}>{t('stories.comments')}</Text>
               </View>
               <Text style={styles.sheetCount}>
-                {t('stories.comments_count', { count: comments.length })}
+                {t('stories.comments_count', {
+                  count: comments.reduce((total, comment) => total + 1 + (comment.replies?.length ?? 0), 0),
+                })}
               </Text>
             </View>
             <Pressable onPress={onClose} style={styles.sheetClose} hitSlop={10}>
@@ -1087,7 +1101,7 @@ function CommentsSheet({
           </View>
 
           <FlatList
-            data={comments}
+            data={displayedComments}
             keyExtractor={(item) => item.id}
             style={styles.commentList}
             contentContainerStyle={
@@ -1108,6 +1122,19 @@ function CommentsSheet({
                 onReact={onReact}
               />
             )}
+            ListFooterComponent={
+              displayedComments.length < comments.length ? (
+                <Pressable
+                  onPress={() => setVisibleCount((current) => nextVisibleCommentCount(comments.length, current))}
+                  style={styles.moreComments}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.moreCommentsText}>
+                    {t('stories.view_more_comments', { count: comments.length - displayedComments.length })}
+                  </Text>
+                </Pressable>
+              ) : null
+            }
           />
 
           {story.allowComments !== false ? (
@@ -1211,6 +1238,9 @@ function CommentRow({
   // to one would be orphaned, so it cannot be a reply target until it lands.
   const numericId = /^\d+$/.test(comment.id) ? Number(comment.id) : null;
   const [reactionOpen, setReactionOpen] = useState(false);
+  const [visibleReplyCount, setVisibleReplyCount] = useState(5);
+  const replies = comment.replies ?? [];
+  const displayedReplies = visibleCommentBatch(replies, visibleReplyCount);
 
   /**
    * Long press to delete — the same gesture as a message, and out of the way
@@ -1276,7 +1306,7 @@ function CommentRow({
           onSelect={(emoji) => onReact(numericId ?? 0, emoji)}
           onClose={() => setReactionOpen(false)}
         />
-        {comment.replies?.map((r) => (
+        {displayedReplies.map((r) => (
           <View key={r.id} style={styles.nestedReply}>
             <Image source={{ uri: r.avatarUri }} style={styles.nestedAvatar} contentFit="cover" />
             <Pressable
@@ -1294,6 +1324,17 @@ function CommentRow({
             </Pressable>
           </View>
         ))}
+        {displayedReplies.length < replies.length ? (
+          <Pressable
+            onPress={() => setVisibleReplyCount((current) => nextVisibleCommentCount(replies.length, current))}
+            style={styles.moreReplies}
+            accessibilityRole="button"
+          >
+            <Text style={styles.replyBtnText}>
+              {t('stories.view_replies', { count: replies.length - displayedReplies.length })}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -1329,6 +1370,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11,12,16,0.58)',
   },
   textBackdrop: { ...StyleSheet.absoluteFillObject },
+  textStoryImageContrast: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.34)' },
+  mentionTag: {
+    position: 'absolute',
+    top: '42%',
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radii.pill,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  mentionTagText: { ...Typography.bodyStrong, color: '#111827' },
   textOrbA: {
     position: 'absolute',
     width: 280,
@@ -1634,6 +1686,8 @@ const styles = StyleSheet.create({
   },
   commentList: { maxHeight: 340 },
   commentListContent: { paddingBottom: Spacing.sm, gap: 2 },
+  moreComments: { alignSelf: 'center', padding: Spacing.md },
+  moreCommentsText: { ...Typography.caption, color: 'rgba(255,255,255,0.72)', fontWeight: '700' },
   commentEmptyWrap: { flexGrow: 1, justifyContent: 'center', paddingVertical: Spacing.xxl },
   commentEmptyCard: { alignItems: 'center', gap: Spacing.sm },
   commentEmpty: { ...Typography.body, color: 'rgba(255,255,255,0.45)', textAlign: 'center' },
@@ -1659,6 +1713,7 @@ const styles = StyleSheet.create({
   },
   nestedAvatar: { width: 24, height: 24, borderRadius: 12 },
   replyBtn: { paddingVertical: 4, paddingLeft: 4 },
+  moreReplies: { paddingVertical: 4, paddingLeft: 4 },
   replyBtnText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.6)' },
   replyBanner: {
     flexDirection: 'row',

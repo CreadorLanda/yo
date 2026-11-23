@@ -329,7 +329,7 @@ function RailCard({ story }: { story: Story }) {
       accessibilityLabel={t('stories.open_story', { name: story.user })}
     >
       <Animated.View style={[styles.railCard, anim]}>
-        {story.kind === 'text' ||
+        {(story.kind === 'text' && !story.coverUri) ||
         story.kind === 'poll' ||
         story.kind === 'question' ||
         story.kind === 'audio' ||
@@ -457,7 +457,7 @@ function PortraitCard({ story, tall }: { story: Story; tall?: boolean }) {
           anim,
         ]}
       >
-        {story.kind === 'text' ||
+        {(story.kind === 'text' && !story.coverUri) ||
         story.kind === 'poll' ||
         story.kind === 'question' ||
         story.kind === 'audio' ||
