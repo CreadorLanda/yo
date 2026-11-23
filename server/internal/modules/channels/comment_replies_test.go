@@ -33,6 +33,19 @@ func TestCommentParentValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Comment top: %v", err)
 	}
+	anonymous, err := svc.Comment(ctx, post.ID, owner, CommentRequest{Text: "anonymous", Anonymous: true})
+	if err != nil {
+		t.Fatalf("Comment anonymous: %v", err)
+	}
+	comments, err := svc.ListComments(ctx, post.ID, owner)
+	if err != nil {
+		t.Fatalf("ListComments: %v", err)
+	}
+	for _, comment := range comments {
+		if comment.ID == anonymous.ID && (comment.AuthorID != nil || comment.AuthorName != "") {
+			t.Fatalf("anonymous comment exposed author identity: %+v", comment)
+		}
+	}
 	reply, err := svc.Comment(ctx, post.ID, owner, CommentRequest{Text: "reply", ParentID: &top.ID})
 	if err != nil {
 		t.Fatalf("Comment reply: %v", err)

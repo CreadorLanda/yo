@@ -36,9 +36,9 @@ import {
   type ChannelPostDTO,
 } from '@/data/api/channels';
 import { ForwardPicker } from '@/components/chat/forward-picker';
-import { connectRealtime, sendMessage as apiSendMessage } from '@/data/api/messages';
+import { connectRealtime, createChat, sendMessage as apiSendMessage } from '@/data/api/messages';
 import { displayChatName } from '@/data/chat-identity';
-import { refreshChats, useChats } from '@/data/chat-store';
+import { refreshChats, upsertChat, useChats } from '@/data/chat-store';
 import { getGroup, type GroupMemberDTO } from '@/data/api/groups';
 import {
   E2EEUnavailable,
@@ -127,6 +127,7 @@ export default function ChannelScreen() {
   const [commentDraft, setCommentDraft] = useState('');
   const [commentAnonymous, setCommentAnonymous] = useState(false);
   const [commentReplyTo, setCommentReplyTo] = useState<{ id: string; author: string } | null>(null);
+  const [privateReplyTo, setPrivateReplyTo] = useState<{ userId: string; author: string } | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [commentFocused, setCommentFocused] = useState(false);
   const commentInputRef = useRef<TextInputHandle>(null);
@@ -541,9 +542,26 @@ export default function ChannelScreen() {
     setShowMoreMenu(false);
   };
 
-  const submitComment = () => {
+  const submitComment = async () => {
     const text = commentDraft.trim();
     if (!text || !commentPostId || !channel) return;
+    if (privateReplyTo) {
+      try {
+        const { chat_id, chat } = await createChat(privateReplyTo.userId);
+        upsertChat(chat);
+        await ensureKeysPublished();
+        const payload = await encryptForPeerOrFail(privateReplyTo.userId, text, {
+          peerUsername: chat.peer_username,
+        });
+        await apiSendMessage(chat_id, payload, 'text');
+        setCommentDraft('');
+        setPrivateReplyTo(null);
+        appAlert(t('channel.reply_private'), t('stories.private_reply_sent'));
+      } catch {
+        appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+      }
+      return;
+    }
     const replyTo = commentReplyTo;
     // Nested replies stay local-only for now; top-level posts hit the API.
     if (replyTo) {
@@ -621,7 +639,14 @@ export default function ChannelScreen() {
   };
 
   const openReplyTo = (target: { id: string; author: string }) => {
+    setPrivateReplyTo(null);
     setCommentReplyTo(target);
+    setTimeout(() => commentInputRef.current?.focus(), 80);
+  };
+
+  const openPrivateReplyTo = (target: { userId: string; author: string }) => {
+    setCommentReplyTo(null);
+    setPrivateReplyTo(target);
     setTimeout(() => commentInputRef.current?.focus(), 80);
   };
 
@@ -1262,6 +1287,7 @@ export default function ChannelScreen() {
                       comment={comment}
                       expanded={expandedComments.has(comment.id)}
                       onReply={openReplyTo}
+                      onPrivateReply={openPrivateReplyTo}
                       onReact={toggleCommentReaction}
                       onToggleReplies={toggleReplies}
                     />
@@ -1330,7 +1356,7 @@ export default function ChannelScreen() {
                   </ScrollView>
                 ) : null}
 
-                {commentReplyTo ? (
+                {commentReplyTo || privateReplyTo ? (
                   <View
                     style={[
                       styles.replyingBar,
@@ -1340,11 +1366,23 @@ export default function ChannelScreen() {
                       },
                     ]}
                   >
-                    <Ionicons name="return-down-forward" size={14} color={colors.primary} />
+                    <Ionicons
+                      name={privateReplyTo ? 'lock-closed' : 'return-down-forward'}
+                      size={14}
+                      color={colors.primary}
+                    />
                     <Text style={[styles.replyingText, { color: colors.text }]} numberOfLines={1}>
-                      {t('channel.replying_to', { name: commentReplyTo.author })}
+                      {privateReplyTo
+                        ? `${t('channel.reply_private')} · ${privateReplyTo.author}`
+                        : t('channel.replying_to', { name: commentReplyTo?.author ?? '' })}
                     </Text>
-                    <Pressable onPress={() => setCommentReplyTo(null)} hitSlop={8}>
+                    <Pressable
+                      onPress={() => {
+                        setCommentReplyTo(null);
+                        setPrivateReplyTo(null);
+                      }}
+                      hitSlop={8}
+                    >
                       <Ionicons name="close-circle" size={18} color={colors.textMuted} />
                     </Pressable>
                   </View>
@@ -1896,6 +1934,7 @@ function CommentRow({
   isReply,
   parentId,
   onReply,
+  onPrivateReply,
   onReact,
   onToggleReplies,
 }: {
@@ -1904,6 +1943,7 @@ function CommentRow({
   isReply?: boolean;
   parentId?: string;
   onReply: (target: { id: string; author: string }) => void;
+  onPrivateReply: (target: { userId: string; author: string }) => void;
   onReact: (id: string, emoji: string) => void;
   onToggleReplies?: (id: string) => void;
 }) {
@@ -2005,6 +2045,19 @@ function CommentRow({
               {t('channel.reply')}
             </Text>
           </Pressable>
+          {!isAnon && comment.authorId ? (
+            <Pressable
+              onPress={() => onPrivateReply({ userId: comment.authorId!, author })}
+              hitSlop={8}
+              style={styles.metaAction}
+              accessibilityRole="button"
+              accessibilityLabel={t('channel.reply_private')}
+            >
+              <Text style={[styles.commentReply, { color: colors.primary }]}>
+                {t('channel.reply_private')}
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={handleLike} hitSlop={8} style={styles.metaAction}>
             <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', gap: 3 }, heartStyle]}>
               <Ionicons
@@ -2058,6 +2111,7 @@ function CommentRow({
                     isReply
                     parentId={comment.id}
                     onReply={onReply}
+                    onPrivateReply={onPrivateReply}
                     onReact={onReact}
                   />
                 ))

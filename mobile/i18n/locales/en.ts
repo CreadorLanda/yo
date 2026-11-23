@@ -297,6 +297,7 @@ export default {
     pending_approval: 'Pending approval',
     no_comments: 'No comments yet',
     reply: 'Reply',
+    reply_private: 'Private reply',
     just_now: 'now',
     view_replies: 'View {{count}} replies',
     view_one_reply: 'View 1 reply',
