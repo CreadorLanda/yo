@@ -95,4 +95,3 @@ test('locale strings use double-brace placeholders', async () => {
     expect(bad, `single-brace placeholder in ${locale}`).toEqual([]);
   }
 });
-

@@ -549,6 +549,132 @@ ws.send(JSON.stringify({
 
 ---
 
+### 6. Posts and reels
+
+Permanent posts on a profile. A `post` is a carousel of 1 to 10 photos or
+videos; a `reel` is exactly one video. Media is uploaded first with
+`POST /media/upload`, and the post refers to it by id.
+
+#### POST /posts
+
+```json
+{
+  "kind": "post",
+  "caption": "Sunday",
+  "visibility": "contacts",
+  "media_ids": ["<media id>", "<media id>"]
+}
+```
+
+`kind` is `post` or `reel`. `visibility` is `contacts` (default: people the
+author has an active direct chat with) or `public`. `caption` is at most 2200
+characters. `media_ids` are in slide order and must be image or video objects
+the caller uploaded.
+
+Returns `201` with the post:
+
+```json
+{
+  "id": "…",
+  "author_id": "…",
+  "author_name": "Ana",
+  "author_username": "ana",
+  "kind": "post",
+  "caption": "Sunday",
+  "visibility": "contacts",
+  "media": [
+    { "id": "…", "kind": "image", "url": "/api/media/…/file", "width": 1080, "height": 1350 },
+    { "id": "…", "kind": "video", "url": "/api/media/…/file", "duration_ms": 8200 }
+  ],
+  "is_own": true,
+  "created_at": "2026-11-11T20:00:00Z"
+}
+```
+
+Publishing takes the media off the upload deadline, so it is kept for as long
+as a post shows it. Deleting the last post that shows it releases it again.
+
+| Error | Status | Meaning |
+|-------|--------|---------|
+| `invalid_kind`, `invalid_visibility` | 400 | Unknown value |
+| `media_required`, `too_many_media`, `duplicate_media` | 400 | 1 to 10 distinct ids |
+| `reel_needs_one_video` | 400 | A reel is exactly one video |
+| `unsupported_media_type` | 400 | Not an image or a video |
+| `caption_too_long` | 400 | Over 2200 characters |
+| `media_not_owned` | 403 | An id the caller did not upload, or already expired |
+
+#### GET /posts?author=&kind=&before=&limit=
+
+One page of one author's grid, newest first. `author` is a user id or `me`
+(the default). `kind` narrows to `post` or `reel`. `before` is the
+`created_at` of the last post already shown. `limit` defaults to 30, at most
+60. Posts the caller may not see are left out; a block in either direction
+hides all of them.
+
+#### GET /posts/:id
+
+One post. `404 post_not_found` when it does not exist or the caller may not
+see it.
+
+#### DELETE /posts/:id
+
+Author only; `204`. Anyone else gets `404`.
+
+---
+
+### 7. Bots
+
+How bots fit end-to-end encryption is decided in [ADR 0002](../decisions/0002-bots-and-e2ee.md): a bot is a participant with its own device keys, and the server never decrypts for it. Everything a bot sends is a `soc1.`/`soc1g.` envelope, exactly like a person's client; plaintext is refused with `400`.
+
+#### Managing bots (user session)
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/bots` | `{username, display_name, description?}`. `username` is 4–32 of `a-z0-9_` and must end in `bot`. Returns `201 {bot, token}` — `token.token` is the secret, shown this once. Max 20 bots per owner. |
+| `GET` | `/bots` | Your bots. |
+| `GET` | `/bots/:idOrUsername` | A bot's public profile. |
+| `PATCH` | `/bots/:id` | Owner only: `display_name`, `description`, `avatar_url`, `privacy_mode`. Someone else's bot is `404`. |
+| `DELETE` | `/bots/:id` | Owner only. Removes the bot's account, memberships and keys. |
+| `GET` | `/bots/:id/tokens` | Live tokens (prefix and last use, never the secret). |
+| `POST` | `/bots/:id/tokens` | Rotate: a new secret, every previous one revoked. `201`. |
+| `DELETE` | `/bots/:id/tokens` | Revoke all; the bot stops until a new token is rotated in. |
+| `POST` | `/bots/:id/dm` | Open your direct chat with the bot (`201` new, `200` existing) → `{chat_id}`. Active at once, no request. |
+
+#### Bots in a chat (user session)
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/chats/:id/bots` | Any member: installed bots and their scopes. |
+| `POST` | `/chats/:id/bots` | Group admin only: `{bot_id | username, scopes?}`. Adds the bot as a member and posts a `bot:added:<actor>:<bot>` system message. |
+| `PATCH` | `/chats/:id/bots/:botId` | Group admin only: `{scopes}`. Turning `messages.read.all` on or off posts `bot:read_all:<actor>:<bot>:on|off`. |
+| `DELETE` | `/chats/:id/bots/:botId` | Group admin only. Posts `bot:removed:<actor>:<bot>`. |
+| `POST` | `/chats/:id/bots/:botId/updates` | Any member: `{kind: command\|mention\|reply\|interaction, content, message_id?}`. `content` is a pairwise `soc1.` envelope encrypted to the bot. The bot must be installed with `messages.read.commands`; a full-read bot is not sent copies (`403`). |
+
+**Privacy mode, enforced by the server.** Group sender keys addressed to a bot without `messages.read.all` are dropped on upload, so such a bot can never open ordinary group messages. Granting full read (on install or later), revoking it, or removing a full-read bot advances the group's key epoch: the bot gets keys only from the next epoch, never history, and stops being able to read after it leaves.
+
+Scopes: `messages.read.commands` (privacy mode — commands, mentions, replies and interactions only), `messages.read.all` (everything, admin-granted and announced), `messages.send`, `members.read`, `members.manage`, `events.manage`. With none given, a bot gets `messages.read.commands`, `messages.send` and `members.read`.
+
+#### Bot API (`/api/bot/v1`, bot token)
+
+Authenticate with `Authorization: Bot zsb_…`. Routes under `/chats/:id` answer `404 chat_not_found` when the bot is not installed there and `403 scope_missing` when the installation lacks the scope.
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/me` | — |
+| `GET` | `/updates?offset=&limit=` | — Envelopes addressed to the bot, oldest first (max 100). Asking with `offset` confirms and deletes everything before it. Uncollected updates expire after 7 days. |
+| `PUT` | `/keys`, `GET /keys/count` | — (publish and top up the bot device's keys) |
+| `GET` | `/users/by-username/:username/keys` and `/identity` | — |
+| `POST` | `/media/upload` | — |
+| `GET` | `/chats/:id/members` | `members.read` |
+| `POST` | `/chats/:id/messages` | `messages.send` |
+| `PATCH`, `DELETE` | `/chats/:id/messages/:mid` | `messages.send` (own messages only) |
+| `POST`, `DELETE` | `/chats/:id/messages/:mid/reactions` | `messages.send` |
+| `GET` | `/chats/:id/messages` | `messages.read.all` |
+| `POST` | `/groups/:id/sender-keys` | `messages.send` (distribute the bot's own key to send into the group) |
+| `GET` | `/groups/:id/sender-keys` | installed (only keys addressed to the bot — none unless it has full read) |
+
+Limits: 600 requests per minute per bot, 30 writes per minute per bot per chat. Over a limit: `429 {error: "rate_limited", retry_after}` and a `Retry-After` header. Bots cannot open chats with people, join calls, or be added to anonymous conversations.
+
 ## Error Handling
 
 ### Error Response

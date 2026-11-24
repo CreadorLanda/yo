@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ❌️ Added (Adicionado)
 
+#### Bots
+- Plataforma de bots no servidor (#321): contas de bot com dono, token secreto mostrado uma vez (guardado só como hash, prefixo `zsb_`), rotação e revogação, e a Bot API em `/api/bot/v1`. Um bot envia mensagens cifradas como qualquer cliente; texto simples é recusado
+- Modo privado dos bots garantido pelo servidor e pela app (#322): um bot sem leitura total nunca recebe a chave do grupo; recebe só comandos, menções e respostas que lhe são dirigidos, num envelope cifrado só para ele, que vai buscar a `GET /api/bot/v1/updates`. Dar ou retirar a leitura total, ou remover um bot com ela, roda a chave do grupo
+- Admins de grupo adicionam, re-configuram e removem bots, com permissões por conversa; adicionar, remover e ligar a leitura total ficam anunciados no grupo. Por omissão os bots ficam em modo privado (ADR 0002). Limites de pedidos por bot e por conversa
+
+#### Câmara e posts
+- Uma só câmara para tudo, com a disposição do Instagram: barra de modos em baixo (Post, Story, Reel, Direto), obturador grande, galeria à esquerda e troca de lente à direita. Tocar tira foto e manter grava vídeo; o Reel e as ferramentas de vídeo gravam ao toque, com o tempo a encher uma barra no topo
+- Posts no perfil: um carrossel de até 10 fotos e vídeos, ou um reel, com legenda e público (contactos ou toda a gente). Publicam em segundo plano, aparecem numa grelha no perfil e abrem num visualizador próprio, onde também se apagam
+- O Direto passou a ser um modo da câmara: o título e o público escolhem-se por cima da lente, sem ecrã à parte. As ferramentas da story (texto, boomerang, mãos-livres, voz) ficam numa coluna à esquerda
+- Servidor: novo módulo `posts` (`POST/GET/DELETE /posts`), com a media dos posts protegida da limpeza automática enquanto algum post a mostrar
+
+#### Localização
+- Partilhar a localização a sério numa conversa ou grupo: a posição atual, ou em direto durante 15 minutos, 1 hora ou até ser desligada. A folha mostra um mapa da tua posição antes de enviares, a bolha mostra o mapa, e tocar abre a aplicação de mapas
+- A localização em direto atualiza a mesma mensagem, para na hora marcada ou quando quiseres, a partir da própria bolha, e continua com a app em segundo plano através de uma notificação. A posição segue cifrada de ponta a ponta e o servidor nunca vê coordenadas
+- O mapa vem do OpenStreetMap, que fica a saber que zona foi mostrada mas não quem a vê. A lista de locais próximos, que era inventada, foi retirada
+- Uma edição recebida passa a ser decifrada ao chegar, em vez de aparecer como um cadeado até reabrir a conversa
+
 #### Credenciais
 - Registo aceita email opcional com verificação por código; definições permitem alterar/remover email e alterar telefone com reautenticação, OTP de destino, conflitos genéricos, limite de tentativas e revogação de sessões após troca do telefone
 - Os desafios de email e telefone guardam apenas hashes dos códigos, expiram, são de uso único e enviam notificações de segurança após alterações concluídas
@@ -26,15 +43,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Stories
 - Reacções múltiplas: uma pessoa pode deixar vários emojis no mesmo story. Cada story passa a trazer as contagens por emoji (`reactions`) e as escolhas de quem lê (`my_reactions`), no feed e no story individual
 - `GET /api/stories/reactions` publica o conjunto de emojis aceites, para o cliente não guardar a sua própria cópia e ficar a divergir da lista
+- Stories aceitam votações com duas ou três opções, stickers de pergunta e menção que se podem posicionar, fundos de imagem para textos e comentários que expandem cinco de cada vez
+
+#### Denúncias
+- Denunciar uma conversa tem agora o seu próprio ecrã: motivo, nota opcional e, se quiseres, as mensagens que servem de prova. Nada é enviado sem as escolheres e sem um acordo explícito, porque o servidor não lê as conversas; as provas ficam à parte, só a moderação as vê e são apagadas ao fim de 90 dias
+- Uma denúncia numa conversa direta inicia 24 horas sem contacto nos dois sentidos (mensagens, novas conversas e chamadas). Desbloquear não o levanta e uma denúncia repetida não o prolonga
+- As duas pessoas recebem o mesmo aviso neutro, "Conversa em pausa" com o tempo que falta, sem dizer quem denunciou nem porquê. A caixa de texto volta sozinha quando o período acaba
 
 #### Reacções
 - Catálogo Unicode pesquisável para mensagens, stories, posts e comentários, com tons de pele e sequências actuais
 - Limite uniforme de duas reacções por pessoa e item, aplicado no servidor e no cliente; formatos antigos de uma reacção continuam válidos
 - Reacções persistentes adicionadas a comentários de stories e canais
+
+#### Canais
+- Respostas públicas a comentários ficam guardadas no servidor; respostas privadas a comentários identificados seguem por conversa cifrada e não aparecem no thread público
 #### Privacidade das conversas
 - Controlos de privacidade avançada por conversa: bloquear reencaminhamento, proteger capturas de ecrã quando a plataforma suporta, confirmar abertura de links, restringir mensagens/chamadas a administradores em grupos e limitar tipos de mensagem. As regras são persistidas e aplicadas no servidor; a proteção de captura é explicitamente best-effort no Android e não é prometida no iOS/web.
 #### Privacidade
 - O Modo Ghost passa a ser uma sessão controlada pelo servidor: dura duas horas, pode ser ativado uma vez por dia UTC e expira de forma consistente em todos os dispositivos.
+- A escolha de descoberta por contactos feita no registo é guardada, pode ser alterada nas Definições e é aplicada à pesquisa de pessoas.
+- O bloqueio da app pode usar o código do dispositivo através do pedido de autenticação do sistema; se o pedido for cancelado ou não estiver disponível, o código interno continua no ecrã como alternativa.
+- Conversas trancadas podem ser encontradas pelo nome ou nome de utilizador sem mostrar prévias; abrir o histórico, notificações e respostas rápidas exige desbloqueio no dispositivo.
 
 #### Temas
 - Novo tema oficial **ZwoSocial Liquid**: fundo de cor líquida animado na GPU (Skia) por trás do ecrã inicial e das conversas, cabeçalho transparente com ações numa cápsula de vidro, barra inferior de vidro flutuante cujo indicador estica ao passar de um separador para outro, e bolhas translúcidas. Claro e escuro. Pára quando o ecrã fica tapado e respeita o "reduzir movimento"
@@ -51,7 +80,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✏️ Changed (Alterado)
 
+#### Conversas
+- Eventos de entrada, saída e remoção em grupos mostram os nomes corretos e atualizam a conversa em tempo real; o aviso de membros bloqueados só aparece quando há alguém bloqueado
+- O cabeçalho da conversa, o de pesquisa e o de seleção deixam de ficar por baixo da barra de estado, e ficam à mesma altura do título das outras páginas
+- Conversas e grupos sem foto passam a mostrar uma cara gerada em vez de um círculo vazio, na lista, no cabeçalho, no Chat info, nos membros, nos arquivados, no reencaminhar e nos bloqueados. A cara gerada não aparecia no Android
+- A lista de conversas e as mensagens abrem de imediato a partir do telemóvel, mesmo sem ligação, e a rede só acrescenta o que mudou. Abrir uma conversa deixa de voltar a decifrar e a pintar tudo: só as mensagens novas ou editadas são decifradas
+- As mensagens recebidas ficam guardadas assim que chegam, com reações e estrelas, e o que foi apagado ou expirou enquanto a conversa estava fechada já não volta a aparecer
+- Uma mensagem enviada sem ligação mantém-se visível ao reabrir a conversa e não desaparece quando a rede responde
+- A conversa abre já com as mensagens e diretamente na mais recente, sem ecrã vazio nem scroll
+- O microfone só é pedido quando se vai gravar, e não ao abrir uma conversa. O primeiro toque pede a permissão e a gravação começa no toque seguinte
+
 #### Chamadas
+- Voltar atrás ou sair da app já não termina a chamada: ela continua em segundo plano e uma barra verde no topo, acima do nome e da foto da conversa, mostra a pessoa e o tempo. Um toque volta à chamada e o botão vermelho termina-a. O ecrã da chamada ganhou um botão para minimizar
+- Numa videochamada a câmara desliga-se ao sair do ecrã ou da app e volta ao regressar
+- Novo ecrã de chamada de grupo ao estilo do Discord: um cartão por pessoa com vídeo ou avatar colorido, anel verde em quem está a falar, microfone desligado à vista e toque num cartão para o pôr em grande. Uma chamada a dois passa a este ecrã quando entra uma terceira pessoa
+- Os grupos têm botão de chamada no cabeçalho
+- A linha da chamada na conversa mostra a hora e a duração certas assim que a chamada termina
 - Novo ecrã de chamada de vídeo no estilo do WhatsApp: a outra pessoa em ecrã inteiro, a tua câmara numa janela pequena que se arrasta para qualquer canto e troca com um toque, e um painel de controlos (altifalante, câmara, microfone, virar câmara e desligar) que desaparece ao fim de uns segundos e volta com um toque. O nome e o estado ficam no topo, com a linha de cifragem que mostra a impressão digital ao tocar. O aviso de chamada não cifrada mantém-se. Também no browser
 
 #### Marca

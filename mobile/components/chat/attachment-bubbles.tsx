@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
@@ -8,7 +9,10 @@ import { STICKER_BUBBLE_SIZE } from '@/data/message-map';
 import type { MessageAttachment } from '@/data/mock';
 import * as Sharing from 'expo-sharing';
 
+import { LocationMap } from '@/components/chat/location-map';
 import { CachedImage } from '@/components/ui/cached-image';
+import { useLiveShares } from '@/data/live-location';
+import { isValidPosition, liveState, mapsUrl, minutesAgo, minutesLeft } from '@/data/location-share';
 import { ensureLocal, mediaIdFromURL, useCacheState } from '@/data/media-cache';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -32,9 +36,15 @@ export function AttachmentBubble({
   onVote,
   onPlay,
   onLongPress,
+  messageId,
+  onStopLive,
 }: {
   attachment: MessageAttachment;
   mine: boolean;
+  /** The message this body belongs to, so a live share can tell if it is the running one. */
+  messageId?: string;
+  /** Stops the live share this person is running in this chat. */
+  onStopLive?: () => void;
   onVote?: (optionId: string) => void;
   /** Game invite — open the game room. */
   onPlay?: () => void;
@@ -61,33 +71,15 @@ export function AttachmentBubble({
   }
 
   if (attachment.kind === 'location') {
-    const isLive = !!attachment.live;
     return (
-      <View style={styles.card}>
-        <View style={[styles.map, { backgroundColor: mine ? 'rgba(255,255,255,0.14)' : colors.surfaceMuted }]}>
-          <View style={[styles.road, styles.roadA, { backgroundColor: line }]} />
-          <View style={[styles.road, styles.roadB, { backgroundColor: line }]} />
-          <View style={[styles.block, styles.blockA, { backgroundColor: line }]} />
-          <View style={[styles.block, styles.blockB, { backgroundColor: line }]} />
-          <View style={styles.pinWrap}>
-            <Ionicons name="location" size={34} color="#EF4444" />
-          </View>
-          {isLive ? (
-            <View style={styles.liveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveBadgeText}>AO VIVO</Text>
-            </View>
-          ) : null}
-        </View>
-        <View style={styles.locText}>
-          <Text style={[styles.locPlace, { color: tint }]} numberOfLines={1}>
-            {attachment.place}
-          </Text>
-          <Text style={[styles.locAddress, { color: subtle }]} numberOfLines={2}>
-            {attachment.address}
-          </Text>
-        </View>
-      </View>
+      <LocationCard
+        attachment={attachment}
+        messageId={messageId}
+        tint={tint}
+        subtle={subtle}
+        onLongPress={onLongPress}
+        onStopLive={onStopLive}
+      />
     );
   }
 
@@ -296,44 +288,30 @@ const styles = StyleSheet.create({
   docMeta: { ...Typography.micro },
 
   // Location
-  map: {
-    height: 116,
-    borderRadius: Radii.md,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  road: { position: 'absolute', borderRadius: 2 },
-  roadA: { width: '160%', height: 9, transform: [{ rotate: '-24deg' }], top: 34 },
-  roadB: { width: 9, height: '160%', left: '62%', transform: [{ rotate: '-24deg' }] },
-  block: { position: 'absolute', width: 30, height: 22, borderRadius: 4, opacity: 0.7 },
-  blockA: { top: 16, left: 22 },
-  blockB: { bottom: 18, right: 30 },
-  pinWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  locText: { gap: 2, paddingHorizontal: 2 },
+  locText: { gap: 2, paddingHorizontal: 2, paddingTop: Spacing.xs },
   locPlace: { ...Typography.label },
   locAddress: { ...Typography.micro, lineHeight: 15 },
   liveBadge: {
     position: 'absolute',
     top: 8,
-    right: 8,
+    left: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#EF4444',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: Radii.pill,
   },
-  liveDot: { width: 6, height: 6, borderRadius: Radii.pill, backgroundColor: '#FFFFFF' },
+  liveDot: { width: 7, height: 7, borderRadius: Radii.pill, backgroundColor: '#FFFFFF' },
   liveBadgeText: { ...Typography.micro, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.5 },
+  stopButton: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radii.pill,
+  },
+  stopText: { ...Typography.micro, fontWeight: '700' },
 
   // Sticker — sits inside the bubble with transparent background; the bubble
   // wrapping is invisible because we strip its padding/bg in Bubble itself.
@@ -520,4 +498,107 @@ function DocumentRow({
       )}
     </Pressable>
   );
+}
+
+/**
+ * A place in a chat: a map, where it is, and for a live share how long it runs.
+ *
+ * Tapping opens the platform's own map app, so directions and street view are
+ * one tap away and none of that is rebuilt here. A live share the person is
+ * running themselves carries the way to stop it, because the button is wanted
+ * exactly where the share is.
+ */
+function LocationCard({
+  attachment,
+  messageId,
+  tint,
+  subtle,
+  onLongPress,
+  onStopLive,
+}: {
+  attachment: Extract<MessageAttachment, { kind: 'location' }>;
+  messageId?: string;
+  tint: string;
+  subtle: string;
+  onLongPress?: () => void;
+  onStopLive?: () => void;
+}) {
+  const { colors } = useTheme();
+  const now = useMinuteClock();
+  const shares = useLiveShares();
+
+  const point = isValidPosition(attachment) ? { lat: attachment.lat, lng: attachment.lng } : null;
+  const state = liveState(attachment, now);
+  const running = !!messageId && Object.values(shares).some((s) => String(s.messageId) === messageId);
+
+  const status =
+    state === 'ended'
+      ? t('location.live_ended')
+      : state === 'live' || state === 'stale'
+        ? state === 'stale'
+          ? t('location.live_updated', { minutes: Math.max(1, minutesAgo(attachment.updatedAt, now)) })
+          : attachment.expiresAt
+            ? t('location.live_left', { minutes: minutesLeft(attachment.expiresAt, now) ?? 0 })
+            : t('location.live_until_off')
+        : null;
+
+  const open = () => {
+    if (!point) return;
+    void Linking.openURL(mapsUrl(point, attachment.place, Platform.OS)).catch(() => {});
+  };
+
+  return (
+    <Pressable
+      onPress={open}
+      onLongPress={onLongPress}
+      disabled={!point}
+      accessibilityRole="button"
+      accessibilityLabel={`${attachment.place}. ${attachment.address}. ${t('location.open_in_maps')}`}
+      style={styles.card}
+    >
+      {point ? (
+        <LocationMap point={point} height={150}>
+          {state === 'live' || state === 'stale' ? (
+            <View style={[styles.liveBadge, { backgroundColor: state === 'live' ? colors.danger : colors.textMuted }]}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveBadgeText}>{t('location.live_badge')}</Text>
+            </View>
+          ) : null}
+        </LocationMap>
+      ) : null}
+      <View style={styles.locText}>
+        <Text style={[styles.locPlace, { color: tint }]} numberOfLines={1}>
+          {attachment.place}
+        </Text>
+        <Text style={[styles.locAddress, { color: subtle }]} numberOfLines={2}>
+          {attachment.address}
+        </Text>
+        {status ? (
+          <Text style={[styles.locAddress, { color: subtle }]} numberOfLines={1}>
+            {status}
+          </Text>
+        ) : null}
+        {running && state !== 'ended' && onStopLive ? (
+          <Pressable
+            onPress={onStopLive}
+            hitSlop={8}
+            accessibilityRole="button"
+            style={[styles.stopButton, { backgroundColor: colors.danger }]}
+          >
+            <Text style={[styles.stopText, { color: colors.onPrimary }]}>{t('location.stop')}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+/** Re-renders once a minute, which is as fine as a countdown in minutes needs. */
+function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(tick);
+  }, []);
+  return now;
 }

@@ -126,6 +126,7 @@ func writeErr(ctx *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidKind), errors.Is(err, ErrInvalidVis),
 		errors.Is(err, ErrNeedMedia), errors.Is(err, ErrEmptyCaption),
 		errors.Is(err, ErrEmptyBody), errors.Is(err, ErrOwnStory),
+		errors.Is(err, ErrInvalidPoll),
 		errors.Is(err, ErrInvalidEmoji), errors.Is(err, ErrTooManyReactions),
 		errors.Is(err, ErrCommentsDisabled), errors.Is(err, ErrAnonNotAllowed):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

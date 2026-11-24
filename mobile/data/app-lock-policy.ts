@@ -16,6 +16,21 @@ export const LOCK_TIMEOUTS_MS = [0, 60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000
 
 export type LockTimeoutMs = (typeof LOCK_TIMEOUTS_MS)[number];
 
+export type DeviceAuthenticationPrefs = {
+  biometrics: boolean;
+  devicePasscode: boolean;
+};
+
+/** The OS prompt is available when either opted-in system method is enabled. */
+export function canUseDeviceAuthentication(prefs: DeviceAuthenticationPrefs): boolean {
+  return prefs.biometrics || prefs.devicePasscode;
+}
+
+/** Keep the device PIN as an OS fallback only when the person enabled it. */
+export function shouldDisableDeviceFallback(prefs: DeviceAuthenticationPrefs): boolean {
+  return !prefs.devicePasscode;
+}
+
 /**
  * A minute. Long enough that switching to the camera roll and back does not
  * ask for the code, short enough that a phone left on a desk locks before

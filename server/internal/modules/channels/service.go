@@ -27,6 +27,7 @@ var (
 	ErrCommentsOff       = errors.New("comments_disabled")
 	ErrReactionsOff      = errors.New("reactions_disabled")
 	ErrInvalidGame       = errors.New("invalid_game_payload")
+	ErrInvalidParent     = errors.New("invalid_parent_comment")
 	ErrImmutableGame     = errors.New("game_post_immutable")
 	ErrInvalidEmoji      = platformreactions.ErrInvalidEmoji
 	ErrTooManyReactions  = platformreactions.ErrTooMany
@@ -480,11 +481,26 @@ func (s *Service) Comment(ctx context.Context, postID, user uuid.UUID, req Comme
 		author = &user
 		req.Anonymous = false
 	}
-	id, err := s.repo.AddComment(ctx, postID, author, text, req.Anonymous)
+	if req.ParentID != nil {
+		parentPostID, parentParentID, err := s.repo.GetComment(ctx, *req.ParentID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return Comment{}, ErrInvalidParent
+			}
+			return Comment{}, err
+		}
+		if parentPostID != postID {
+			return Comment{}, ErrInvalidParent
+		}
+		if parentParentID != nil {
+			return Comment{}, ErrInvalidParent
+		}
+	}
+	id, err := s.repo.AddComment(ctx, postID, author, text, req.Anonymous, req.ParentID)
 	if err != nil {
 		return Comment{}, err
 	}
-	return Comment{ID: id, PostID: postID, AuthorID: author, Text: text, Anonymous: req.Anonymous}, nil
+	return Comment{ID: id, PostID: postID, ParentID: req.ParentID, AuthorID: author, Text: text, Anonymous: req.Anonymous}, nil
 }
 
 func (s *Service) ListComments(ctx context.Context, postID, user uuid.UUID) ([]Comment, error) {

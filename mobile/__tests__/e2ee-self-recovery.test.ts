@@ -3,6 +3,7 @@ import nacl from 'tweetnacl';
 
 const userId = '00000000-0000-4000-8000-000000000001';
 const secureStore = new Map<string, string>();
+secureStore.set('auth.access', 'access-token-for-test');
 const encryptedSecrets = new Map<string, string>();
 let randomCounter = 0;
 
@@ -39,36 +40,8 @@ mock.module('@/data/api/keys', () => ({
   myKeyCount: async () => ({ one_time_remaining: 40 }),
   uploadKeys: async () => ({ one_time_remaining: 40 }),
 }));
-mock.module('@/data/api/client', () => ({
-  ApiError: class ApiError extends Error {},
-  getBaseUrl: () => process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080',
-  api: {
-    upload: async (path: string, form: FormData) => {
-      const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
-      let access = 'expired-access-token';
-      let response = await fetch(`${base}${path}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${access}` },
-        body: form,
-      });
-      if (response.status === 401) {
-        const refresh = await fetch(`${base}/api/auth/refresh`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ refresh_token: 'refresh-token' }),
-        });
-        const tokens = await refresh.json() as { tokens: { access_token: string } };
-        access = tokens.tokens.access_token;
-        response = await fetch(`${base}${path}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${access}` },
-          body: form,
-        });
-      }
-      return await response.json();
-    },
-  },
-}));
+const realClient = require('../data/api/client');
+mock.module('@/data/api/client', () => ({ ...realClient }));
 encryptedSecrets.set(
   `e2ee.device_keys.v1.${userId}`,
   JSON.stringify({

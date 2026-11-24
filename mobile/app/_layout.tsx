@@ -6,7 +6,10 @@ import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { CallHost } from '@/components/call/call-host';
+import { OngoingCallBar } from '@/components/call/ongoing-call-bar';
 import { AppToast } from '@/components/ui/app-toast';
 import { DialogHost } from '@/components/ui/dialog-host';
 import { IncomingCallHost } from '@/components/ui/incoming-call';
@@ -23,6 +26,7 @@ import {
 import { bootstrapAppLock, noteBackgrounded, noteForegrounded } from '@/data/app-lock';
 import { bootstrapAuth } from '@/data/auth-store';
 import { ensureKeysPublished } from '@/data/crypto';
+import { resumeLiveShares } from '@/data/live-location';
 import { ensureOutboxRunning } from '@/data/outbox';
 import { registerPushWithServer } from '@/data/push';
 import { bootstrapThemes } from '@/data/theme-store';
@@ -77,6 +81,8 @@ export default function RootLayout() {
           // and again on every foreground — not just on reopening the one
           // chat that queued it.
           ensureOutboxRunning();
+          // A share that was running when the app was closed carries on, if it still may.
+          void resumeLiveShares();
         } else {
           // Send signed-out users to onboarding explicitly rather than
           // relying on the anchor to resolve "/". A standalone build opens
@@ -135,6 +141,10 @@ export default function RootLayout() {
         {/* Opaque app-coloured backstop behind every native screen — if a
             transition ever exposes a gap, this shows, never the white window. */}
         <View style={{ flex: 1, backgroundColor: palette.background }}>
+          <OngoingCallBar />
+          {/* Its own provider so the insets are measured from below the bar:
+              screens would otherwise add the status bar a second time. */}
+          <SafeAreaProvider style={{ flex: 1 }}>
           <Stack
             screenOptions={{
               contentStyle: { backgroundColor: palette.background },
@@ -148,6 +158,10 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="chat-info/[id]" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="report/[id]"
+              options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }}
+            />
             <Stack.Screen name="channel/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="channel-info/[id]" options={{ headerShown: false }} />
             <Stack.Screen
@@ -184,11 +198,18 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
-              name="story/create"
+              name="camera"
               options={{
                 headerShown: false,
                 presentation: 'fullScreenModal',
                 animation: 'slide_from_bottom',
+                contentStyle: { backgroundColor: '#050609' },
+              }}
+            />
+            <Stack.Screen
+              name="post/[id]"
+              options={{
+                headerShown: false,
                 contentStyle: { backgroundColor: '#050609' },
               }}
             />
@@ -220,6 +241,8 @@ export default function RootLayout() {
             />
             <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: false }} />
           </Stack>
+          </SafeAreaProvider>
+          <CallHost />
           {/*
             Covers the app until boot resolves, and says so while it does.
             `booted` starts the exit; `splashGone` removes the cover once the

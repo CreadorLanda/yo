@@ -111,6 +111,43 @@ export const Colors = {
   },
 } as const;
 
+/**
+ * Calls, which are dark whatever the app's theme is: a picture of someone's face
+ * should not sit in a white frame. Tile hues are muted so white text and a green
+ * ring both read on them.
+ */
+export const CallColors = {
+  stage: '#0E0F13',
+  tile: '#1E1F26',
+  onStage: Palette.neutral[0],
+  onStageMuted: 'rgba(255,255,255,0.65)',
+  scrim: 'rgba(0,0,0,0.55)',
+  speaking: Palette.semantic.success,
+  muted: '#FF8A8A',
+  tileHues: ['#3B3470', '#2F4A5E', '#5A3A52', '#2F5548', '#5B4A2E', '#3A3F63'],
+} as const;
+
+/**
+ * The camera and what it produces, which are dark whatever the app's theme is:
+ * chrome sits on top of a live picture, so it cannot follow a light surface.
+ * Everything over the viewfinder is white at a few fixed strengths; colour is
+ * kept for the two states that mean "this is being captured".
+ */
+export const CameraColors = {
+  stage: '#050609',
+  surface: '#12141A',
+  onStage: Palette.neutral[0],
+  onStageMuted: 'rgba(255,255,255,0.64)',
+  onStageFaint: 'rgba(255,255,255,0.4)',
+  control: 'rgba(0,0,0,0.42)',
+  controlActive: 'rgba(255,255,255,0.26)',
+  hairline: 'rgba(255,255,255,0.16)',
+  scrim: 'rgba(0,0,0,0.55)',
+  mask: 'rgba(5,6,9,0.62)',
+  recording: Palette.semantic.danger,
+  live: '#FE2C55',
+} as const;
+
 export const Spacing = {
   xxs: 2,
   xs: 4,

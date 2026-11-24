@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -16,6 +15,7 @@ import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { displayChatName } from '@/data/chat-identity';
 import { useChats } from '@/data/chat-store';
+import { Avatar } from '@/components/ui/avatar';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -153,11 +153,7 @@ export function ForwardPicker({
                     pressed && { backgroundColor: colors.surfaceMuted },
                   ]}
                 >
-                  <Image
-                    source={{ uri: c.avatarUri }}
-                    style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}
-                    contentFit="cover"
-                  />
+                  <Avatar uri={c.avatarUri} id={c.id} username={c.name} size={44} />
                   <View style={styles.text}>
                     <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
                       {c.name}

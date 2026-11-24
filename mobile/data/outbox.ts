@@ -2,6 +2,7 @@ import { AppState } from 'react-native';
 
 import { sendMessage as apiSendMessage, type MessageDTO } from '@/data/api/messages';
 import { getGroup } from '@/data/api/groups';
+import { deliverToBots } from '@/data/bot-delivery';
 import { ApiError } from '@/data/api/client';
 import { getCachedChat } from '@/data/chat-store';
 import {
@@ -20,6 +21,7 @@ import {
   markSendSucceeded,
   recordSendAttemptFailed,
   resetFailedSend,
+  senderOfServerMessage,
   type PendingSend,
 } from '@/data/db/messages';
 import { hasExhaustedRetries } from '@/data/outbox-policy';
@@ -109,7 +111,7 @@ export function queueTextMessage(input: {
 /** Resolve a chat's identity from the in-memory chat list — no fetch, so a
  * cold drain while offline fails fast instead of stalling on a request that
  * cannot succeed anyway. */
-async function encryptForChat(chatId: string, text: string): Promise<string> {
+export async function encryptForChat(chatId: string, text: string): Promise<string> {
   const chat = getCachedChat(chatId);
   if (!chat) throw new E2EEUnavailable('peer_unknown');
 
@@ -149,6 +151,21 @@ async function attemptSend(next: PendingSend): Promise<OutboxEvent> {
       const replyTo = next.replyToId != null ? Number(next.replyToId) : undefined;
       const dto = await apiSendMessage(next.chatId, payload, 'text', replyTo);
       await markSendSucceeded(next.id, dto);
+      if (getCachedChat(next.chatId)?.type === 'group') {
+        // Bots in privacy mode only see what is addressed to them (#322).
+        // After the send, and not awaited: a bot must never hold up or fail
+        // the person's message.
+        void (async () => {
+          const replyToSenderId = replyTo != null ? await senderOfServerMessage(replyTo) : null;
+          await deliverToBots({
+            chatId: next.chatId,
+            text: next.text,
+            messageId: Number(dto.id),
+            replyToId: replyTo,
+            replyToSenderId,
+          });
+        })();
+      }
       return { messageId: next.id, outcome: 'sent', dto };
     } catch (err) {
       const staleEpoch = getCachedChat(next.chatId)?.type === 'group' &&

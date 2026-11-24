@@ -1,8 +1,11 @@
+import { endCall } from './active-call';
+import { stopAllLiveShares } from './live-location';
 import { resetChatPrefsCache } from './chat-prefs';
 import { resetChatStore } from './chat-store';
 import { resetIncomingCall } from './incoming-call';
 import { resetBlocks } from './block-store';
 import { resetLives } from './live-store';
+import { resetNoContact } from './no-contact';
 import { unregisterPushWithServer } from './push';
 import { resetDialogs } from './dialog-store';
 import { resetAppLock } from './app-lock';
@@ -13,7 +16,9 @@ import { resetFilterStore } from './filter-store';
 import { resetGroupStore } from './group-store';
 import { clearMediaCache } from './media-cache';
 import { resetStickerStore } from './sticker-store';
+import { resetPostStore } from './post-store';
 import { resetStoryStore } from './story-store';
+import { resetThreads } from './thread-cache';
 
 /**
  * Everything that has to go when a session ends.
@@ -36,11 +41,16 @@ export async function resetAllStores(): Promise<void> {
   const steps: [string, () => void | Promise<unknown>][] = [
     // First: it needs the session that the rest of this is about to erase.
     ['push token', unregisterPushWithServer],
+    // Before the session goes: the hangup has to be accepted by the server.
+    ['call', endCall],
+    ['live location', stopAllLiveShares],
     ['dialogs', resetDialogs],
     ['incoming call', resetIncomingCall],
     ['lives', resetLives],
+    ['no-contact', resetNoContact],
     ['blocks', resetBlocks],
     ['chats', resetChatStore],
+    ['threads', resetThreads],
     ['chat prefs', resetChatPrefsCache],
     ['locks', relockAll],
     ['app-lock', resetAppLock],
@@ -48,6 +58,7 @@ export async function resetAllStores(): Promise<void> {
     ['groups', resetGroupStore],
     ['stickers', resetStickerStore],
     ['stories', resetStoryStore],
+    ['posts', resetPostStore],
     ['e2ee', clearE2EEState],
     ['local history', wipeLocalHistory],
     ['media cache', clearMediaCache],

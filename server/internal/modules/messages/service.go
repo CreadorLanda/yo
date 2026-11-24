@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -126,6 +128,12 @@ func (s *Service) CreateDirectChat(ctx context.Context, userID, peerID uuid.UUID
 	}
 	if existing != nil {
 		return s.loadChat(ctx, existing.ID, userID)
+	}
+
+	// Starting a new conversation is contact too. The existing one stays
+	// readable above; this only stops a fresh chat from being the way around.
+	if until, err := s.repo.CooldownUntil(ctx, userID, peerID); err == nil && until != nil {
+		return Chat{}, NoContactError{Until: *until}
 	}
 
 	chatID, err := s.repo.CreateChat(ctx, ChatDirect, userID, []uuid.UUID{userID, peerID}, ChatStatusPending)
@@ -409,6 +417,15 @@ func (s *Service) SendMessage(ctx context.Context, chatID, senderID uuid.UUID, r
 			blocked, err := s.blocks.EitherWay(ctx, senderID, peer.ID)
 			if err == nil && blocked {
 				return Message{}, ErrChatBlocked
+			}
+		}
+	}
+	// A report keeps two people apart for a while, and unblocking does not end
+	// that. It is read from its own table, not derived from the block list.
+	if chat.Type == ChatDirect && !chat.IsSelf {
+		if peer, err := s.repo.PeerUser(ctx, chatID, senderID); err == nil && peer != nil {
+			if until, err := s.repo.CooldownUntil(ctx, senderID, peer.ID); err == nil && until != nil {
+				return Message{}, NoContactError{Until: *until}
 			}
 		}
 	}
@@ -976,43 +993,116 @@ func (s *Service) attachPollTallies(ctx context.Context, userID uuid.UUID, msgs 
 	}
 }
 
-// ReportChat files a moderation report, optionally blocking the chat too.
+// ReportChat files a moderation report.
 //
-// Blocking in the same call is deliberate: reporting someone and then still
-// hearing from them is the worst outcome for the person doing it, and making
-// it two separate taps means some people only manage the first.
-func (s *Service) ReportChat(ctx context.Context, chatID, userID uuid.UUID, reason, note string, alsoBlock bool) error {
+// In a one-to-one chat it also starts a no-contact period (see NoContactPeriod)
+// that holds in both directions and survives an unblock; blocking in the same
+// call is optional on top of that. A group report stands on its own: a personal
+// block or a cooldown belongs to two people, not to a room.
+//
+// Message copies are accepted only with the reporter's consent, are checked to
+// belong to this chat, and take their sender from the database rather than the
+// client. The server cannot verify the text against the encrypted original, so
+// the copy is the reporter's account of the conversation and is stored that way.
+func (s *Service) ReportChat(ctx context.Context, chatID, userID uuid.UUID, in ReportInput) (ReportResult, error) {
 	if err := s.requireParticipant(ctx, chatID, userID); err != nil {
-		return err
+		return ReportResult{}, err
 	}
-	if reason == "" {
-		return ErrInvalidReport
+	if err := validateReport(in); err != nil {
+		return ReportResult{}, err
 	}
 	chat, err := s.repo.GetChat(ctx, chatID)
 	if err != nil {
-		return err
+		return ReportResult{}, err
 	}
 	if chat.IsSelf {
-		return ErrInvalidReport
+		return ReportResult{}, ErrInvalidReport
 	}
-	if err := s.repo.InsertReport(ctx, chatID, userID, reason, note); err != nil {
-		return err
-	}
-	if alsoBlock {
-		// A block belongs to a person now, not to the conversation, so
-		// reporting a group and blocking cannot mean "block the group". It
-		// blocks the peer of a one-to-one chat and does nothing otherwise —
-		// the report still stands, which is the part that matters.
-		if s.blocks == nil {
-			return nil
+
+	var peer *PeerUser
+	if chat.Type == ChatDirect {
+		if p, err := s.repo.PeerUser(ctx, chatID, userID); err == nil {
+			peer = p
 		}
-		peer, err := s.repo.PeerUser(ctx, chatID, userID)
-		if err != nil || peer == nil {
-			return nil
-		}
-		return s.blocks.Block(ctx, userID, peer.ID)
 	}
-	return nil
+
+	var evidence []evidenceRow
+	if len(in.Evidence) > 0 {
+		ids := make([]int64, len(in.Evidence))
+		for i, e := range in.Evidence {
+			ids[i] = e.MessageID
+		}
+		known, err := s.repo.evidenceMessages(ctx, chatID, ids)
+		if err != nil {
+			return ReportResult{}, err
+		}
+		for _, e := range in.Evidence {
+			row, ok := known[e.MessageID]
+			if !ok {
+				return ReportResult{}, ErrInvalidReport
+			}
+			row.body = strings.TrimSpace(e.Body)
+			evidence = append(evidence, row)
+		}
+	}
+
+	var reported *uuid.UUID
+	if peer != nil {
+		reported = &peer.ID
+	}
+	until, err := s.repo.FileReport(ctx, chatID, userID, reported, in, evidence)
+	if err != nil {
+		return ReportResult{}, err
+	}
+
+	res := ReportResult{NoContactUntil: until, EvidenceCount: len(evidence)}
+	if in.Block && peer != nil && s.blocks != nil {
+		// A block that fails must not undo a report that was filed: the period
+		// already protects the reporter, and the report is what matters.
+		if err := s.blocks.Block(ctx, userID, peer.ID); err == nil {
+			res.Blocked = true
+		}
+	}
+	if until != nil && peer != nil {
+		s.announceNoContact(ctx, chatID, userID, peer.ID, *until)
+	}
+	return res, nil
+}
+
+// announceNoContact tells both people that a no-contact period applies.
+//
+// The copy is the same for both and names no one: it says what applies and
+// until when, not who reported whom or why.
+func (s *Service) announceNoContact(ctx context.Context, chatID, reporter, reported uuid.UUID, until time.Time) {
+	payload := map[string]any{"type": "chat.no_contact", "chat_id": chatID.String(), "until": until}
+	if s.hub != nil {
+		s.hub.PublishJSON([]uuid.UUID{reporter, reported}, "chat.no_contact", chatID.String(), payload)
+	}
+	if s.push != nil {
+		_ = s.push.NotifyUser(ctx, reported, "messages", "ZwoSocial",
+			"A temporary no-contact period applies to one of your conversations.",
+			map[string]string{"type": "chat.no_contact", "chat_id": chatID.String()})
+	}
+}
+
+// NoContact returns the end of the no-contact period that applies to this
+// one-to-one chat, or nil when there is none.
+func (s *Service) NoContact(ctx context.Context, chatID, userID uuid.UUID) (*time.Time, error) {
+	if err := s.requireParticipant(ctx, chatID, userID); err != nil {
+		return nil, err
+	}
+	chat, err := s.repo.GetChat(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if chat.Type != ChatDirect || chat.IsSelf {
+		return nil, nil
+	}
+	peer, err := s.repo.PeerUser(ctx, chatID, userID)
+	if err != nil || peer == nil {
+		return nil, nil
+	}
+	return s.repo.CooldownUntil(ctx, userID, peer.ID)
 }
 
 // isEncryptedEnvelope reports whether the content is an E2EE payload the

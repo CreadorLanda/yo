@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { Avatar } from '@/components/ui/avatar';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -18,11 +19,9 @@ import {
   setDisappearing,
   listMessages,
   createChat,
-  reportChat,
   type ChatDTO,
   type ChatPermission,
   type ChatPrivacy,
-  type ReportReason,
 } from '@/data/api/messages';
 import { appAlert, appPrompt } from '@/data/dialog-store';
 import {
@@ -70,6 +69,7 @@ import { mapApiMessage } from '@/data/message-map';
 import { type ChatPreview, type Message } from '@/data/mock';
 import { displayChatName } from '@/data/chat-identity';
 import { block, blockedAmong, refreshBlocks, useBlocked } from '@/data/block-store';
+import { blockedGroupNoticeKey } from '@/data/group-membership-policy';
 import { persistThemeImage } from '@/data/theme-assets';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
@@ -609,25 +609,10 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
       },
     ]);
 
-  const confirmReport = () =>
-    appAlert(t('chat_info.report', { name: chat?.name ?? '' }), t('chat_info.report_reason'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('chat_info.report_spam'), onPress: () => submitReport('spam') },
-      { text: t('chat_info.report_abuse'), onPress: () => submitReport('abuse') },
-      { text: t('chat_info.report_scam'), onPress: () => submitReport('scam') },
-    ]);
-
-  // Reporting blocks as well. Leaving the conversation open to someone you
-  // just reported is the outcome the report was meant to end.
-  const submitReport = (reason: ReportReason) => {
-    if (!id) return;
-    reportChat(id, reason, { block: true })
-      .then(() => {
-        void refreshChats();
-        appAlert(t('chat_info.report_sent'), t('chat_info.report_sent_body'));
-        router.back();
-      })
-      .catch(failed);
+  // Reporting has its own screen: a reason, optional messages as proof, and a
+  // clear account of what will be sent and what follows.
+  const confirmReport = () => {
+    if (id) router.push(`/report/${id}`);
   };
 
   const confirmLeaveGroup = () =>
@@ -713,10 +698,11 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
       >
         {/* Identity */}
         <View style={styles.identity}>
-          <Image
-            source={{ uri: chat.avatarUri }}
-            style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}
-            contentFit="cover"
+          <Avatar
+            uri={chat.avatarUri}
+            id={apiChat?.peer_user_id ?? chat.id}
+            username={chat.name}
+            size={132}
           />
           <View style={styles.identityNameRow}>
             <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
@@ -1035,11 +1021,7 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
                       pressed && { backgroundColor: colors.surfaceMuted },
                     ]}
                   >
-                    <Image
-                      source={{ uri: g.avatarUri }}
-                      style={[styles.rowAvatar, { backgroundColor: colors.surfaceMuted }]}
-                      contentFit="cover"
-                    />
+                    <Avatar uri={g.avatarUri} id={g.id} username={g.name} size={36} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
                         {g.name}
@@ -1080,17 +1062,17 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
                 another is not a reason to end their conversation. Being told
                 is what makes allowing it fair.
               */}
-              {blockedHere.length > 0 ? (
+              {blockedGroupNoticeKey(blockedHere.length) ? (
                 <>
                   <Divider colors={colors} />
                   <View style={[styles.row, { gap: Spacing.sm }]}>
                     <Ionicons name="ban-outline" size={18} color={colors.textSecondary} />
                     <Text style={[styles.blockNotice, { color: colors.textSecondary }]}>
                       {blockedHere.length === 1
-                        ? t('blocked.in_group_one', {
+                        ? t(blockedGroupNoticeKey(blockedHere.length)!, {
                             name: blockedHere[0].display_name || blockedHere[0].username,
                           })
-                        : t('blocked.in_group_many', { count: blockedHere.length })}
+                        : t(blockedGroupNoticeKey(blockedHere.length)!, { count: blockedHere.length })}
                     </Text>
                   </View>
                 </>
@@ -1134,11 +1116,7 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
                         />
                       </Pressable>
                     ) : null}
-                    <Image
-                      source={{ uri: m.avatarUri }}
-                      style={[styles.rowAvatar, { backgroundColor: colors.surfaceMuted }]}
-                      contentFit="cover"
-                    />
+                    <Avatar uri={m.avatarUri} id={m.id} username={m.name} size={36} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
                         {m.name}

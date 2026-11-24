@@ -197,6 +197,92 @@ func TestCanReadUsesCurrentAudience(t *testing.T) {
 	}
 }
 
+// The bytes of a post follow the post's audience. The posts module decides who
+// sees the post; this is the same rule for who may fetch its pictures, and a
+// mismatch is either a grid of broken images or a leak.
+func TestCanReadFollowsPostAudience(t *testing.T) {
+	url := os.Getenv("TEST_POSTGRES_URL")
+	if url == "" {
+		t.Skip("TEST_POSTGRES_URL not set — skipping media access integration test")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	repo := NewRepository(pool)
+	author := seedAccessUser(t, pool)
+	contact := seedAccessUser(t, pool)
+	pending := seedAccessUser(t, pool)
+	stranger := seedAccessUser(t, pool)
+	blocked := seedAccessUser(t, pool)
+
+	for _, link := range []struct {
+		other  uuid.UUID
+		status string
+	}{{contact, "active"}, {pending, "pending"}, {blocked, "active"}} {
+		chatID := uuid.New()
+		if _, err := pool.Exec(ctx, `INSERT INTO chats (id, type, created_by, status) VALUES ($1, 'direct', $2, $3)`, chatID, author, link.status); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2), ($1, $3)`, chatID, author, link.other); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2)`, blocked, author); err != nil {
+		t.Fatal(err)
+	}
+
+	publish := func(visibility string) uuid.UUID {
+		t.Helper()
+		mediaID := seedAccessMedia(t, ctx, pool, repo, author)
+		var postID uuid.UUID
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO posts (author_id, kind, visibility) VALUES ($1, 'post', $2) RETURNING id
+		`, author, visibility).Scan(&postID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO post_media (post_id, position, media_id) VALUES ($1, 0, $2)`, postID, mediaID); err != nil {
+			t.Fatal(err)
+		}
+		return mediaID
+	}
+	private, public := publish("contacts"), publish("public")
+	loose := seedAccessMedia(t, ctx, pool, repo, author)
+
+	for _, tc := range []struct {
+		label                   string
+		user                    uuid.UUID
+		seesPrivate, seesPublic bool
+	}{
+		{"author", author, true, true},
+		{"contact", contact, true, true},
+		{"pending request", pending, false, true},
+		{"stranger", stranger, false, true},
+		{"someone who blocked the author", blocked, false, false},
+	} {
+		for _, want := range []struct {
+			id    uuid.UUID
+			sees  bool
+			label string
+		}{{private, tc.seesPrivate, "contacts post"}, {public, tc.seesPublic, "public post"}} {
+			got, err := repo.CanRead(ctx, want.id, tc.user)
+			if err != nil {
+				t.Fatalf("CanRead %s, %s: %v", tc.label, want.label, err)
+			}
+			if got != want.sees {
+				t.Errorf("CanRead %s, %s = %v, want %v", tc.label, want.label, got, want.sees)
+			}
+		}
+	}
+
+	// Uploaded but never published: still only the uploader's.
+	if got, _ := repo.CanRead(ctx, loose, contact); got {
+		t.Error("an unpublished upload was readable by a contact")
+	}
+}
+
 func seedAccessUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID

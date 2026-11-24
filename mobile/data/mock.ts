@@ -174,6 +174,13 @@ export type MessageAttachment =
       live?: boolean;
       /** ISO timestamp when the live share expires (only meaningful when live=true). */
       expiresAt?: string;
+      /** Where. Absent on older messages, which show only their text. */
+      lat?: number;
+      lng?: number;
+      /** Metres, as reported by the device. */
+      accuracy?: number;
+      /** ISO timestamp of the last position, so a silent share can be told from a live one. */
+      updatedAt?: string;
     }
   | { kind: 'contact'; name: string; detail: string; avatarUri?: string }
   | {
@@ -262,6 +269,7 @@ export type Message = {
         actorId: string;
         targetIds?: string[];
         targetId?: string;
+        targetName?: string;
         role?: string;
         achievementId?: string;
       };
@@ -442,6 +450,7 @@ export type Story = {
   coverUri: string;
   kind: StoryKind;
   caption: string;
+  composition?: import('@/data/story-composition').ParsedStoryCaption;
   postedAt: string;
   expiresIn: string;
   durationSec: number;
@@ -580,6 +589,9 @@ export type ChannelReaction = {
 
 export type ChannelComment = {
   id: string;
+  parentId?: string;
+  /** Present only for identified comments; anonymous author ids never leave the API. */
+  authorId?: string;
   text: string;
   timestamp: string;
   anonymous: boolean;

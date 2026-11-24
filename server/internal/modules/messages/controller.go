@@ -451,6 +451,11 @@ func parseChatMsg(ctx *gin.Context) (uuid.UUID, int64, bool) {
 }
 
 func writeErr(ctx *gin.Context, err error) {
+	var noContact NoContactError
+	if errors.As(err, &noContact) {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": noContact.Error(), "until": noContact.Until})
+		return
+	}
 	switch {
 	case errors.Is(err, ErrChatNotFound), errors.Is(err, users.ErrNotFound), errors.Is(err, ErrMessageNotFound):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -465,7 +470,8 @@ func writeErr(ctx *gin.Context, err error) {
 		errors.Is(err, ErrInvalidTTL), errors.Is(err, ErrUnencryptedMessage),
 		errors.Is(err, ErrInvalidMessageType), errors.Is(err, ErrInvalidEnvelopeChat),
 		errors.Is(err, ErrInvalidMediaReference), errors.Is(err, ErrStaleGroupEpoch), errors.Is(err, ErrInvalidEmoji),
-		errors.Is(err, ErrTooManyReactions), errors.Is(err, ErrInvalidPrivacy):
+		errors.Is(err, ErrTooManyReactions), errors.Is(err, ErrInvalidPrivacy),
+		errors.Is(err, ErrConsentRequired):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrForwardingDisabled), errors.Is(err, ErrMessagingRestricted),
 		errors.Is(err, ErrMessageTypeNotAllowed):
@@ -497,29 +503,43 @@ func (c *Controller) PostPollVote(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, tally)
 }
 
-type reportChatRequest struct {
-	Reason string `json:"reason"`
-	Note   string `json:"note"`
-	Block  bool   `json:"block"`
-}
-
+// PostReportChat — POST /chats/:id/report
+//
+// The body is a ReportInput: reason, note, block, and optionally message
+// copies with the reporter's consent. Answers with when the no-contact period
+// ends, so the client can tell the reporter.
 func (c *Controller) PostReportChat(ctx *gin.Context) {
 	chatID, err := uuid.Parse(ctx.Param("id"))
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_chat_id"})
 		return
 	}
-	var req reportChatRequest
+	var req ReportInput
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_payload"})
 		return
 	}
-	if err := c.svc.ReportChat(ctx.Request.Context(), chatID, middleware.UserIDFrom(ctx),
-		req.Reason, req.Note, req.Block); err != nil {
+	res, err := c.svc.ReportChat(ctx.Request.Context(), chatID, middleware.UserIDFrom(ctx), req)
+	if err != nil {
 		writeErr(ctx, err)
 		return
 	}
-	ctx.Status(http.StatusNoContent)
+	ctx.JSON(http.StatusOK, res)
+}
+
+// GetNoContact — GET /chats/:id/no-contact
+func (c *Controller) GetNoContact(ctx *gin.Context) {
+	chatID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_chat_id"})
+		return
+	}
+	until, err := c.svc.NoContact(ctx.Request.Context(), chatID, middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"until": until})
 }
 
 type disappearingRequest struct {

@@ -19,6 +19,7 @@ import { FollowButton, formatCount } from '@/components/ui/follow-button';
 import { TabScene } from '@/components/ui/tab-scene';
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Shadows, Spacing, Typography } from '@/constants/theme';
+import { useCurrentUser } from '@/data/auth-store';
 import { bootstrapChannels, useChannels } from '@/data/channel-store';
 import { CHANNEL_CATEGORIES, type Channel, type ChannelCategory } from '@/data/mock';
 import { useTheme } from '@/hooks/use-theme';
@@ -42,10 +43,14 @@ export default function DiscoverScreen() {
   const [category, setCategory] = useState<ChannelCategory>('all');
   const [query, setQuery] = useState('');
   const allChannels = useChannels();
+  const meId = useCurrentUser()?.id;
 
+  // Keyed on the account: the tab mounts before sign-in, so the first load
+  // has no session and has to run again once there is one.
   useEffect(() => {
+    if (!meId) return;
     bootstrapChannels().catch(() => {});
-  }, []);
+  }, [meId]);
 
   const channels = useMemo(() => {
     const q = query.trim().toLowerCase();

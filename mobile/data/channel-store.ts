@@ -35,6 +35,8 @@ function isUUID(id: string): boolean {
 function mapCommentDTO(c: ChannelCommentDTO): ChannelComment {
   return {
     id: c.id,
+    parentId: c.parent_id,
+    authorId: c.anonymous ? undefined : c.author_id,
     text: c.text,
     timestamp: 'now',
     anonymous: c.anonymous,
@@ -153,7 +155,9 @@ export async function bootstrapChannels(): Promise<void> {
     apiBooted = true;
     emit();
   } catch {
-    apiBooted = true;
+    // Left unbooted so the next call retries. The first call can run before
+    // sign-in and fail with a 401; marking it done hid every channel until
+    // the app restarted.
   }
 }
 

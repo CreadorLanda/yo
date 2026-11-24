@@ -1,18 +1,22 @@
 import { expect, test } from 'bun:test';
 
-const composer = await Bun.file('app/story/create.tsx').text();
+const camera = await Bun.file('components/camera/camera-capture.tsx').text();
 const liveScreen = await Bun.file('app/live/[id].tsx').text();
-const setup = await Bun.file('app/live/setup.tsx').text();
+const setupScreen = await Bun.file('app/live/setup.tsx').text();
+const setup = await Bun.file('components/live/live-setup-form.tsx').text();
 const storiesRail = await Bun.file('app/(tabs)/stories.tsx').text();
 
-test('o modo live do Stories abre a preparação, sem destino', () => {
-  expect(composer).not.toContain('live_coming_soon');
-  expect(composer).toContain("router.push(caption.trim() ? `/live/setup?title=");
-  expect(composer).not.toContain('function LiveSetup');
+test('o modo live da câmara é a preparação, sobre a lente e sem destino', () => {
+  // Live is a mode of the camera, not a screen it hands off to: the same form
+  // a chat or a channel uses, drawn over the viewfinder with no place set.
+  expect(camera).not.toContain('live_coming_soon');
+  expect(camera).toContain('<LiveSetupForm compact initialTitle={liveTitle} />');
+  expect(camera).not.toContain('/live/setup');
+  expect(setupScreen).toContain('<LiveSetupForm chat={params.chat} channel={params.channel}');
 });
 
 test('a preparação deixa escolher o público e só oferece o local quando existe', () => {
-  expect(setup).toContain("const hasPlace = !!params.chat || !!params.channel;");
+  expect(setup).toContain('const hasPlace = !!chatId || !!channel;');
   for (const key of ["'contacts'", "'selected'", "'public'"]) expect(setup).toContain(key);
   expect(setup).toContain("q.set('viewers', picked.map((p) => p.id).join(','))");
   expect(setup).toContain("router.replace(`/live/new?${q.toString()}`)");

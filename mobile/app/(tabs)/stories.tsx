@@ -24,6 +24,7 @@ import Animated, {
 import { TabScene } from '@/components/ui/tab-scene';
 import { Text } from '@/components/ui/text';
 import { Palette, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
+import { useCurrentUser } from '@/data/auth-store';
 import type { Story } from '@/data/mock';
 import { refreshRunningLives, useRunningLives } from '@/data/live-store';
 import type { Live } from '@/data/api/lives';
@@ -50,11 +51,15 @@ export default function StoriesScreen() {
   const stories = useStories();
   const loading = useStoriesLoading();
   const lives = useRunningLives();
+  const meId = useCurrentUser()?.id;
 
+  // Keyed on the account: the tab mounts before sign-in, so the first load
+  // has no session and has to run again once there is one.
   useEffect(() => {
+    if (!meId) return;
     bootstrapStories().catch(() => {});
     refreshRunningLives().catch(() => {});
-  }, []);
+  }, [meId]);
 
   const mine = useMemo(() => stories.filter((s) => s.isOwn), [stories]);
   const others = useMemo(() => stories.filter((s) => !s.isOwn), [stories]);
@@ -186,7 +191,7 @@ export default function StoriesScreen() {
         <Pressable
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/story/create');
+            router.push('/camera');
           }}
           style={({ pressed }) => [
             styles.fab,
@@ -232,11 +237,11 @@ function CreateRailCard({
           return;
         }
         if (ownStory?.uploadStatus === 'uploading') return;
-        router.push('/story/create');
+        router.push('/camera');
       }}
       onLongPress={() => {
         Haptics.selectionAsync();
-        router.push('/story/create');
+        router.push('/camera');
       }}
       style={({ pressed }) => [
         styles.railCard,
@@ -265,7 +270,7 @@ function CreateRailCard({
             onPress={(e) => {
               e.stopPropagation?.();
               Haptics.selectionAsync();
-              router.push('/story/create');
+              router.push('/camera');
             }}
             hitSlop={8}
             style={[
@@ -329,7 +334,7 @@ function RailCard({ story }: { story: Story }) {
       accessibilityLabel={t('stories.open_story', { name: story.user })}
     >
       <Animated.View style={[styles.railCard, anim]}>
-        {story.kind === 'text' ||
+        {(story.kind === 'text' && !story.coverUri) ||
         story.kind === 'poll' ||
         story.kind === 'question' ||
         story.kind === 'audio' ||
@@ -457,7 +462,7 @@ function PortraitCard({ story, tall }: { story: Story; tall?: boolean }) {
           anim,
         ]}
       >
-        {story.kind === 'text' ||
+        {(story.kind === 'text' && !story.coverUri) ||
         story.kind === 'poll' ||
         story.kind === 'question' ||
         story.kind === 'audio' ||

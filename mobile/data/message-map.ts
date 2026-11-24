@@ -107,7 +107,14 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
           event,
           actorId,
           ...(event === 'members_added' ? { targetIds: ids } : {}),
-          ...(event === 'member_removed' ? { targetId: parts[3] } : {}),
+          ...(event === 'member_removed'
+            ? {
+                targetId: parts[3],
+                ...(parts[4]
+                  ? { targetName: decodeURIComponent(parts.slice(4).join(':')) }
+                  : {}),
+              }
+            : {}),
           ...(event === 'role_changed' ? { targetId: parts[3], role: parts[4] } : {}),
           ...(event === 'admin_handoff' ? { targetId: parts[3] } : {}),
           ...(event === 'achievement_created' ? { achievementId: parts[3] } : {}),
@@ -253,11 +260,11 @@ export async function decryptMessageContent(
 }
 
 export function formatMsgTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
+  // Hermes answers a bad date with the text "Invalid Date", not an error. An
+  // event that arrives with no time of its own happened just now.
+  const when = new Date(iso);
+  const shown = Number.isNaN(when.getTime()) ? new Date() : when;
+  return shown.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 /** Collapse reaction rows into the UI shape { emoji, count, mine }. */

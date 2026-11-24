@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -12,6 +15,7 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LocationMap } from '@/components/chat/location-map';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Text, TextInput } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
@@ -19,16 +23,10 @@ import { searchUsers, type PublicUser } from '@/data/api/users';
 import { getCurrentUser } from '@/data/auth-store';
 import { displayChatName } from '@/data/chat-identity';
 import { useChats } from '@/data/chat-store';
+import { formatCoords, LIVE_DURATIONS, type LatLng } from '@/data/location-share';
 import { type MessageAttachment } from '@/data/mock';
 import { useTheme } from '@/hooks/use-theme';
 import { getLocale, t } from '@/i18n';
-
-const NEARBY = [
-  { place: 'Café Central', address: 'Rua Augusta, 24', icon: 'cafe' },
-  { place: 'Parque da Cidade', address: 'Avenida da Liberdade', icon: 'leaf' },
-  { place: 'Centro Comercial', address: 'Estrada Nacional 1', icon: 'storefront' },
-  { place: 'Estação Norte', address: 'Praça do Comércio', icon: 'train' },
-] as const;
 
 const GAMES = [
   { name: 'Xadrez', tagline: 'Clássico de estratégia', icon: 'grid', color: '#6366F1' },
@@ -74,10 +72,13 @@ export function AttachmentComposer({
   kind,
   onClose,
   onSend,
+  onShareLive,
 }: {
   kind: string | null;
   onClose: () => void;
   onSend: (attachment: MessageAttachment) => void;
+  /** Start a live location share. Rejects with a LiveLocationError when it cannot. */
+  onShareLive?: (durationMs: number | null) => Promise<void>;
 }) {
   const [shownKind, setShownKind] = useState<string | null>(null);
   const [openId, setOpenId] = useState(0);
@@ -95,7 +96,7 @@ export function AttachmentComposer({
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView behavior="padding">
           {shownKind === 'location' ? (
-            <LocationSheet key={openId} onClose={onClose} onSend={onSend} />
+            <LocationSheet key={openId} onClose={onClose} onSend={onSend} onShareLive={onShareLive} />
           ) : shownKind === 'contact' ? (
             <ContactSheet key={openId} onClose={onClose} onSend={onSend} />
           ) : shownKind === 'poll' ? (
@@ -138,15 +139,94 @@ function SheetShell({
 }
 
 // ── Location ──────────────────────────────────────────────────────────────────
+type Fix =
+  | { state: 'locating' }
+  | { state: 'denied' }
+  | { state: 'off' }
+  | { state: 'error' }
+  | { state: 'ready'; point: LatLng; accuracy?: number };
+
+/**
+ * Where you are, shown before it is sent, and the two ways to share it.
+ *
+ * The position is read when the sheet opens so the map is the preview of what
+ * will go out. Nothing is sent until a button is pressed.
+ */
 function LocationSheet({
   onClose,
   onSend,
+  onShareLive,
 }: {
   onClose: () => void;
   onSend: (a: MessageAttachment) => void;
+  onShareLive?: (durationMs: number | null) => Promise<void>;
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const [fix, setFix] = useState<Fix>({ state: 'locating' });
+  const [duration, setDuration] = useState(LIVE_DURATIONS[1].id);
+  const [starting, setStarting] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFix({ state: 'locating' });
+    (async () => {
+      const permission = await Location.requestForegroundPermissionsAsync().catch(() => null);
+      if (cancelled) return;
+      if (!permission?.granted) return setFix({ state: 'denied' });
+      if (!(await Location.hasServicesEnabledAsync().catch(() => false))) {
+        return cancelled ? undefined : setFix({ state: 'off' });
+      }
+      try {
+        const here = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (cancelled) return;
+        setFix({
+          state: 'ready',
+          point: { lat: here.coords.latitude, lng: here.coords.longitude },
+          accuracy: here.coords.accuracy ?? undefined,
+        });
+      } catch {
+        if (!cancelled) setFix({ state: 'error' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  const sendCurrent = () => {
+    if (fix.state !== 'ready') return;
+    onSend({
+      kind: 'location',
+      place: t('chat.loc_current'),
+      address: formatCoords(fix.point),
+      lat: fix.point.lat,
+      lng: fix.point.lng,
+      accuracy: fix.accuracy,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const startLive = async () => {
+    if (!onShareLive || starting) return;
+    setStarting(true);
+    try {
+      await onShareLive(LIVE_DURATIONS.find((d) => d.id === duration)?.ms ?? null);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const problem =
+    fix.state === 'denied'
+      ? { icon: 'lock-closed-outline', title: t('location.permission_title'), body: t('location.permission_body'), action: t('location.open_settings'), run: () => void Linking.openSettings() }
+      : fix.state === 'off'
+        ? { icon: 'navigate-circle-outline', title: t('location.services_title'), body: t('location.services_body'), action: t('location.try_again'), run: () => setAttempt((n) => n + 1) }
+        : fix.state === 'error'
+          ? { icon: 'cloud-offline-outline', title: t('location.error_title'), body: t('location.error_body'), action: t('location.try_again'), run: () => setAttempt((n) => n + 1) }
+          : null;
+
   return (
     <SheetShell title={t('chat.loc_share')} onClose={onClose}>
       <ScrollView
@@ -154,19 +234,37 @@ function LocationSheet({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, Spacing.md) }}
       >
-        <View style={[styles.bigMap, { backgroundColor: colors.surfaceMuted }]}>
-          <View style={[styles.mapRoad, { backgroundColor: colors.divider }]} />
-          <View style={[styles.mapRoadV, { backgroundColor: colors.divider }]} />
-          <Ionicons name="location" size={40} color="#EF4444" />
-        </View>
+        {fix.state === 'ready' ? (
+          <>
+            <LocationMap point={fix.point} height={170} />
+            <Text style={[styles.locMeta, { color: colors.textSecondary }]}>
+              {formatCoords(fix.point)}
+              {fix.accuracy ? `  ·  ${t('location.accuracy', { meters: Math.round(fix.accuracy) })}` : ''}
+            </Text>
+          </>
+        ) : problem ? (
+          <View style={[styles.locProblem, { backgroundColor: colors.surfaceMuted }]}>
+            <Ionicons name={problem.icon as keyof typeof Ionicons.glyphMap} size={30} color={colors.textMuted} />
+            <Text style={[styles.locProblemTitle, { color: colors.text }]}>{problem.title}</Text>
+            <Text style={[styles.locProblemBody, { color: colors.textSecondary }]}>{problem.body}</Text>
+            <Pressable onPress={problem.run} accessibilityRole="button" style={[styles.locAction, { backgroundColor: colors.primary }]}>
+              <Text style={[styles.locActionText, { color: colors.onPrimary }]}>{problem.action}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={[styles.locProblem, { backgroundColor: colors.surfaceMuted }]}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[styles.locProblemBody, { color: colors.textSecondary }]}>{t('location.getting')}</Text>
+          </View>
+        )}
 
         <Pressable
-          onPress={() =>
-            onSend({ kind: 'location', place: t('chat.loc_current'), address: 'Avenida Central, 250' })
-          }
+          onPress={sendCurrent}
+          disabled={fix.state !== 'ready'}
+          accessibilityRole="button"
           style={({ pressed }) => [
             styles.currentLoc,
-            { borderColor: colors.border },
+            { borderColor: colors.border, opacity: fix.state === 'ready' ? 1 : 0.45 },
             pressed && { backgroundColor: colors.surfaceMuted },
           ]}
         >
@@ -174,32 +272,59 @@ function LocationSheet({
             <Ionicons name="navigate" size={18} color={colors.primary} />
           </View>
           <Text style={[styles.currentLocText, { color: colors.primary }]}>
-            {t('chat.loc_send_current')}
+            {t('location.send_current')}
           </Text>
         </Pressable>
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-          {t('chat.loc_nearby')}
-        </Text>
-        {NEARBY.map((p) => (
-          <Pressable
-            key={p.place}
-            onPress={() => onSend({ kind: 'location', place: p.place, address: p.address })}
-            style={({ pressed }) => [styles.listRow, pressed && { backgroundColor: colors.surfaceMuted }]}
-          >
-            <View style={[styles.listIcon, { backgroundColor: colors.surfaceMuted }]}>
-              <Ionicons name={p.icon as keyof typeof Ionicons.glyphMap} size={18} color={colors.textSecondary} />
+        {onShareLive ? (
+          <>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+              {t('location.live_title')}
+            </Text>
+            <View style={styles.durations}>
+              {LIVE_DURATIONS.map((d) => {
+                const on = d.id === duration;
+                return (
+                  <Pressable
+                    key={d.id}
+                    onPress={() => setDuration(d.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                    style={[
+                      styles.durationChip,
+                      { backgroundColor: on ? colors.primary : colors.surfaceMuted },
+                    ]}
+                  >
+                    <Text style={[styles.durationText, { color: on ? colors.onPrimary : colors.text }]}>
+                      {t(`location.d_${d.id}`)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-            <View style={styles.listText}>
-              <Text style={[styles.listTitle, { color: colors.text }]} numberOfLines={1}>
-                {p.place}
-              </Text>
-              <Text style={[styles.listSub, { color: colors.textSecondary }]} numberOfLines={1}>
-                {p.address}
-              </Text>
-            </View>
-          </Pressable>
-        ))}
+            <Pressable
+              onPress={() => void startLive()}
+              disabled={fix.state !== 'ready' || starting}
+              accessibilityRole="button"
+              style={[
+                styles.liveStart,
+                { backgroundColor: colors.danger, opacity: fix.state === 'ready' && !starting ? 1 : 0.45 },
+              ]}
+            >
+              {starting ? (
+                <ActivityIndicator color={colors.onPrimary} />
+              ) : (
+                <>
+                  <Ionicons name="radio" size={18} color={colors.onPrimary} />
+                  <Text style={[styles.liveStartText, { color: colors.onPrimary }]}>
+                    {t('location.start_live')}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+            <Text style={[styles.locHint, { color: colors.textMuted }]}>{t('location.live_hint')}</Text>
+          </>
+        ) : null}
       </ScrollView>
     </SheetShell>
   );
@@ -681,27 +806,38 @@ const styles = StyleSheet.create({
   listSub: { ...Typography.caption },
 
   // Location
-  bigMap: {
-    height: 150,
+  locMeta: { ...Typography.micro, textAlign: 'center', marginTop: Spacing.xs },
+  locProblem: {
+    height: 170,
     borderRadius: Radii.lg,
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.lg,
+  },
+  locProblemTitle: { ...Typography.bodyStrong },
+  locProblemBody: { ...Typography.caption, textAlign: 'center' },
+  locAction: {
     marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 8,
+    borderRadius: Radii.pill,
   },
-  mapRoad: {
-    position: 'absolute',
-    width: '170%',
-    height: 12,
-    transform: [{ rotate: '-20deg' }],
-    top: 52,
+  locActionText: { ...Typography.label },
+  durations: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.xs },
+  durationChip: { paddingHorizontal: Spacing.md, paddingVertical: 8, borderRadius: Radii.pill },
+  durationText: { ...Typography.label },
+  liveStart: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    height: 48,
+    borderRadius: Radii.pill,
+    marginTop: Spacing.md,
   },
-  mapRoadV: {
-    position: 'absolute',
-    width: 12,
-    height: '170%',
-    left: '58%',
-  },
+  liveStartText: { ...Typography.bodyStrong },
+  locHint: { ...Typography.micro, textAlign: 'center', marginTop: Spacing.sm },
   currentLoc: {
     flexDirection: 'row',
     alignItems: 'center',

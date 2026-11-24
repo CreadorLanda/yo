@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { Avatar } from '@/components/ui/avatar';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -148,11 +149,7 @@ export default function CreateGroupScreen() {
 
         {members.map((m) => (
           <View key={m.id} style={styles.memberRow}>
-            <Image
-              source={{ uri: m.avatarUri }}
-              style={[styles.memberAvatar, { backgroundColor: colors.surfaceMuted }]}
-              contentFit="cover"
-            />
+            <Avatar uri={m.avatarUri} id={m.id} username={m.name} size={36} />
             <Text style={[styles.memberName, { color: colors.text }]} numberOfLines={1}>
               {m.name}
             </Text>

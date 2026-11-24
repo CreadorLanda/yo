@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -8,7 +7,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { refreshBlocks, unblock, useBlocked } from '@/data/block-store';
+import { useChats } from '@/data/chat-store';
 import { appAlert } from '@/data/dialog-store';
+import { getNoContactUntil } from '@/data/no-contact';
+import { Avatar } from '@/components/ui/avatar';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -25,24 +27,33 @@ import { t } from '@/i18n';
 export default function BlockedScreen() {
   const { colors } = useTheme();
   const blocked = useBlocked();
+  const { chats } = useChats();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     refreshBlocks().finally(() => setLoading(false));
   }, []);
 
-  const confirmUnblock = (userId: string, name: string) =>
-    appAlert(t('blocked.unblock_title', { name }), t('blocked.unblock_body'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('blocked.unblock_action'),
-        onPress: () => {
-          unblock(userId).catch(() =>
-            appAlert(t('chats.action_failed_title'), t('chats.action_failed_body')),
-          );
+  const confirmUnblock = (userId: string, name: string) => {
+    // A no-contact period outlives the block, so say that it still applies.
+    const chat = chats.find((c) => c.type === 'direct' && c.peer_user_id === userId);
+    const paused = chat ? getNoContactUntil(chat.id) !== null : false;
+    appAlert(
+      t('blocked.unblock_title', { name }),
+      t(paused ? 'blocked.unblock_body_paused' : 'blocked.unblock_body'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('blocked.unblock_action'),
+          onPress: () => {
+            unblock(userId).catch(() =>
+              appAlert(t('chats.action_failed_title'), t('chats.action_failed_body')),
+            );
+          },
         },
-      },
-    ]);
+      ],
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['top']}>
@@ -77,13 +88,7 @@ export default function BlockedScreen() {
                   i < blocked.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
                 ]}
               >
-                {b.avatar_uri ? (
-                  <Image source={{ uri: b.avatar_uri }} style={styles.avatar} contentFit="cover" />
-                ) : (
-                  <View style={[styles.avatar, { backgroundColor: colors.surfaceMuted }]}>
-                    <Ionicons name="person" size={18} color={colors.textMuted} />
-                  </View>
-                )}
+                <Avatar uri={b.avatar_uri} id={b.user_id} username={b.username} size={40} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
                     {b.display_name || b.username}
