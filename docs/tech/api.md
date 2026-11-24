@@ -648,6 +648,9 @@ How bots fit end-to-end encryption is decided in [ADR 0002](../decisions/0002-bo
 | `POST` | `/chats/:id/bots` | Group admin only: `{bot_id | username, scopes?}`. Adds the bot as a member and posts a `bot:added:<actor>:<bot>` system message. |
 | `PATCH` | `/chats/:id/bots/:botId` | Group admin only: `{scopes}`. Turning `messages.read.all` on or off posts `bot:read_all:<actor>:<bot>:on|off`. |
 | `DELETE` | `/chats/:id/bots/:botId` | Group admin only. Posts `bot:removed:<actor>:<bot>`. |
+| `POST` | `/chats/:id/bots/:botId/updates` | Any member: `{kind: command\|mention\|reply\|interaction, content, message_id?}`. `content` is a pairwise `soc1.` envelope encrypted to the bot. The bot must be installed with `messages.read.commands`; a full-read bot is not sent copies (`403`). |
+
+**Privacy mode, enforced by the server.** Group sender keys addressed to a bot without `messages.read.all` are dropped on upload, so such a bot can never open ordinary group messages. Granting full read (on install or later), revoking it, or removing a full-read bot advances the group's key epoch: the bot gets keys only from the next epoch, never history, and stops being able to read after it leaves.
 
 Scopes: `messages.read.commands` (privacy mode — commands, mentions, replies and interactions only), `messages.read.all` (everything, admin-granted and announced), `messages.send`, `members.read`, `members.manage`, `events.manage`. With none given, a bot gets `messages.read.commands`, `messages.send` and `members.read`.
 
@@ -658,6 +661,7 @@ Authenticate with `Authorization: Bot zsb_…`. Routes under `/chats/:id` answer
 | Method | Path | Scope |
 |---|---|---|
 | `GET` | `/me` | — |
+| `GET` | `/updates?offset=&limit=` | — Envelopes addressed to the bot, oldest first (max 100). Asking with `offset` confirms and deletes everything before it. Uncollected updates expire after 7 days. |
 | `PUT` | `/keys`, `GET /keys/count` | — (publish and top up the bot device's keys) |
 | `GET` | `/users/by-username/:username/keys` and `/identity` | — |
 | `POST` | `/media/upload` | — |
@@ -665,6 +669,9 @@ Authenticate with `Authorization: Bot zsb_…`. Routes under `/chats/:id` answer
 | `POST` | `/chats/:id/messages` | `messages.send` |
 | `PATCH`, `DELETE` | `/chats/:id/messages/:mid` | `messages.send` (own messages only) |
 | `POST`, `DELETE` | `/chats/:id/messages/:mid/reactions` | `messages.send` |
+| `GET` | `/chats/:id/messages` | `messages.read.all` |
+| `POST` | `/groups/:id/sender-keys` | `messages.send` (distribute the bot's own key to send into the group) |
+| `GET` | `/groups/:id/sender-keys` | installed (only keys addressed to the bot — none unless it has full read) |
 
 Limits: 600 requests per minute per bot, 30 writes per minute per bot per chat. Over a limit: `429 {error: "rate_limited", retry_after}` and a `Retry-After` header. Bots cannot open chats with people, join calls, or be added to anonymous conversations.
 

@@ -23,4 +23,6 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	rg.POST("/chats/:id/bots", c.PostChatBot)
 	rg.PATCH("/chats/:id/bots/:botId", c.PatchChatBot)
 	rg.DELETE("/chats/:id/bots/:botId", c.DeleteChatBot)
+	// A person's client hands a bot the envelope addressed to it (#322).
+	rg.POST("/chats/:id/bots/:botId/updates", c.PostChatBotUpdate)
 }

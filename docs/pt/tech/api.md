@@ -46,5 +46,8 @@ Como os bots encaixam na cifra de ponta a ponta está decidido no [ADR 0002](../
 ### Bots numa conversa
 `GET /chats/:id/bots` para qualquer membro; `POST`, `PATCH` e `DELETE /chats/:id/bots[/:botId]` só para admins do grupo. Adicionar, remover e ligar ou desligar a leitura total deixam uma mensagem de sistema no grupo. Por omissão um bot recebe `messages.read.commands`, `messages.send` e `members.read`.
 
+### Modo privado
+Um membro entrega a um bot o que lhe é dirigido (comando, menção, resposta ou interação) com `POST /chats/:id/bots/:botId/updates`, num envelope `soc1.` cifrado só para o bot. O servidor descarta as chaves de grupo dirigidas a bots sem `messages.read.all`, e dar, retirar a leitura total ou remover um bot com ela avança a época das chaves.
+
 ### Bot API (`/api/bot/v1`, token de bot)
-`Authorization: Bot zsb_…`. `GET /me`, publicar chaves, carregar media, `GET /chats/:id/members` (`members.read`), enviar, editar, apagar e reagir a mensagens (`messages.send`). Sem instalação na conversa: `404`; sem a permissão: `403 scope_missing`. Limites: 600 pedidos por minuto por bot e 30 escritas por minuto por bot em cada conversa (`429` com `retry_after`).
+`Authorization: Bot zsb_…`. `GET /me`, publicar chaves, carregar media, `GET /chats/:id/members` (`members.read`), enviar, editar, apagar e reagir a mensagens (`messages.send`). Sem instalação na conversa: `404`; sem a permissão: `403 scope_missing`. `GET /updates?offset=` devolve os envelopes dirigidos ao bot e confirma os anteriores ao `offset` (expiram ao fim de 7 dias). Com leitura total: `GET /chats/:id/messages`. Chaves de grupo do bot: `POST`/`GET /groups/:id/sender-keys`. Limites: 600 pedidos por minuto por bot e 30 escritas por minuto por bot em cada conversa (`429` com `retry_after`).

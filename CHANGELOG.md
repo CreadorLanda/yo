@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Bots
 - Plataforma de bots no servidor (#321): contas de bot com dono, token secreto mostrado uma vez (guardado só como hash, prefixo `zsb_`), rotação e revogação, e a Bot API em `/api/bot/v1`. Um bot envia mensagens cifradas como qualquer cliente; texto simples é recusado
+- Modo privado dos bots garantido pelo servidor e pela app (#322): um bot sem leitura total nunca recebe a chave do grupo; recebe só comandos, menções e respostas que lhe são dirigidos, num envelope cifrado só para ele, que vai buscar a `GET /api/bot/v1/updates`. Dar ou retirar a leitura total, ou remover um bot com ela, roda a chave do grupo
 - Admins de grupo adicionam, re-configuram e removem bots, com permissões por conversa; adicionar, remover e ligar a leitura total ficam anunciados no grupo. Por omissão os bots ficam em modo privado (ADR 0002). Limites de pedidos por bot e por conversa
 
 #### Câmara e posts

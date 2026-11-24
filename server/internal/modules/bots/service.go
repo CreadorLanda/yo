@@ -21,6 +21,7 @@ const maxDescription = 512
 type Service struct {
 	repo        *Repository
 	broadcaster Broadcaster
+	notifier    UpdateNotifier
 }
 
 func NewService(repo *Repository) *Service {
