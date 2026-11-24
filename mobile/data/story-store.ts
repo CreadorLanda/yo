@@ -73,8 +73,9 @@ export async function bootstrapStories(force = false): Promise<void> {
     booted = true;
   } catch (e) {
     lastError = e instanceof Error ? e.message : 'stories_load_failed';
-    // Keep previous feed if we already had data; otherwise stay empty.
-    booted = true;
+    // Keep previous feed if we already had data; otherwise stay empty. Not
+    // marked loaded: a load that failed (a 401 before sign-in, no network)
+    // must be retried, not mistaken for an empty feed.
   } finally {
     loading = false;
     emit();
