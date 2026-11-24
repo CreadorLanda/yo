@@ -15,7 +15,6 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { allowScreenCaptureAsync, preventScreenCaptureAsync } from 'expo-screen-capture';
-import { openBrowserAsync } from 'expo-web-browser';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -82,6 +81,7 @@ import { showToast } from '@/data/toast-store';
 import { MAX_REACTIONS_PER_ITEM, searchEmojiCatalogue } from '@/data/reactions';
 import { refreshGroup, useGroup } from '@/data/group-store';
 import { groupEventTargetName, groupMemberRemovalLabel } from '@/data/group-membership-policy';
+import { openInApp } from '@/data/browser';
 import {
   encodeMediaContent,
   mediaFileURL,
@@ -1131,7 +1131,7 @@ useEffect(() => {
   };
 
   const handleLinkPress = (url: string) => {
-    const open = () => void openBrowserAsync(url).catch(() => {});
+    const open = () => void openInApp(url).catch(() => {});
     if (apiChatInfo?.privacy?.links_require_confirmation) {
       appAlert(t('chat.privacy_link_title'), t('chat.privacy_link_body'), [
         { text: t('common.cancel'), style: 'cancel' },

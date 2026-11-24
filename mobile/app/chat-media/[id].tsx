@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Linking, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MediaViewer, type ViewerItem } from '@/components/chat/media-viewer';
@@ -11,6 +11,7 @@ import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { listMessages } from '@/data/api/messages';
 import { getCurrentUser } from '@/data/auth-store';
+import { openInApp } from '@/data/browser';
 import { mapApiMessage } from '@/data/message-map';
 import { type Message } from '@/data/mock';
 import { useTheme } from '@/hooks/use-theme';
@@ -119,8 +120,7 @@ export default function ChatMediaScreen() {
   };
 
   const open = (url: string) => {
-    const href = url.startsWith('http') ? url : `https://${url}`;
-    Linking.openURL(href).catch(() => {});
+    void openInApp(url).catch(() => {});
   };
 
   return (
