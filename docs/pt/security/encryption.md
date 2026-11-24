@@ -112,6 +112,22 @@ A ponte do WhatsApp rejeitada e o raciocínio completo estão em
 
 ---
 
+## Bots
+
+Um bot é um participante com chaves de dispositivo próprias, não uma função do
+servidor. Decifra na sua própria máquina; o servidor nunca o faz. No **modo
+privado** — o predefinido — um bot só recebe comandos `/`, menções a ele,
+respostas a ele e interações com os seus botões e formulários, enviados como
+um envelope à parte só para ele; não consegue abrir as mensagens normais do
+grupo. Ler o grupo inteiro é uma permissão à parte que um admin concede de
+forma explícita, anunciada a todos os membros e visível enquanto durar, com
+efeito a partir da época seguinte.
+
+Quem corre um bot pode ler o que esse bot recebe. O raciocínio completo e o
+modelo de ameaças estão em [decisions/0002](../../decisions/0002-bots-and-e2ee.md).
+
+---
+
 ## Rotação de chaves
 
 | Material                   | Rotação                            |

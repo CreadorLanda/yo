@@ -109,6 +109,21 @@ The rejected WhatsApp bridge and the full reasoning are in
 
 ---
 
+## Bots
+
+A bot is a participant with its own device keys, not a server feature. It
+decrypts on its own machine; the server never does. In **privacy mode** — the
+default — a bot only receives slash commands, @mentions of it, replies to it
+and interactions with its buttons and forms, sent to it as a separate pairwise
+envelope; it cannot open the group's ordinary messages. Reading the whole
+group is a separate permission an admin grants explicitly, announced to every
+member and shown for as long as it lasts, effective from the next epoch.
+
+Whoever runs a bot can read what that bot receives. The full reasoning and the
+threat model are in [decisions/0002](../decisions/0002-bots-and-e2ee.md).
+
+---
+
 ## Key rotation
 
 | Material                   | Rotation                           |
