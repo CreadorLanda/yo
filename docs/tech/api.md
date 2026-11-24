@@ -549,6 +549,79 @@ ws.send(JSON.stringify({
 
 ---
 
+### 6. Posts and reels
+
+Permanent posts on a profile. A `post` is a carousel of 1 to 10 photos or
+videos; a `reel` is exactly one video. Media is uploaded first with
+`POST /media/upload`, and the post refers to it by id.
+
+#### POST /posts
+
+```json
+{
+  "kind": "post",
+  "caption": "Sunday",
+  "visibility": "contacts",
+  "media_ids": ["<media id>", "<media id>"]
+}
+```
+
+`kind` is `post` or `reel`. `visibility` is `contacts` (default: people the
+author has an active direct chat with) or `public`. `caption` is at most 2200
+characters. `media_ids` are in slide order and must be image or video objects
+the caller uploaded.
+
+Returns `201` with the post:
+
+```json
+{
+  "id": "…",
+  "author_id": "…",
+  "author_name": "Ana",
+  "author_username": "ana",
+  "kind": "post",
+  "caption": "Sunday",
+  "visibility": "contacts",
+  "media": [
+    { "id": "…", "kind": "image", "url": "/api/media/…/file", "width": 1080, "height": 1350 },
+    { "id": "…", "kind": "video", "url": "/api/media/…/file", "duration_ms": 8200 }
+  ],
+  "is_own": true,
+  "created_at": "2026-11-11T20:00:00Z"
+}
+```
+
+Publishing takes the media off the upload deadline, so it is kept for as long
+as a post shows it. Deleting the last post that shows it releases it again.
+
+| Error | Status | Meaning |
+|-------|--------|---------|
+| `invalid_kind`, `invalid_visibility` | 400 | Unknown value |
+| `media_required`, `too_many_media`, `duplicate_media` | 400 | 1 to 10 distinct ids |
+| `reel_needs_one_video` | 400 | A reel is exactly one video |
+| `unsupported_media_type` | 400 | Not an image or a video |
+| `caption_too_long` | 400 | Over 2200 characters |
+| `media_not_owned` | 403 | An id the caller did not upload, or already expired |
+
+#### GET /posts?author=&kind=&before=&limit=
+
+One page of one author's grid, newest first. `author` is a user id or `me`
+(the default). `kind` narrows to `post` or `reel`. `before` is the
+`created_at` of the last post already shown. `limit` defaults to 30, at most
+60. Posts the caller may not see are left out; a block in either direction
+hides all of them.
+
+#### GET /posts/:id
+
+One post. `404 post_not_found` when it does not exist or the caller may not
+see it.
+
+#### DELETE /posts/:id
+
+Author only; `204`. Anyone else gets `404`.
+
+---
+
 ## Error Handling
 
 ### Error Response

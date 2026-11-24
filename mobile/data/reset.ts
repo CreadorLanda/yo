@@ -16,6 +16,7 @@ import { resetFilterStore } from './filter-store';
 import { resetGroupStore } from './group-store';
 import { clearMediaCache } from './media-cache';
 import { resetStickerStore } from './sticker-store';
+import { resetPostStore } from './post-store';
 import { resetStoryStore } from './story-store';
 import { resetThreads } from './thread-cache';
 
@@ -57,6 +58,7 @@ export async function resetAllStores(): Promise<void> {
     ['groups', resetGroupStore],
     ['stickers', resetStickerStore],
     ['stories', resetStoryStore],
+    ['posts', resetPostStore],
     ['e2ee', clearE2EEState],
     ['local history', wipeLocalHistory],
     ['media cache', clearMediaCache],

@@ -349,6 +349,22 @@ already says "this is the action".
 | `muted` | Muted microphone icon on a tile |
 | `scrim` | Name tag over a tile |
 
+## 5.3 Camera colours
+
+`CameraColors` in `constants/theme.ts`. The camera, its composers and the post viewer are dark whatever the app's theme is: their chrome sits on a picture.
+
+| Token | Use |
+|-------|-----|
+| `stage` | Behind the viewfinder and behind a post being viewed |
+| `surface` | Composer panels and sheets |
+| `onStage`, `onStageMuted`, `onStageFaint` | Text and icons over the picture: active, inactive, hint |
+| `control`, `controlActive` | Round buttons over the picture, resting and switched on |
+| `hairline` | Borders and dividers on the stage |
+| `scrim` | Behind text that has to stay readable over any picture |
+| `mask` | The area outside the 4:5 frame in post mode |
+| `recording` | Shutter and timer while a video is being recorded |
+| `live` | The Go live action and the live badge |
+
 ---
 
 ## 6. Component recipes

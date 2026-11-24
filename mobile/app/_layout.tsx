@@ -198,11 +198,18 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
-              name="story/create"
+              name="camera"
               options={{
                 headerShown: false,
                 presentation: 'fullScreenModal',
                 animation: 'slide_from_bottom',
+                contentStyle: { backgroundColor: '#050609' },
+              }}
+            />
+            <Stack.Screen
+              name="post/[id]"
+              options={{
+                headerShown: false,
                 contentStyle: { backgroundColor: '#050609' },
               }}
             />

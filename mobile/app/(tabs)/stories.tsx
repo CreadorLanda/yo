@@ -191,7 +191,7 @@ export default function StoriesScreen() {
         <Pressable
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/story/create');
+            router.push('/camera');
           }}
           style={({ pressed }) => [
             styles.fab,
@@ -237,11 +237,11 @@ function CreateRailCard({
           return;
         }
         if (ownStory?.uploadStatus === 'uploading') return;
-        router.push('/story/create');
+        router.push('/camera');
       }}
       onLongPress={() => {
         Haptics.selectionAsync();
-        router.push('/story/create');
+        router.push('/camera');
       }}
       style={({ pressed }) => [
         styles.railCard,
@@ -270,7 +270,7 @@ function CreateRailCard({
             onPress={(e) => {
               e.stopPropagation?.();
               Haptics.selectionAsync();
-              router.push('/story/create');
+              router.push('/camera');
             }}
             hitSlop={8}
             style={[

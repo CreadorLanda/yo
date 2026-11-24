@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ❌️ Added (Adicionado)
 
+#### Câmara e posts
+- Uma só câmara para tudo, com a disposição do Instagram: barra de modos em baixo (Post, Story, Reel, Direto), obturador grande, galeria à esquerda e troca de lente à direita. Tocar tira foto e manter grava vídeo; o Reel e as ferramentas de vídeo gravam ao toque, com o tempo a encher uma barra no topo
+- Posts no perfil: um carrossel de até 10 fotos e vídeos, ou um reel, com legenda e público (contactos ou toda a gente). Publicam em segundo plano, aparecem numa grelha no perfil e abrem num visualizador próprio, onde também se apagam
+- O Direto passou a ser um modo da câmara: o título e o público escolhem-se por cima da lente, sem ecrã à parte. As ferramentas da story (texto, boomerang, mãos-livres, voz) ficam numa coluna à esquerda
+- Servidor: novo módulo `posts` (`POST/GET/DELETE /posts`), com a media dos posts protegida da limpeza automática enquanto algum post a mostrar
+
 #### Localização
 - Partilhar a localização a sério numa conversa ou grupo: a posição atual, ou em direto durante 15 minutos, 1 hora ou até ser desligada. A folha mostra um mapa da tua posição antes de enviares, a bolha mostra o mapa, e tocar abre a aplicação de mapas
 - A localização em direto atualiza a mesma mensagem, para na hora marcada ou quando quiseres, a partir da própria bolha, e continua com a app em segundo plano através de uma notificação. A posição segue cifrada de ponta a ponta e o servidor nunca vê coordenadas

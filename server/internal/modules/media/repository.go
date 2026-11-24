@@ -122,6 +122,39 @@ func (r *Repository) CanRead(ctx context.Context, id, userID uuid.UUID) (bool, e
 			            IN ('/api/media/' || $1::text, '/api/media/' || $1::text || '/file')
 			    )
 			    OR EXISTS (
+			      -- Profile posts and reels. The same audience rule as the
+			      -- posts module's own queries: the two must agree, or a post
+			      -- shows up whose pictures will not load (or the reverse).
+			      SELECT 1 FROM post_media pm
+			      JOIN posts p ON p.id = pm.post_id
+			      WHERE pm.media_id = m.id
+			        AND (
+			          p.author_id = $2
+			          OR (
+			            NOT EXISTS (
+			              SELECT 1 FROM blocks b
+			              WHERE (b.blocker_id = $2 AND b.blocked_id = p.author_id)
+			                 OR (b.blocker_id = p.author_id AND b.blocked_id = $2)
+			            )
+			            AND (
+			              p.visibility = 'public'
+			              OR (
+			                p.visibility = 'contacts'
+			                AND EXISTS (
+			                  SELECT 1
+			                  FROM chats c
+			                  JOIN chat_participants author_cp
+			                    ON author_cp.chat_id = c.id AND author_cp.user_id = p.author_id
+			                  JOIN chat_participants viewer_cp
+			                    ON viewer_cp.chat_id = c.id AND viewer_cp.user_id = $2
+			                  WHERE c.type = 'direct' AND c.status = 'active'
+			                )
+			              )
+			            )
+			          )
+			        )
+			    )
+			    OR EXISTS (
 			      SELECT 1 FROM channels c
 			      WHERE (c.visibility = 'public' OR EXISTS (
 			        SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = $2

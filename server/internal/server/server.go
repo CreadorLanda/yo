@@ -29,6 +29,7 @@ import (
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/media"
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/messages"
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/notifications"
+	"github.com/CreadorLanda/zwosocial/server/internal/modules/posts"
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/stickers"
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/stories"
 	"github.com/CreadorLanda/zwosocial/server/internal/modules/users"
@@ -169,6 +170,10 @@ func New(cfg config.Config) (*Server, error) {
 	storiesRepo := stories.NewRepository(pg)
 	storiesCtl := stories.NewController(stories.NewService(storiesRepo, chatOpener{msgSvc}))
 	stories.Register(authed, storiesCtl)
+
+	// Profile posts and reels (permanent; bytes live in media_objects).
+	postsCtl := posts.NewController(posts.NewService(posts.NewRepository(pg)))
+	posts.Register(authed, postsCtl)
 
 	// Imported sticker packs (bytes live in media_objects).
 	stickersRepo := stickers.NewRepository(pg)
