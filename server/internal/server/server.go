@@ -52,6 +52,7 @@ type Server struct {
 	liveSweeper  *lives.Sweeper
 	mediaSweeper *media.Sweeper
 	msgSweeper   *messages.Sweeper
+	botSweeper   *bots.Sweeper
 	pubSrv       *http.Server
 	errCh        chan error
 }
@@ -186,7 +187,7 @@ func New(cfg config.Config) (*Server, error) {
 	bots.Register(authed, botsCtl)
 
 	mountBotAPI(api, botsSvc, botsCtl, botAPIHandlers{
-		keys: keysCtl, media: mediaCtl, messages: msgCtl,
+		keys: keysCtl, media: mediaCtl, messages: msgCtl, groups: groupsCtl,
 	}, bots.NewRedisLimiter(rdb))
 
 	// Imported sticker packs (bytes live in media_objects).
@@ -252,6 +253,7 @@ func New(cfg config.Config) (*Server, error) {
 		pushWorker: pushWorker, mediaSweeper: mediaSweeper, callSweeper: callSweeper,
 		liveSweeper: liveSweeper,
 		msgSweeper:  messages.NewSweeper(msgSvc, 5*time.Minute),
+		botSweeper:  bots.NewSweeper(botsSvc, time.Hour),
 		errCh:       make(chan error, 2),
 	}, nil
 }
@@ -657,6 +659,9 @@ func (s *Server) ListenAndServe() {
 	if s.msgSweeper != nil {
 		s.msgSweeper.Start()
 	}
+	if s.botSweeper != nil {
+		s.botSweeper.Start()
+	}
 }
 
 // Err returns a channel that receives the first listener error.
@@ -682,6 +687,9 @@ func (s *Server) Close() {
 	}
 	if s.msgSweeper != nil {
 		s.msgSweeper.Stop()
+	}
+	if s.botSweeper != nil {
+		s.botSweeper.Stop()
 	}
 	if s.pubSrv != nil {
 		_ = s.pubSrv.Close()
@@ -711,6 +719,7 @@ type botAPIHandlers struct {
 	keys     *keys.Controller
 	media    *media.Controller
 	messages *messages.Controller
+	groups   *groups.Controller
 }
 
 // mountBotAPI is /api/bot/v1: bot-token auth, rate limits, and per-chat
@@ -722,6 +731,9 @@ func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, 
 	g := api.Group("/bot/v1")
 	g.Use(bots.Auth(svc), bots.RateLimit(limiter))
 	g.GET("/me", ctl.GetMe)
+	// Envelopes addressed to the bot in privacy mode (#322); asking with an
+	// offset confirms everything before it.
+	g.GET("/updates", ctl.GetUpdates)
 	g.PUT("/keys", h.keys.PutKeys)
 	g.GET("/keys/count", h.keys.GetMyCount)
 	g.GET("/users/by-username/:username/keys", h.keys.GetBundle)
@@ -736,4 +748,14 @@ func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, 
 	chat.DELETE("/messages/:mid", send, h.messages.DeleteMessage)
 	chat.POST("/messages/:mid/reactions", send, h.messages.PostReact)
 	chat.DELETE("/messages/:mid/reactions", send, h.messages.DeleteReact)
+	// Only a bot granted full read can page through a chat's history; in
+	// privacy mode it could not decrypt it anyway (ADR 0002).
+	chat.GET("/messages", bots.RequireChatScope(svc, bots.ScopeReadAll), h.messages.GetMessages)
+
+	// Group sender keys. A bot distributes its own key to send into a group,
+	// and collects the keys addressed to it — which exist only once it has
+	// full read, because the server drops any others.
+	grp := g.Group("/groups/:id")
+	grp.POST("/sender-keys", send, h.groups.PostSenderKeys)
+	grp.GET("/sender-keys", bots.RequireInstalled(svc), h.groups.GetSenderKeys)
 }

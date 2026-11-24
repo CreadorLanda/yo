@@ -28,7 +28,8 @@ func writeErr(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusConflict, gin.H{"error": rootErr(err)})
 	case errors.Is(err, ErrInvalidUsername), errors.Is(err, ErrInvalidName),
 		errors.Is(err, ErrDescriptionLong), errors.Is(err, ErrTooManyBots),
-		errors.Is(err, ErrInvalidScope), errors.Is(err, ErrChatNotSupported):
+		errors.Is(err, ErrInvalidScope), errors.Is(err, ErrChatNotSupported),
+		errors.Is(err, ErrInvalidUpdate):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})

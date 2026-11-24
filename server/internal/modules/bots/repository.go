@@ -319,6 +319,14 @@ func (r *Repository) Install(ctx context.Context, chatID, botID, actor uuid.UUID
 	if err := insertSystem(ctx, tx, chatID, actor, fmt.Sprintf("bot:added:%s:%s", actor, botID)); err != nil {
 		return err
 	}
+	if hasScope(scopes, ScopeReadAll) {
+		if err := insertSystem(ctx, tx, chatID, actor, fmt.Sprintf("bot:read_all:%s:%s:on", actor, botID)); err != nil {
+			return err
+		}
+		if err := rotateGroupKey(ctx, tx, chatID); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
@@ -356,6 +364,9 @@ func (r *Repository) UpdateScopes(ctx context.Context, chatID, botID, actor uuid
 		if err := insertSystem(ctx, tx, chatID, actor, fmt.Sprintf("bot:read_all:%s:%s:%s", actor, botID, state)); err != nil {
 			return false, false, err
 		}
+		if err := rotateGroupKey(ctx, tx, chatID); err != nil {
+			return false, false, err
+		}
 	}
 	return hadAll, hasAll, tx.Commit(ctx)
 }
@@ -367,12 +378,21 @@ func (r *Repository) Uninstall(ctx context.Context, chatID, botID, actor uuid.UU
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	tag, err := tx.Exec(ctx, `DELETE FROM bot_installations WHERE chat_id = $1 AND bot_id = $2`, chatID, botID)
+	var scopes []string
+	err = tx.QueryRow(ctx, `
+		DELETE FROM bot_installations WHERE chat_id = $1 AND bot_id = $2
+		RETURNING scopes
+	`, chatID, botID).Scan(&scopes)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotInstalled
+	}
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotInstalled
+	if hasScope(toScopes(scopes), ScopeReadAll) {
+		if err := rotateGroupKey(ctx, tx, chatID); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM chat_participants WHERE chat_id = $1 AND user_id = $2`, chatID, botID); err != nil {
 		return err
@@ -494,6 +514,14 @@ func (r *Repository) OpenDirect(ctx context.Context, person, botID uuid.UUID) (u
 		return uuid.Nil, false, err
 	}
 	return chatID, true, tx.Commit(ctx)
+}
+
+// rotateGroupKey starts a new sender-key epoch. ADR 0002: a bot granted full
+// read only receives keys from the next epoch (never history), and one that
+// loses it — or leaves — stops being able to read from the next epoch on.
+func rotateGroupKey(ctx context.Context, tx pgx.Tx, chatID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `UPDATE chats SET key_epoch = key_epoch + 1 WHERE id = $1`, chatID)
+	return err
 }
 
 // insertSystem writes a system message the same way the groups module does,

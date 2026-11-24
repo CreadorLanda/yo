@@ -4,6 +4,7 @@ import './prng';
 
 import { fetchSenderKeys, publishSenderKeys } from '@/data/api/groups';
 import { getCurrentUser } from '@/data/auth-store';
+import { excludedFromGroupKey } from '@/data/bot-store';
 import { getSecret, setSecret } from '@/data/db/secrets';
 
 import { b64urlToBytes, bytesToB64url, utf8Decode, utf8Encode } from './encoding';
@@ -160,9 +161,12 @@ async function ownKey(
   // Sealed to each member with the pairwise session — the same envelope a
   // direct message uses, so the server sees the same opaque string here as
   // it does there.
+  // ADR 0002: a bot in privacy mode never holds the group key. The server
+  // drops such entries too; leaving them out here saves sealing them.
+  const excluded = await excludedFromGroupKey(chatId);
   const entries: { user_id: string; ciphertext: string }[] = [];
   for (const m of members) {
-    if (m.user_id === me) continue;
+    if (m.user_id === me || excluded.has(m.user_id)) continue;
     try {
       entries.push({
         user_id: m.user_id,

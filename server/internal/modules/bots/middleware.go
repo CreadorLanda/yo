@@ -57,6 +57,27 @@ func RequireChatScope(svc *Service, scope Scope) gin.HandlerFunc {
 	}
 }
 
+// RequireInstalled guards a route by installation alone, whatever the
+// scopes. Used where the handler itself returns only what the bot may see.
+func RequireInstalled(svc *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		chatID, err := uuid.Parse(c.Param("id"))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid_chat_id"})
+			return
+		}
+		if _, err := svc.repo.Installation(c.Request.Context(), chatID, middleware.UserIDFrom(c)); err != nil {
+			if errors.Is(err, ErrNotInstalled) {
+				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "chat_not_found"})
+				return
+			}
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+			return
+		}
+		c.Next()
+	}
+}
+
 // Limiter is a fixed-window counter. Redis in production, nothing in tests.
 type Limiter interface {
 	// Allow counts one hit for key and reports whether it is within limit,

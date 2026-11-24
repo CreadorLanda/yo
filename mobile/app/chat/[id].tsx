@@ -82,6 +82,7 @@ import { showToast } from '@/data/toast-store';
 import { MAX_REACTIONS_PER_ITEM, searchEmojiCatalogue } from '@/data/reactions';
 import { refreshGroup, useGroup } from '@/data/group-store';
 import { groupEventTargetName, groupMemberRemovalLabel } from '@/data/group-membership-policy';
+import { invalidateChatBots } from '@/data/bot-store';
 import {
   encodeMediaContent,
   mediaFileURL,
@@ -836,6 +837,8 @@ useEffect(() => {
       const payload = ev.payload as Record<string, unknown> | null | undefined;
 
       if (ev.type === 'group.members.changed' && isGroup) {
+        // A bot added, removed or re-scoped changes who is sent what (#322).
+        invalidateChatBots(id);
         refreshGroup(id).catch(() => {});
         void listMessages(id, 20).then((dtos) => {
           const systemMessages = (dtos ?? [])
