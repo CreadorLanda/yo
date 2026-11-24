@@ -154,12 +154,12 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "6d5c2cb7-968a-4e67-bf72-a5b68820223e"
+        "projectId": "5e47a526-6fb4-469a-b5a8-5549755dc991"
       }
     },
-    "owner": "dandaraais-team",
+    "owner": "alexandrelanda",
     "updates": {
-      "url": "https://u.expo.dev/6d5c2cb7-968a-4e67-bf72-a5b68820223e",
+      "url": "https://u.expo.dev/5e47a526-6fb4-469a-b5a8-5549755dc991",
       "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": {
