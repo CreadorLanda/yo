@@ -35,3 +35,16 @@ Um post. `404 post_not_found` se não existir ou não puder ser visto.
 
 ### DELETE /posts/:id
 Só o autor; `204`. Qualquer outra pessoa recebe `404`.
+
+## Bots
+
+Como os bots encaixam na cifra de ponta a ponta está decidido no [ADR 0002](../../decisions/0002-bots-and-e2ee.md): um bot é um participante com chaves próprias e o servidor nunca decifra por ele. Tudo o que um bot envia é um envelope `soc1.`/`soc1g.`, como o cliente de uma pessoa.
+
+### Gerir bots (sessão de utilizador)
+`POST /bots` cria um bot (`username` acaba em `bot`) e devolve o token uma única vez; `GET /bots` lista os teus; `PATCH`/`DELETE /bots/:id` só para o dono; `POST /bots/:id/tokens` roda o token (revoga os anteriores); `DELETE /bots/:id/tokens` revoga todos; `POST /bots/:id/dm` abre a conversa direta com o bot.
+
+### Bots numa conversa
+`GET /chats/:id/bots` para qualquer membro; `POST`, `PATCH` e `DELETE /chats/:id/bots[/:botId]` só para admins do grupo. Adicionar, remover e ligar ou desligar a leitura total deixam uma mensagem de sistema no grupo. Por omissão um bot recebe `messages.read.commands`, `messages.send` e `members.read`.
+
+### Bot API (`/api/bot/v1`, token de bot)
+`Authorization: Bot zsb_…`. `GET /me`, publicar chaves, carregar media, `GET /chats/:id/members` (`members.read`), enviar, editar, apagar e reagir a mensagens (`messages.send`). Sem instalação na conversa: `404`; sem a permissão: `403 scope_missing`. Limites: 600 pedidos por minuto por bot e 30 escritas por minuto por bot em cada conversa (`429` com `retry_after`).

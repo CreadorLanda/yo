@@ -622,6 +622,52 @@ Author only; `204`. Anyone else gets `404`.
 
 ---
 
+### 7. Bots
+
+How bots fit end-to-end encryption is decided in [ADR 0002](../decisions/0002-bots-and-e2ee.md): a bot is a participant with its own device keys, and the server never decrypts for it. Everything a bot sends is a `soc1.`/`soc1g.` envelope, exactly like a person's client; plaintext is refused with `400`.
+
+#### Managing bots (user session)
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/bots` | `{username, display_name, description?}`. `username` is 4–32 of `a-z0-9_` and must end in `bot`. Returns `201 {bot, token}` — `token.token` is the secret, shown this once. Max 20 bots per owner. |
+| `GET` | `/bots` | Your bots. |
+| `GET` | `/bots/:idOrUsername` | A bot's public profile. |
+| `PATCH` | `/bots/:id` | Owner only: `display_name`, `description`, `avatar_url`, `privacy_mode`. Someone else's bot is `404`. |
+| `DELETE` | `/bots/:id` | Owner only. Removes the bot's account, memberships and keys. |
+| `GET` | `/bots/:id/tokens` | Live tokens (prefix and last use, never the secret). |
+| `POST` | `/bots/:id/tokens` | Rotate: a new secret, every previous one revoked. `201`. |
+| `DELETE` | `/bots/:id/tokens` | Revoke all; the bot stops until a new token is rotated in. |
+| `POST` | `/bots/:id/dm` | Open your direct chat with the bot (`201` new, `200` existing) → `{chat_id}`. Active at once, no request. |
+
+#### Bots in a chat (user session)
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/chats/:id/bots` | Any member: installed bots and their scopes. |
+| `POST` | `/chats/:id/bots` | Group admin only: `{bot_id | username, scopes?}`. Adds the bot as a member and posts a `bot:added:<actor>:<bot>` system message. |
+| `PATCH` | `/chats/:id/bots/:botId` | Group admin only: `{scopes}`. Turning `messages.read.all` on or off posts `bot:read_all:<actor>:<bot>:on|off`. |
+| `DELETE` | `/chats/:id/bots/:botId` | Group admin only. Posts `bot:removed:<actor>:<bot>`. |
+
+Scopes: `messages.read.commands` (privacy mode — commands, mentions, replies and interactions only), `messages.read.all` (everything, admin-granted and announced), `messages.send`, `members.read`, `members.manage`, `events.manage`. With none given, a bot gets `messages.read.commands`, `messages.send` and `members.read`.
+
+#### Bot API (`/api/bot/v1`, bot token)
+
+Authenticate with `Authorization: Bot zsb_…`. Routes under `/chats/:id` answer `404 chat_not_found` when the bot is not installed there and `403 scope_missing` when the installation lacks the scope.
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/me` | — |
+| `PUT` | `/keys`, `GET /keys/count` | — (publish and top up the bot device's keys) |
+| `GET` | `/users/by-username/:username/keys` and `/identity` | — |
+| `POST` | `/media/upload` | — |
+| `GET` | `/chats/:id/members` | `members.read` |
+| `POST` | `/chats/:id/messages` | `messages.send` |
+| `PATCH`, `DELETE` | `/chats/:id/messages/:mid` | `messages.send` (own messages only) |
+| `POST`, `DELETE` | `/chats/:id/messages/:mid/reactions` | `messages.send` |
+
+Limits: 600 requests per minute per bot, 30 writes per minute per bot per chat. Over a limit: `429 {error: "rate_limited", retry_after}` and a `Retry-After` header. Bots cannot open chats with people, join calls, or be added to anonymous conversations.
+
 ## Error Handling
 
 ### Error Response
