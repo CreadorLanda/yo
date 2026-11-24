@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ❌️ Added (Adicionado)
 
+#### Bots
+- Plataforma de bots no servidor (#321): contas de bot com dono, token secreto mostrado uma vez (guardado só como hash, prefixo `zsb_`), rotação e revogação, e a Bot API em `/api/bot/v1`. Um bot envia mensagens cifradas como qualquer cliente; texto simples é recusado
+- Admins de grupo adicionam, re-configuram e removem bots, com permissões por conversa; adicionar, remover e ligar a leitura total ficam anunciados no grupo. Por omissão os bots ficam em modo privado (ADR 0002). Limites de pedidos por bot e por conversa
+
 #### Câmara e posts
 - Uma só câmara para tudo, com a disposição do Instagram: barra de modos em baixo (Post, Story, Reel, Direto), obturador grande, galeria à esquerda e troca de lente à direita. Tocar tira foto e manter grava vídeo; o Reel e as ferramentas de vídeo gravam ao toque, com o tempo a encher uma barra no topo
 - Posts no perfil: um carrossel de até 10 fotos e vídeos, ou um reel, com legenda e público (contactos ou toda a gente). Publicam em segundo plano, aparecem numa grelha no perfil e abrem num visualizador próprio, onde também se apagam
