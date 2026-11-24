@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PostGrid } from '@/components/profile/post-grid';
 import { PrimaryButton } from '@/components/ui/primary-button';
 import { StateTransition } from '@/components/ui/state-transition';
 import { Text } from '@/components/ui/text';
@@ -183,6 +184,7 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
 
+            <PostGrid />
           </>
         )}
         </StateTransition>

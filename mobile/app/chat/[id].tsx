@@ -1743,7 +1743,7 @@ useEffect(() => {
     } else {
       params.set('forwardText', msg.text);
     }
-    router.push(`/story/create?${params.toString()}`);
+    router.push(`/camera?${params.toString()}`);
   };
 
   const forwardTo = async (destChatId: string) => {

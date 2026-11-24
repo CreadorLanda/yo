@@ -430,7 +430,7 @@ export default function ChannelScreen() {
     } else {
       params.set('forwardText', post.text ?? '');
     }
-    router.push(`/story/create?${params.toString()}`);
+    router.push(`/camera?${params.toString()}`);
   };
 
   const openMediaViewer = (post: ChannelPost) => {

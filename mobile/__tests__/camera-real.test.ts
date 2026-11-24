@@ -9,7 +9,11 @@ import { expect, test } from 'bun:test';
  * at all for video — launchCameraAsync was called without cameraType on that
  * path.
  */
-const screen = await Bun.file('app/story/create.tsx').text();
+// The camera is one capture component with a composer per thing it makes.
+// `screen` is the capture half: the lens, the shutter and the permissions.
+const screen = await Bun.file('components/camera/camera-capture.tsx').text();
+const storyComposer = await Bun.file('components/camera/story-composer.tsx').text();
+const modes = await Bun.file('data/camera-modes.ts').text();
 const camera = await Bun.file('components/media/filtered-camera.tsx').text();
 const chat = await Bun.file('app/chat/[id].tsx').text();
 const storyStore = await Bun.file('data/story-store.ts').text();
@@ -47,8 +51,10 @@ test('o flash deixou de ser um icone que so muda de forma', () => {
 test('as duracoes dos modos sao nomeadas uma vez', () => {
   // They appeared twice each — once to cap the recording, once to drive the
   // progress ring — and two literals that must agree is one that will not.
-  expect(screen).toContain('const BOOMERANG_SECONDS');
-  expect(screen).toContain('const HANDSFREE_SECONDS');
+  expect(modes).toContain('const BOOMERANG_SECONDS');
+  expect(modes).toContain('const HANDSFREE_SECONDS');
+  // And the screen takes them from the plan rather than restating them.
+  expect(screen).toContain('plan.maxSeconds * 1000');
   expect(screen).not.toMatch(/videoMaxDuration:.*\?\s*3\s*:\s*15/);
 });
 
@@ -254,9 +260,10 @@ test('a falha da camara fica registada ate mudar a lente ou o filtro', () => {
 });
 
 test('a permissao concedida no primeiro toque nao falha silenciosamente', () => {
-  const start = screen.indexOf('const takePhoto = async () =>');
-  const end = screen.indexOf('const buildInteractiveCaption', start);
+  const start = screen.indexOf('const readyLens = async (');
+  const end = screen.indexOf('const takePhoto = async () =>', start);
   const capture = screen.slice(start, end);
+  expect(start).toBeGreaterThan(-1);
   expect(capture).toContain('let cameraGranted = hasCam');
   expect(capture).toContain('cameraGranted = await askCam()');
   expect(capture).toContain('waitForCameraHandle()');
@@ -283,13 +290,18 @@ test('a captura do chat preserva o caminho de media cifrada', () => {
 
 test('o filtro do visor e selecionavel e nao e oferecido para video', () => {
   expect(screen).toContain("import { FILTERS, type FilterId } from '@/data/photo-filters'");
-  expect(screen).toContain('<LiveFilterStrip value={filter} onChange={setFilter} />');
-  expect(screen).toContain("captureMode !== 'audio' && !isVideoMode");
+  expect(screen).toContain('<FilterChips value={filter} onChange={setFilter} />');
+  // Offered only where a tap takes a still: the recorder writes the native
+  // stream, which the live filter is not part of.
+  expect(screen).toContain('const filterOffered = offersFilter(mode, tool)');
+  expect(screen).toContain('{filterOpen && filterOffered && !busy ?');
+  // And holding to record is off while a filter is on, for the same reason.
+  expect(screen).toContain("const canHold = plan.hold && filter === 'none'");
   expect(screen).not.toContain('filters_soon');
 });
 
 test('a story envia a audiencia escolhida ate ao pedido de publicacao', () => {
-  expect(screen).toContain('visibility: audience');
+  expect(storyComposer).toContain('visibility: audience');
   expect(storyStore).toContain('visibility: input.visibility');
   expect(storyStore).toContain('createStory({');
 });
@@ -304,8 +316,8 @@ test('a troca entre filtros reinicia a arvore nativa de forma independente', () 
 });
 
 test('a primeira gravacao aguarda o output apos conceder microfone', () => {
-  const start = screen.indexOf('const takePhoto = async () =>');
-  const end = screen.indexOf('const buildInteractiveCaption', start);
+  const start = screen.indexOf('const readyLens = async (');
+  const end = screen.indexOf('const takePhoto = async () =>', start);
   const capture = screen.slice(start, end);
   expect(capture).toContain('microphoneGranted = await askMic()');
   expect(capture).toContain('waitForCameraHandle(handleBeforeMicRequest)');

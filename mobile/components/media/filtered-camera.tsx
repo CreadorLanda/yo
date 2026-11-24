@@ -133,7 +133,7 @@ export const FilteredCamera = forwardRef<
     availabilityRef.current?.(!!device && !failed);
   }, [device, failed]);
 
-  const photoOutput = usePhotoOutput({ qualityPrioritization: 'quality' });
+  const photoOutput = usePhotoOutput({ qualityPrioritization: 'balanced' });
   // Audio only once the microphone is actually granted. Configuring a video
   // output with audio the app has no permission for makes the whole camera
   // session fail to configure — the preview never appears, and on some devices
