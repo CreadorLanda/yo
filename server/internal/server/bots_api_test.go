@@ -189,7 +189,7 @@ func botTestRouter(t *testing.T, pool *pgxpool.Pool) (*gin.Engine, []byte) {
 	bots.Register(authed, botsCtl)
 	messages.Register(authed, msgCtl)
 	groups.Register(authed, groupsCtl)
-	mountBotAPI(api, botsSvc, botsCtl, botAPIHandlers{
+	mountBotAPI(api, botsSvc, botsCtl, nil, botAPIHandlers{
 		keys: keysCtl, media: mediaCtl, messages: msgCtl, groups: groupsCtl,
 	}, nil)
 	return router, secret

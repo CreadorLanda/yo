@@ -22,6 +22,10 @@ type Service struct {
 	repo        *Repository
 	broadcaster Broadcaster
 	notifier    UpdateNotifier
+	// Event delivery (#323): live connections, and the webhook worker.
+	sink                 EventSink
+	waker                waker
+	allowPrivateWebhooks bool
 }
 
 func NewService(repo *Repository) *Service {
@@ -220,6 +224,7 @@ func (s *Service) Install(ctx context.Context, chatID, actor uuid.UUID, req Inst
 		return Installation{}, err
 	}
 	inst.Bot = bot
+	s.Emit(ctx, bot.ID, EventBotInstalled, &chatID, map[string]any{"scopes": inst.Scopes, "installed_by": actor})
 	return inst, nil
 }
 
@@ -262,6 +267,7 @@ func (s *Service) Uninstall(ctx context.Context, chatID, botID, actor uuid.UUID)
 		return err
 	}
 	s.publish(chatID, members, botID)
+	s.Emit(ctx, botID, EventBotRemoved, &chatID, map[string]any{"removed_by": actor})
 	return nil
 }
 

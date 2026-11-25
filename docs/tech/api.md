@@ -675,6 +675,41 @@ Authenticate with `Authorization: Bot zsb_…`. Routes under `/chats/:id` answer
 
 Limits: 600 requests per minute per bot, 30 writes per minute per bot per chat. Over a limit: `429 {error: "rate_limited", retry_after}` and a `Retry-After` header. Bots cannot open chats with people, join calls, or be added to anonymous conversations.
 
+#### Events: gateway and webhooks
+
+A bot receives events two ways, like Discord: a websocket it keeps open, or a webhook the server POSTs to. Every event is recorded once with an increasing `id`; both channels carry the same JSON:
+
+```json
+{"id": 42, "type": "command.invoked", "chat_id": "…", "data": {…}, "created_at": "2026-11-25T12:00:00Z"}
+```
+
+Event types (intents): `message.created`, `message.updated`, `message.deleted`, `message.reaction` (full-read bots only), `command.invoked`, `interaction.created` (from `/updates` envelopes; mentions and replies arrive as `message.created`), `members.changed` (`members.read`), `bot.installed`, `bot.removed`, and `ping` (the owner's test event, always delivered). Payloads carry ciphertext and ids only. Events are kept 7 days and may repeat (resume, retries): dedupe on `id`.
+
+**Gateway** — `GET /api/bot/v1/gateway` (websocket, bot token, no `Origin`). Up to 5 connections per bot.
+
+| Direction | Frame |
+|---|---|
+| server → | `{"op":"hello","d":{"heartbeat_interval":30000}}` |
+| → server | `{"op":"identify","d":{"intents":["command.invoked"],"resume_from":41}}` within 10 s. No intents = all. `resume_from` replays what came after it (up to 1000). |
+| server → | replayed `dispatch` frames, then `{"op":"ready","d":{"bot_id":"…","resumed":1}}` |
+| server → | `{"op":"dispatch","t":"command.invoked","s":42,"d":{…event…}}` |
+| → server | `{"op":"heartbeat"}` every interval → `{"op":"heartbeat_ack"}` |
+
+Close codes: `4000` unknown op, `4001` not identified, `4002` invalid intents, `4003` heartbeat missed, `4008` too many connections, `4009` too slow (resume from your last `s`).
+
+**Webhooks** (user session, owner only):
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/bots/:id/webhook` | `{url, intents, has_secret}`. The secret is never read back. |
+| `PUT` | `/bots/:id/webhook` | `{url, intents?}`. `https` to a public host only (private, loopback and metadata addresses are refused, also after DNS). The first time, the reply carries `secret` — shown once. |
+| `DELETE` | `/bots/:id/webhook` | Stop webhook deliveries. |
+| `POST` | `/bots/:id/webhook/secret` | Rotate the signing secret; the reply carries the new one. |
+| `GET` | `/bots/:id/deliveries` | The last 100 attempts: `status` (`pending`, `delivered`, `dead`), `attempts`, `last_status`, `last_error`. |
+| `POST` | `/bots/:id/test-event` | Send a `ping` over the gateway and the webhook. `202`. |
+
+Each delivery is a `POST` with `X-ZwoSocial-Event`, `X-ZwoSocial-Delivery`, `X-ZwoSocial-Timestamp` (unix seconds) and `X-ZwoSocial-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`. A receiver must check the signature and reject a timestamp more than 5 minutes from its clock — that is the replay protection (`bots.VerifySignature` in Go does both). Any `2xx` within 10 s is success; redirects are not followed. Failures retry after 10 s, 30 s, 2 min, 10 min and 1 h; after 6 attempts the delivery is dead.
+
 ## Error Handling
 
 ### Error Response
