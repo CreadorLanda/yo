@@ -53,6 +53,26 @@ func Auth(secret []byte) gin.HandlerFunc {
 	}
 }
 
+// ctxIsBot marks a principal that authenticated with a bot token rather
+// than a user session.
+const ctxIsBot = "auth.is_bot"
+
+// SetBotPrincipal attaches a bot as the authenticated principal, with the
+// same keys Auth uses — so controllers written for people (send a message,
+// publish keys, upload media) serve bots unchanged. Bot authentication lives
+// in the bots module; this is the one door it needs into this package.
+func SetBotPrincipal(c *gin.Context, botUserID, deviceID uuid.UUID) {
+	c.Set(ctxUserID, botUserID)
+	c.Set(ctxDeviceID, deviceID)
+	c.Set(ctxIsBot, true)
+}
+
+// IsBot reports whether the request was authenticated with a bot token.
+func IsBot(c *gin.Context) bool {
+	v, ok := c.Get(ctxIsBot)
+	return ok && v == true
+}
+
 // UserIDFrom returns the authenticated user's UUID. Panics if Auth wasn't
 // applied to the route — that's a programmer error, not a runtime one.
 func UserIDFrom(c *gin.Context) uuid.UUID {

@@ -346,6 +346,18 @@ export async function listChatsWithPendingSends(): Promise<string[]> {
  * other row — so a later history refetch upserts onto this row instead of
  * creating a duplicate.
  */
+/** Who sent a message, by its server id — for routing replies to bots. */
+export async function senderOfServerMessage(serverId: number): Promise<string | null> {
+  try {
+    const db = await getDB();
+    const res = await db.execute('SELECT sender_id FROM messages WHERE server_id = ? LIMIT 1', [serverId]);
+    const row = res.rows?.[0] as { sender_id?: string | null } | undefined;
+    return row?.sender_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function markSendSucceeded(tempId: string, dto: MessageDTO): Promise<void> {
   const db = await getDB();
   await db.transaction(async (tx) => {

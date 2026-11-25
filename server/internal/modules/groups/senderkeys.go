@@ -108,6 +108,25 @@ func (r *Repository) SaveSenderKeys(ctx context.Context, chatID, sender uuid.UUI
 		if !recipientMember || e.UserID == sender {
 			return ErrNotMember
 		}
+		// ADR 0002: a bot in privacy mode never holds a group sender key, so
+		// it cannot open ordinary group messages. Enforced here, not only in
+		// the client, so an old or modified client cannot hand one over.
+		// Dropped rather than refused, so such a client still delivers its
+		// key to everyone else.
+		var botWithoutFullRead bool
+		if err := tx.QueryRow(ctx, `
+			SELECT u.kind = 'bot' AND NOT EXISTS (
+				SELECT 1 FROM bot_installations i
+				WHERE i.chat_id = $1 AND i.bot_id = u.id
+				  AND 'messages.read.all' = ANY(i.scopes)
+			)
+			FROM users u WHERE u.id = $2
+		`, chatID, e.UserID).Scan(&botWithoutFullRead); err != nil {
+			return err
+		}
+		if botWithoutFullRead {
+			continue
+		}
 		// Idempotent: a client that redistributes after a dropped response
 		// must not fail, and re-sealing the same key is harmless.
 		if _, err := tx.Exec(ctx, `
