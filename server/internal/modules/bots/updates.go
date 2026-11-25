@@ -168,7 +168,7 @@ func (s *Service) SubmitUpdate(ctx context.Context, chatID, botID, sender uuid.U
 	if !ok {
 		return 0, ErrChatNotFound
 	}
-	if err := s.RequireScope(ctx, chatID, botID, ScopeReadCommands); err != nil {
+	if err := s.reachable(ctx, chatID, botID, ScopeReadCommands); err != nil {
 		return 0, err
 	}
 	id, err := s.repo.InsertUpdate(ctx, botID, chatID, sender, req)

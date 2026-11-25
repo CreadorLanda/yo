@@ -88,6 +88,8 @@ import { DraftLinkPreview, LinkPreviewCard } from '@/components/chat/link-previe
 import { BotBadge } from '@/components/bots/bot-badge';
 import { CommandPopover } from '@/components/bots/command-popover';
 import { CommandSheet } from '@/components/bots/command-sheet';
+import { InteractiveMessage, type InteractMember, type InteractValues } from '@/components/bots/interactive-message';
+import { sendInteraction } from '@/data/bot-interactions';
 import { buildInvocation, isAmbiguous, matchCommands, typedCommand, type ChatCommand } from '@/data/bot-commands';
 import { chatCommands, invalidateChatBots } from '@/data/bot-store';
 import {
@@ -156,6 +158,7 @@ import { useOpenedOnce, useStableCallback } from '@/hooks/use-stable-callback';
 import { LiveLocationError, startLiveShare, stopLiveShare } from '@/data/live-location';
 import { queueTextMessage, retrySend, subscribeOutbox } from '@/data/outbox';
 import {
+  decryptFromPeer,
   E2EEUnavailable,
   encryptForGroup,
   encryptForPeerOrFail,
@@ -941,6 +944,36 @@ useEffect(() => {
           }
           saveCachedMessages(id, [{ dto: { ...dto, content: plain }, body: plain }]).catch(() => {});
           setMessages((prev) => prev.map((m) => (m.id === mapped.id ? { ...m, ...mapped } : m)));
+        })();
+        return;
+      }
+
+      // A bot's reply to this person alone (#325): opened with the bot's
+      // pairwise session, shown here and never stored.
+      if (ev.type === 'bot.ephemeral' && payload) {
+        const p = payload as unknown as { id: string; bot_id: string; content: string; created_at: string };
+        void (async () => {
+          let body = '';
+          try {
+            body = await decryptFromPeer(p.bot_id, p.content);
+          } catch {
+            return;
+          }
+          const bot = (group?.members ?? []).find((m) => m.id === p.bot_id);
+          const mapped = mapApiMessage(
+            {
+              id: 0,
+              chat_id: id,
+              sender_id: p.bot_id,
+              sender_name: bot?.name ?? apiChatInfo?.title ?? '',
+              sender_is_bot: true,
+              content: body,
+              message_type: 'text',
+              created_at: p.created_at,
+            } as unknown as MessageDTO,
+            meId,
+          );
+          setMessages((prev) => [...prev, { ...mapped, id: `eph_${p.id}`, ephemeral: true }]);
         })();
         return;
       }
@@ -2836,6 +2869,31 @@ useEffect(() => {
   const stableViewOnce = useStableCallback(handleViewOnce);
   const stableRetry = useStableCallback(handleRetry);
   const stableLinkPress = useStableCallback(handleLinkPress);
+  // A click on a bot's button, menu or form goes to that bot alone (#325).
+  const stableBotInteract = useStableCallback(
+    async (target: Message, componentId: string, values?: InteractValues) => {
+      if (!id || !target.senderId) return;
+      const bot =
+        (group?.members ?? []).find((m) => m.id === target.senderId)?.username.replace(/^@/, '') ??
+        apiChatInfo?.peer_username ??
+        '';
+      await sendInteraction({
+        chatId: id,
+        botId: target.senderId,
+        botUsername: bot,
+        messageId: target.id,
+        componentId,
+        values,
+      });
+    },
+  );
+  const interactMembers = useMemo<InteractMember[]>(
+    () =>
+      (group?.members ?? [])
+        .filter((m) => !m.isBot)
+        .map((m) => ({ id: m.id, name: m.name, username: m.username.replace(/^@/, ''), avatarUri: m.avatarUri })),
+    [group?.members],
+  );
   const stableStopLive = useStableCallback(() => {
     if (id) void stopLiveShare(id);
   });
@@ -3197,6 +3255,8 @@ useEffect(() => {
                   onRetry={stableRetry}
                   onLinkPress={stableLinkPress}
                   onStopLive={stableStopLive}
+                  onBotInteract={stableBotInteract}
+                  interactMembers={interactMembers}
                 />
               )
             }
@@ -4387,6 +4447,8 @@ function BubbleBody({
   onRetry,
   onLinkPress,
   onStopLive,
+  onBotInteract,
+  interactMembers,
 }: {
   msg: GroupedMessage;
   mine: boolean;
@@ -4402,6 +4464,8 @@ function BubbleBody({
   onRetry?: (msgId: string) => void;
   onLinkPress?: (url: string) => void;
   onStopLive?: () => void;
+  onBotInteract?: (msg: Message, componentId: string, values?: InteractValues) => Promise<void>;
+  interactMembers?: InteractMember[];
 }) {
   const { colors, chat, metrics, layout } = useTheme();
   const isAudio = msg.media?.type === 'audio';
@@ -4594,6 +4658,26 @@ function BubbleBody({
         />
       ) : null}
 
+      {msg.ephemeral ? (
+        <View style={styles.forwardedRow}>
+          <Ionicons name="eye-off-outline" size={12} color={colors.textMuted} />
+          <Text style={[styles.forwardedText, { color: colors.textMuted }]}>{t('bots.ui_only_you')}</Text>
+        </View>
+      ) : null}
+
+      {msg.interactive ? (
+        <InteractiveMessage
+          interactive={msg.interactive}
+          members={interactMembers ?? []}
+          onInteract={
+            msg.senderIsBot || msg.ephemeral
+              ? (componentId, values) => onBotInteract?.(msg, componentId, values) ?? Promise.resolve()
+              : undefined
+          }
+          onOpenLink={(url) => onLinkPress?.(url)}
+        />
+      ) : null}
+
       {msg.attachment ? (
         <AttachmentBubble
           attachment={msg.attachment}
@@ -4633,7 +4717,7 @@ function BubbleBody({
         </View>
       ) : null}
 
-      {(isAudio || hasAttachment) && !hasText ? <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} /> : null}
+      {(isAudio || hasAttachment || !!msg.interactive) && !hasText ? <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} /> : null}
 
       {mediaOnly ? <MetaRow msg={msg} onMedia onRetry={() => onRetry?.(msg.id)} /> : null}
     </>
@@ -4673,6 +4757,8 @@ function BubbleView({
   onRetry,
   onLinkPress,
   onStopLive,
+  onBotInteract,
+  interactMembers,
 }: {
   msg: GroupedMessage;
   isGroup: boolean;
@@ -4692,6 +4778,8 @@ function BubbleView({
   onRetry?: (msgId: string) => void;
   onLinkPress?: (url: string) => void;
   onStopLive?: () => void;
+  onBotInteract?: (msg: Message, componentId: string, values?: InteractValues) => Promise<void>;
+  interactMembers?: InteractMember[];
 }) {
   const { colors, chat: chrome, layout, metrics } = useTheme();
   const mine = msg.fromMe;
@@ -4859,6 +4947,8 @@ function BubbleView({
               onRetry={onRetry}
               onLinkPress={onLinkPress}
               onStopLive={onStopLive}
+              onBotInteract={onBotInteract}
+              interactMembers={interactMembers}
             />
           </Pressable>
 

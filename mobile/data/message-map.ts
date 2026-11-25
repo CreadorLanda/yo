@@ -8,6 +8,7 @@ import {
   syncGroupKeys,
 } from '@/data/crypto';
 import type { MediaAttachment, Message, MessageAttachment } from '@/data/mock';
+import { decodeBotBody, isInteractiveBody } from '@/data/bot-message';
 import { decodeTextBody } from '@/data/link-preview';
 import { t } from '@/i18n';
 
@@ -239,6 +240,11 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
   }
   // A text body may carry a link card next to the words (#353).
   if (mt === 'text' || mt === 'reply') {
+    // A bot's interactive message (#325), checked before it is drawn.
+    if (isInteractiveBody(m.content)) {
+      const { text, interactive } = decodeBotBody(m.content);
+      return interactive ? { ...base, text, interactive } : { ...base, text };
+    }
     const { text, preview } = decodeTextBody(m.content);
     return preview ? { ...base, text, linkPreview: preview } : { ...base, text };
   }

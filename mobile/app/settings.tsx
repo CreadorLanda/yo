@@ -951,8 +951,16 @@ export default function SettingsScreen() {
             label={t('bots.my_bots')}
             value={t('settings.developer_bots_hint')}
             onPress={() => router.push('/bots')}
-            last
+            last={!__DEV__}
           />
+          {__DEV__ ? (
+            <Row
+              icon="grid-outline"
+              label={t('bots.dev_gallery')}
+              onPress={() => router.push('/dev/bot-components')}
+              last
+            />
+          ) : null}
         </Group>
 
         <Group title={t('settings.section_help')}>

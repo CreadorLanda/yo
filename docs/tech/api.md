@@ -694,6 +694,30 @@ A command: `{name, description, description_pt?, options: [{name, description, d
 
 People invoke a command as text — `/remind when:2026-11-26T09:00:00Z what:"drink water"`, with `@bot` when two bots share the name — so the group sees it. In privacy mode the bot's copy (`command.invoked`) carries `command {name, options}` already parsed. The registry and autocomplete answers are visible to the server; what a person types is not.
 
+#### Interactive messages
+
+A bot's card, buttons, menus and forms travel inside its end-to-end encrypted message — the server cannot see or check them, so the app does. The plaintext body is:
+
+```json
+{"zi1": {"text": "Lunch?", "card": {"title": "…", "description": "…", "color": "success",
+  "fields": [{"name": "When", "value": "13:00", "inline": true}], "thumbnail": "data:image/jpeg;base64,…", "footer": "…"},
+  "components": [[{"type": "button", "id": "yes", "label": "Yes", "style": "primary"},
+                  {"type": "button", "label": "Menu", "style": "link", "url": "https://…"}],
+                 [{"type": "select", "id": "where", "options": [{"label": "Sushi", "value": "sushi"}], "max": 1}],
+                 [{"type": "user_select", "id": "who", "max": 1}],
+                 [{"type": "form", "id": "rsvp", "title": "RSVP", "submit_label": "Send",
+                   "fields": [{"id": "name", "label": "Name", "type": "text", "required": true}]}]],
+  "expires_at": "2026-12-01T00:00:00Z"}}
+```
+
+Button styles: `primary`, `secondary`, `danger`, `link` (https only, opened under the chat's link rules). Card colours are theme tokens: `primary`, `success`, `warning`, `danger`, `info`. Form fields: `text`, `number`, `date`, `choice`. Limits: 5 rows, 5 buttons a row (a menu or form takes a row alone), 25 options, 5 form fields, 10 card fields, labels 80 characters, ids `[A-Za-z0-9_:.-]{1,64}` and unique. Anything else is dropped; text is plain, never HTML or markdown. Past `expires_at`, or with `disabled: true`, components show disabled — a bot disables them by editing its message.
+
+A click is an `interaction` update (`POST /chats/:id/bots/:botId/updates`, also in a direct chat with the bot) whose envelope carries `{v: 1, kind: "interaction", message_id, component_id, values?}` — `values` is the picked options or user ids, or a form's `{field: value}`. The bot gets it as `interaction.created`.
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/api/bot/v1/chats/:id/ephemeral` | Bot token: `{user_id, content}` — a `soc1.` envelope for that member, pushed live as `bot.ephemeral` and never stored. Installed with `messages.send`, or the bot's direct chat. `202`; `404 not_chat_member`. |
+
 #### Events: gateway and webhooks
 
 
