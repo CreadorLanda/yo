@@ -90,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A conversa abre já com as mensagens e diretamente na mais recente, sem ecrã vazio nem scroll
 - O microfone só é pedido quando se vai gravar, e não ao abrir uma conversa. O primeiro toque pede a permissão e a gravação começa no toque seguinte
 - Todos os links (conversas, multimédia, definições) abrem num só browser dentro da app: Custom Tabs no Android e Safari View Controller no iOS, com título, partilha e "abrir no browser", e voltam à conversa com o gesto de voltar. Os links `www.` também passam a ser clicáveis, e esquemas perigosos (`javascript:`, `file:`, `intent:`) são recusados. Sem Custom Tabs no telemóvel, abre o browser do sistema
+- Os links nas mensagens mostram um cartão com miniatura, site, título e descrição. O cartão é feito no telemóvel de quem envia e segue cifrado dentro da mensagem: o servidor não sabe que havia um link e quem recebe não visita a página. Aparece por cima do compositor enquanto se escreve e o X envia sem ele; não é criado em conversas que pedem confirmação antes de abrir links. No Android a página começa a carregar logo ao tocar no link
 
 #### Chamadas
 - Voltar atrás ou sair da app já não termina a chamada: ela continua em segundo plano e uma barra verde no topo, acima do nome e da foto da conversa, mostra a pessoa e o tempo. Um toque volta à chamada e o botão vermelho termina-a. O ecrã da chamada ganhou um botão para minimizar

@@ -81,7 +81,10 @@ import { showToast } from '@/data/toast-store';
 import { MAX_REACTIONS_PER_ITEM, searchEmojiCatalogue } from '@/data/reactions';
 import { refreshGroup, useGroup } from '@/data/group-store';
 import { groupEventTargetName, groupMemberRemovalLabel } from '@/data/group-membership-policy';
-import { openInApp } from '@/data/browser';
+import { openInApp, prepareLink } from '@/data/browser';
+import { decodeTextBody, encodeTextBody, firstLink, textOfBody, type LinkPreview } from '@/data/link-preview';
+import { fetchLinkPreview } from '@/data/link-preview-fetch';
+import { DraftLinkPreview, LinkPreviewCard } from '@/components/chat/link-preview-card';
 import { invalidateChatBots } from '@/data/bot-store';
 import {
   encodeMediaContent,
@@ -449,6 +452,14 @@ useEffect(() => {
     id === DANDARA.id ? MESSAGES[DANDARA.id] ?? [] : peekThread(id)?.messages ?? [],
   );
   const [draft, setDraft] = useState('');
+  // The card for the first link in the draft (#353), and the link whose card
+  // the person dismissed, so it does not come back while they keep typing.
+  const [draftPreview, setDraftPreview] = useState<{
+    url: string;
+    preview: LinkPreview | null;
+    loading: boolean;
+  } | null>(null);
+  const [dismissedPreviewUrl, setDismissedPreviewUrl] = useState<string | null>(null);
   const [searchMode, setSearchMode] = useState(false);
   const [query, setQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState<ChatSearchFilter>('all');
@@ -589,9 +600,11 @@ useEffect(() => {
           const replyToMsg = p.replyToId
             ? cachedMapped.find((m) => serverMessageId(m.id) === Number(p.replyToId))
             : undefined;
+          const body = decodeTextBody(p.text);
           return {
             id: p.id,
-            text: p.text,
+            text: body.text,
+            ...(body.preview ? { linkPreview: body.preview } : {}),
             fromMe: true,
             timestamp: formatMsgTime(p.createdAt),
             status: p.status === 'failed' ? 'failed' : 'sending',
@@ -718,7 +731,7 @@ useEffect(() => {
           if (known != null) {
             const plainDTO = { ...m, content: known };
             const mapped = mapApiMessage(plainDTO, meId);
-            const mentions = mentionsIn(known);
+            const mentions = mentionsIn(textOfBody(known));
             decrypted.push({
               dto: plainDTO,
               body: known,
@@ -736,7 +749,7 @@ useEffect(() => {
             // an encrypted media envelope would surface as raw JSON.
             const plainDTO = { ...m, content: plain };
             const mapped = mapApiMessage(plainDTO, meId);
-            decrypted.push({ dto: plainDTO, body: plain, msg: { ...mapped, mentions: mentionsIn(plain) } });
+            decrypted.push({ dto: plainDTO, body: plain, msg: { ...mapped, mentions: mentionsIn(textOfBody(plain)) } });
           } else {
             decrypted.push({ dto: m, body: m.content, msg: base });
           }
@@ -877,7 +890,7 @@ useEffect(() => {
             // after a reload, which is the history path a few lines up.
             const plain = await decryptMessageContent(dto, meId, peerId);
             plainBody = plain;
-            mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(plain) };
+            mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(textOfBody(plain)) };
           }
           // On disk straight away, so it is there on the next open with no
           // decrypt and no network. Our own sends are the outbox's to record.
@@ -917,7 +930,7 @@ useEffect(() => {
           let plain = dto.content;
           if (mapped.text === '🔒 …' || needsDecrypt(dto.content)) {
             plain = await decryptMessageContent(dto, meId, apiChatInfo?.peer_user_id);
-            mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(plain) };
+            mapped = { ...mapApiMessage({ ...dto, content: plain }, meId), mentions: mentionsIn(textOfBody(plain)) };
           }
           saveCachedMessages(id, [{ dto: { ...dto, content: plain }, body: plain }]).catch(() => {});
           setMessages((prev) => prev.map((m) => (m.id === mapped.id ? { ...m, ...mapped } : m)));
@@ -1144,6 +1157,35 @@ useEffect(() => {
     }
     open();
   };
+
+  // The card for the first link in the draft, built on this device (#353).
+  // Not in chats that ask before opening links — fetching the page would be
+  // opening it — and not for Dandara or while editing.
+  const previewLink =
+    !id || isAIChat || editingMsgId || apiChatInfo?.privacy?.links_require_confirmation
+      ? null
+      : firstLink(draft);
+  const activePreviewLink = previewLink && previewLink !== dismissedPreviewUrl ? previewLink : null;
+  useEffect(() => {
+    if (!activePreviewLink) {
+      setDraftPreview(null);
+      return;
+    }
+    let cancelled = false;
+    setDraftPreview((prev) =>
+      prev?.url === activePreviewLink ? prev : { url: activePreviewLink, preview: null, loading: true },
+    );
+    // Debounced: typing a URL letter by letter should not fetch every prefix.
+    const timer = setTimeout(() => {
+      void fetchLinkPreview(activePreviewLink).then((preview) => {
+        if (!cancelled) setDraftPreview({ url: activePreviewLink, preview, loading: false });
+      });
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [activePreviewLink]);
 
   // Broadcast typing while the user is composing.
   useEffect(() => {
@@ -1819,8 +1861,11 @@ useEffect(() => {
     // If we're editing an existing message, update it in place and bail out.
     if (editingMsgId) {
       const editId = editingMsgId;
+      // The card stays while its link does; editing the link out drops it.
+      const edited = messages.find((m) => m.id === editId)?.linkPreview;
+      const keptPreview = edited && firstLink(text) === edited.url ? edited : undefined;
       setMessages((prev) =>
-        prev.map((m) => (m.id === editId ? { ...m, text, edited: true } : m)),
+        prev.map((m) => (m.id === editId ? { ...m, text, edited: true, linkPreview: keptPreview } : m)),
       );
       setEditingMsgId(null);
       const mid = serverMessageId(editId);
@@ -1836,7 +1881,7 @@ useEffect(() => {
               text,
               target!.media!.key ?? null,
             )
-          : text;
+          : encodeTextBody(text, keptPreview);
 
         apiEditMessage(id, mid, body)
           .then((dto) => {
@@ -1853,6 +1898,12 @@ useEffect(() => {
       return;
     }
     const tempId = `tmp_${Date.now()}`;
+    // The draft's card goes only if it is for this text's link and has
+    // finished loading; a send never waits for a page (#353).
+    const linkPreview =
+      draftPreview?.preview && !draftPreview.loading && firstLink(text) === draftPreview.url
+        ? draftPreview.preview
+        : undefined;
     const reply = replyTarget
       ? {
           id: replyTarget.id,
@@ -1868,6 +1919,7 @@ useEffect(() => {
     appendMessage({
       id: tempId,
       text,
+      ...(linkPreview ? { linkPreview } : {}),
       mentions: mentionsIn(text),
       replyTo: reply,
       status: id && !isAIChat ? 'sending' : 'sent',
@@ -1883,7 +1935,14 @@ useEffect(() => {
       // of actual send, not here: sealing now would spend a ratchet step on
       // a message that has not even tried the network yet.
       const replyTo = reply ? serverMessageId(reply.id) ?? undefined : undefined;
-      queueTextMessage({ id: tempId, chatId: id, senderId: meId ?? '', text, replyToId: replyTo });
+      queueTextMessage({
+        id: tempId,
+        chatId: id,
+        senderId: meId ?? '',
+        // The card is sealed with the words, inside the same envelope.
+        text: encodeTextBody(text, linkPreview),
+        replyToId: replyTo,
+      });
     }
   };
 
@@ -1892,6 +1951,7 @@ useEffect(() => {
     if (!text || !canCompose) return;
     submitText(text);
     setDraft('');
+    setDismissedPreviewUrl(null);
     typingSentRef.current = false;
     if (id && !isAIChat) apiSetTyping(id, false).catch(() => {});
   };
@@ -3238,6 +3298,15 @@ useEffect(() => {
               </View>
             ) : null}
 
+            {/* The draft's link card (#353) — X sends the message without it */}
+            {!editingMsgId && draftPreview && recordPhase === 'idle' ? (
+              <DraftLinkPreview
+                preview={draftPreview.preview}
+                loading={draftPreview.loading}
+                onDismiss={() => setDismissedPreviewUrl(draftPreview.url)}
+              />
+            ) : null}
+
             {/* Reply preview bar — hidden while recording or editing */}
             {!editingMsgId && replyTarget && recordPhase === 'idle' ? (
               <View style={[styles.replyBar, { backgroundColor: colors.surface, borderTopColor: colors.divider }]}>
@@ -3695,6 +3764,7 @@ function HighlightedText({
             {chunk}
             {matches[index] ? (
               <Text
+                onPressIn={() => prepareLink(matches[index])}
                 onPress={() => onLinkPress(matches[index])}
                 style={{ textDecorationLine: 'underline' }}
               >
@@ -4459,6 +4529,9 @@ function BubbleBody({
             ]}
             onLinkPress={onLinkPress}
           />
+          {msg.linkPreview ? (
+            <LinkPreviewCard preview={msg.linkPreview} mine={mine} onOpen={(url) => onLinkPress?.(url)} />
+          ) : null}
           <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
         </View>
       ) : null}

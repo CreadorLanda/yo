@@ -167,31 +167,30 @@ POST /api/stickers/export
 
 ## 7. Link Preview
 
-### Auto-Preview
+### How it works
 
-When sending URL, automatically shows:
-- Thumbnail
-- Title
-- Description
-- Site icon
+- While a message is being written, the sender's device reads the first link's page and shows a card above the composer: thumbnail, site, title and description. The **X** sends the message without it.
+- The card travels **inside the end-to-end encrypted message**, next to the text. The server never learns the message had a link, and the receiver never fetches the page to draw the card.
+- The thumbnail is shrunk on the sender's device to a small JPEG (at most 32 KB) and sent as a data URI.
+- A send never waits for a page: if the card is still loading, the message goes without it.
+- No card is built in chats with **Confirm before opening links**, since reading the page would be opening it. Editing a message keeps its card while the link stays in the text.
+- Tapping the card opens the link in the in-app browser (see the in-app browser, #348); on Android the page starts loading on press-in.
 
-### Link Preview Data
+### Body format
+
+A text message without a card is the text itself. With a card, the plaintext sealed in the envelope is:
 
 ```json
-{
-  "url": "https://...",
-  "title": "Page Title",
-  "description": "Page description...",
-  "image": "preview.jpg",
-  "icon": "favicon.ico"
-}
+{"zl1": {"text": "see https://example.com", "preview": {
+  "url": "https://example.com/",
+  "title": "Page title",
+  "site": "Example",
+  "description": "Optional",
+  "image": "data:image/jpeg;base64,…"
+}}}
 ```
 
-### Disable Preview
-
-```
-Settings → Privacy → Link previews → Off
-```
+A receiving device checks the card before showing it: only `http(s)` URLs, a title is required, lengths are capped, and the image must be a small inline JPEG, PNG or WebP. Notifications, the chat list, reports and bots read only `text`.
 
 ---
 

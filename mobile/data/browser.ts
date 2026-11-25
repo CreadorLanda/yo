@@ -107,3 +107,16 @@ export function warmUpBrowser(): () => void {
   void WebBrowser.warmUpAsync().catch(() => {});
   return () => void WebBrowser.coolDownAsync().catch(() => {});
 }
+
+/**
+ * Hint the browser that `url` is about to open (#353): called on press-in, so
+ * the page starts loading in the Custom Tab before the finger lifts. Android
+ * only, and a hint: official links and refused URLs are skipped.
+ */
+export function prepareLink(raw: string): void {
+  if (Platform.OS !== 'android') return;
+  if (parseOfficialLink(raw)) return;
+  const url = normalizeUrl(raw);
+  if (!url || !/^https?:/.test(url)) return;
+  void WebBrowser.mayInitWithUrlAsync(url).catch(() => {});
+}

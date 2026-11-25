@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { sendMessage as apiSendMessage, type MessageDTO } from '@/data/api/messages';
 import { getGroup } from '@/data/api/groups';
 import { deliverToBots } from '@/data/bot-delivery';
+import { textOfBody } from '@/data/link-preview';
 import { ApiError } from '@/data/api/client';
 import { getCachedChat } from '@/data/chat-store';
 import {
@@ -159,7 +160,8 @@ async function attemptSend(next: PendingSend): Promise<OutboxEvent> {
           const replyToSenderId = replyTo != null ? await senderOfServerMessage(replyTo) : null;
           await deliverToBots({
             chatId: next.chatId,
-            text: next.text,
+            // A bot gets the words, not the card the sender's phone built.
+            text: textOfBody(next.text),
             messageId: Number(dto.id),
             replyToId: replyTo,
             replyToSenderId,

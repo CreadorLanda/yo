@@ -107,13 +107,30 @@ As ações da mensagem aparecem ao manter a mensagem pressionada. Deslizar a men
 
 ## 7. Pré-visualização de Links
 
-### Auto-Preview
+### Como funciona
 
-Ao enviar URL, mostra automaticamente:
-- Miniatura
-- Título
-- Descrição
-- Ícone do site
+- Enquanto a mensagem é escrita, o dispositivo de quem envia lê a página do primeiro link e mostra um cartão por cima do compositor: miniatura, site, título e descrição. O **X** envia a mensagem sem ele.
+- O cartão viaja **dentro da mensagem cifrada de ponta a ponta**, junto ao texto. O servidor nunca sabe que a mensagem tinha um link, e quem recebe nunca vai à página para desenhar o cartão.
+- A miniatura é reduzida no dispositivo de quem envia para um JPEG pequeno (no máximo 32 KB) e enviada como data URI.
+- O envio nunca espera pela página: se o cartão ainda estiver a carregar, a mensagem vai sem ele.
+- Não se cria cartão em conversas com **Confirmar antes de abrir links**, porque ler a página seria abri-la. Editar uma mensagem mantém o cartão enquanto o link continuar no texto.
+- Tocar no cartão abre o link no browser da app (ver o browser da app, #348); no Android a página começa a carregar logo ao pressionar.
+
+### Formato do corpo
+
+Uma mensagem de texto sem cartão é o próprio texto. Com cartão, o texto claro selado no envelope é:
+
+```json
+{"zl1": {"text": "vê https://example.com", "preview": {
+  "url": "https://example.com/",
+  "title": "Título da página",
+  "site": "Example",
+  "description": "Opcional",
+  "image": "data:image/jpeg;base64,…"
+}}}
+```
+
+O dispositivo que recebe valida o cartão antes de o mostrar: só URLs `http(s)`, título obrigatório, comprimentos limitados e a imagem tem de ser um JPEG, PNG ou WebP pequeno e embutido. As notificações, a lista de conversas, as denúncias e os bots lêem só o `text`.
 
 ---
 
