@@ -1711,6 +1711,11 @@ export function useLikedThemeIds(): Set<string> {
   return useSyncExternalStore(subscribe, () => liked);
 }
 
+/** The chosen scheme outside React — for code that cannot use a hook. */
+export function getSchemePreference(): SchemePreference {
+  return schemePref;
+}
+
 export function useSchemePreference(): SchemePreference {
   return useSyncExternalStore(subscribe, () => schemePref);
 }

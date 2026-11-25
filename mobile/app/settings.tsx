@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { AppState, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
@@ -49,6 +49,7 @@ import {
 } from '@/data/api/notifications';
 import { registerPushWithServer } from '@/data/push';
 import { useProfile } from '@/data/profile-store';
+import { openInApp } from '@/data/browser';
 import {
   getActivePack,
   setSchemePreference,
@@ -949,7 +950,7 @@ export default function SettingsScreen() {
             icon="help-circle-outline"
             label={t('settings.help_faq')}
             onPress={() => {
-              void Linking.openURL(FAQ_URL).catch(() =>
+              void openInApp(FAQ_URL).catch(() =>
                 appAlert(t('chats.action_failed_title'), t('chats.action_failed_body')),
               );
             }}
@@ -965,9 +966,7 @@ export default function SettingsScreen() {
             /* socialize.app has never existed, so this row opened a dead
                link. The policy is real and lives in the repository. */
             onPress={() =>
-              Linking.openURL(
-                'https://github.com/CreadorLanda/yo/blob/main/docs/security/privacy-policy.md',
-              )
+              void openInApp('https://github.com/CreadorLanda/yo/blob/main/docs/security/privacy-policy.md')
             }
             last
           />

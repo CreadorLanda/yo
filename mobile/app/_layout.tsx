@@ -30,6 +30,7 @@ import { resumeLiveShares } from '@/data/live-location';
 import { ensureOutboxRunning } from '@/data/outbox';
 import { registerPushWithServer } from '@/data/push';
 import { bootstrapThemes } from '@/data/theme-store';
+import { warmUpBrowser } from '@/data/browser';
 import { useTheme } from '@/hooks/use-theme';
 
 export const unstable_settings = {
@@ -60,6 +61,10 @@ export default function RootLayout() {
       stopForeground();
     };
   }, []);
+
+  // The first link someone taps should open at once, not after the browser
+  // process starts (#348).
+  useEffect(() => warmUpBrowser(), []);
 
   useEffect(() => {
     let mounted = true;
