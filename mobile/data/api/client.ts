@@ -109,9 +109,11 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
     throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.error);
   }
 
-  // Empty body (204 etc.) → cast as unknown.
+  // Empty body (204, or a 202 "accepted") → cast as unknown. Only 204 was
+  // handled, so an empty 202 threw on parsing after the server had done it.
   if (res.status === 204) return undefined as unknown as T;
-  return (await res.json()) as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {
