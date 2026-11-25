@@ -3679,7 +3679,8 @@ function HighlightedText({
     if (last < tok.text.length) parts.push({ text: tok.text.slice(last), kind: 'plain' });
   }
 
-  const linkRe = /https?:\/\/[^\s]+/gi;
+  // `www.` links too: openInApp adds the scheme (#348).
+  const linkRe = /(?:https?:\/\/|www\.)[^\s]+/gi;
   const renderText = (value: string, key: string | number, style?: TextStyle) => {
     if (!onLinkPress) return <Text key={key} style={style}>{value}</Text>;
     const chunks = value.split(linkRe);

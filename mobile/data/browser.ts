@@ -63,10 +63,10 @@ export async function openInApp(raw: string): Promise<OpenResult> {
   }
   const url = normalizeUrl(raw);
   if (!url) return 'refused';
-  if (url.startsWith('zwosocial:')) {
-    await Linking.openURL(url);
-    return 'official';
-  }
+  // An app-scheme link nobody can show (unknown type, or no modal host yet)
+  // has nowhere to go: the router has no such screen and a browser cannot
+  // open it.
+  if (url.startsWith('zwosocial:')) return 'refused';
   try {
     await WebBrowser.openBrowserAsync(url, browserOptions());
   } catch {
