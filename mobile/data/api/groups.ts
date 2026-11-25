@@ -20,6 +20,8 @@ export interface GroupMemberDTO {
   avatar_uri?: string;
   role: MemberRole;
   joined_at: string;
+  /** A bot account (#326). */
+  is_bot?: boolean;
 }
 
 export interface GroupDTO {

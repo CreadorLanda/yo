@@ -85,6 +85,7 @@ import { openInApp, prepareLink } from '@/data/browser';
 import { decodeTextBody, encodeTextBody, firstLink, textOfBody, type LinkPreview } from '@/data/link-preview';
 import { fetchLinkPreview } from '@/data/link-preview-fetch';
 import { DraftLinkPreview, LinkPreviewCard } from '@/components/chat/link-preview-card';
+import { BotBadge } from '@/components/bots/bot-badge';
 import { invalidateChatBots } from '@/data/bot-store';
 import {
   encodeMediaContent,
@@ -2982,9 +2983,12 @@ useEffect(() => {
                 ) : null}
               </View>
               <View style={styles.peerInfo}>
-                <Text style={[styles.peerName, { color: colors.text }]} numberOfLines={1}>
-                  {chat?.name || apiChatInfo?.title || 'Chat'}
-                </Text>
+                <View style={styles.peerNameRow}>
+                  <Text style={[styles.peerName, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>
+                    {chat?.name || apiChatInfo?.title || 'Chat'}
+                  </Text>
+                  {apiChatInfo?.peer_is_bot ? <BotBadge /> : null}
+                </View>
                 <View style={styles.peerStatusRow}>
                   <Text style={[styles.peerStatus, { color: colors.textSecondary }]} numberOfLines={1}>
                     {isAIChat
@@ -3616,6 +3620,35 @@ function SystemDivider({
           </Text>
         </View>
       </Pressable>
+    );
+  }
+
+  if (ev?.kind === 'bot') {
+    const actor =
+      ev.actorId === msg.senderId && mine
+        ? t('chat.you')
+        : groupMembers.find((member) => member.id === ev.actorId)?.name ?? t('chat.deleted_user');
+    // A removed bot is no longer a member, so its name may be gone too.
+    const bot = groupMembers.find((member) => member.id === ev.botId)?.name ?? t('bots.a_bot');
+    const label =
+      ev.event === 'added'
+        ? t('bots.system_added', { actor, bot })
+        : ev.event === 'removed'
+          ? t('bots.system_removed', { actor, bot })
+          : ev.on
+            ? t('bots.system_read_all_on', { actor, bot })
+            : t('bots.system_read_all_off', { actor, bot });
+    return (
+      <View style={styles.systemRow}>
+        <View style={[styles.systemPill, { backgroundColor: colors.surface }]}>
+          <Ionicons
+            name={ev.event === 'read_all' && ev.on ? 'eye-outline' : 'hardware-chip-outline'}
+            size={11}
+            color={ev.event === 'read_all' && ev.on ? colors.warning : colors.textSecondary}
+          />
+          <Text style={[styles.systemText, { color: colors.textSecondary }]}>{label}</Text>
+        </View>
+      </View>
     );
   }
 
@@ -4472,9 +4505,10 @@ function BubbleBody({
       {showSender ? (
         <View style={styles.senderRow}>
           {msg.isAI ? <Ionicons name="sparkles" size={11} color={colors.primary} /> : null}
-          <Text style={[styles.senderName, { color: colors.primary }]} numberOfLines={1}>
+          <Text style={[styles.senderName, { color: colors.primary, flexShrink: 1 }]} numberOfLines={1}>
             {msg.senderName}
           </Text>
+          {msg.senderIsBot ? <BotBadge /> : null}
         </View>
       ) : null}
 
@@ -5268,6 +5302,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   peerInfo: { flex: 1 },
+  peerNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   peerName: { ...Typography.bodyStrong, fontSize: 16 },
   peerStatus: { ...Typography.caption },
   peerStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },

@@ -652,6 +652,8 @@ How bots fit end-to-end encryption is decided in [ADR 0002](../decisions/0002-bo
 
 **Privacy mode, enforced by the server.** Group sender keys addressed to a bot without `messages.read.all` are dropped on upload, so such a bot can never open ordinary group messages. Granting full read (on install or later), revoking it, or removing a full-read bot advances the group's key epoch: the bot gets keys only from the next epoch, never history, and stops being able to read after it leaves.
 
+**Telling bots apart.** Group members carry `is_bot`, a direct chat with a bot carries `peer_is_bot`, and a bot's messages carry `sender_is_bot`, so clients badge a bot wherever its name appears. Adding, removing and granting or revoking full read leave `bot:added|removed|read_all:<actor>:<bot>[:on|off]` system messages that clients render in the reader's language.
+
 Scopes: `messages.read.commands` (privacy mode — commands, mentions, replies and interactions only), `messages.read.all` (everything, admin-granted and announced), `messages.send`, `members.read`, `members.manage`, `events.manage`. With none given, a bot gets `messages.read.commands`, `messages.send` and `members.read`.
 
 #### Bot API (`/api/bot/v1`, bot token)

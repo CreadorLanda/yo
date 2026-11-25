@@ -46,6 +46,8 @@ type Member struct {
 	AvatarURI   string     `json:"avatar_uri,omitempty"`
 	Role        MemberRole `json:"role"`
 	JoinedAt    time.Time  `json:"joined_at"`
+	// IsBot marks a bot account (#326), so clients can badge it.
+	IsBot bool `json:"is_bot,omitempty"`
 }
 
 type Group struct {

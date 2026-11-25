@@ -26,6 +26,8 @@ export interface ChatDTO {
   /** Direct chat peer — used for client-side E2EE. */
   peer_user_id?: string;
   peer_username?: string;
+  /** The other side of this direct chat is a bot (#326). */
+  peer_is_bot?: boolean;
   /** Per-user settings. Present only when set; two participants can differ. */
   pinned_at?: string;
   muted_until?: string;
@@ -98,6 +100,8 @@ export interface MessageDTO {
   deleted_at?: string;
   sender_name?: string;
   sender_avatar?: string;
+  /** A bot's message, badged (#326). */
+  sender_is_bot?: boolean;
   delivered_to?: number;
   read_by?: number;
   /** Whether this inbound message was beyond the caller's read cursor at history load. */

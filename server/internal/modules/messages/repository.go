@@ -184,7 +184,7 @@ const chatSelectBase = `
 		    cp.pinned_at, cp.muted_until, cp.archived_at,
 		    lm.content, lm.message_type, lm.sender_id, lm.created_at,
 		    COALESCE(uc.n, 0),
-		    pu.id, pu.username, pu.display_name, pu.avatar_uri
+		    pu.id, pu.username, pu.display_name, pu.avatar_uri, COALESCE(pu.is_bot, FALSE)
 		FROM chats c
 		JOIN chat_participants cp
 		  ON cp.chat_id = c.id AND cp.user_id = $1
@@ -209,7 +209,8 @@ const chatSelectBase = `
 		) uc ON TRUE
 		-- Direct chats show the other participant, not a stored title.
 		LEFT JOIN LATERAL (
-		    SELECT u.id, u.username, u.display_name, COALESCE(u.avatar_uri, '') AS avatar_uri
+		    SELECT u.id, u.username, u.display_name, COALESCE(u.avatar_uri, '') AS avatar_uri,
+		           u.kind = 'bot' AS is_bot
 		    FROM chat_participants cp2
 		    JOIN users u ON u.id = cp2.user_id
 		    WHERE cp2.chat_id = c.id AND (cp2.user_id <> $1 OR c.is_self)
@@ -278,6 +279,7 @@ func (r *Repository) scanChatRows(rows pgx.Rows) ([]Chat, error) {
 			peerUser  *string
 			peerName  *string
 			peerAva   *string
+			peerBot   bool
 		)
 		if err := rows.Scan(
 			&c.ID, &c.Type, &c.IsSelf, &c.Title, &c.AvatarURL, &c.CreatedBy, &c.Status, &c.CreatedAt,
@@ -288,7 +290,7 @@ func (r *Repository) scanChatRows(rows pgx.Rows) ([]Chat, error) {
 			&c.PinnedAt, &c.MutedUntil, &c.ArchivedAt,
 			&lmContent, &lmType, &lmSender, &lmAt,
 			&c.UnreadCount,
-			&peerID, &peerUser, &peerName, &peerAva,
+			&peerID, &peerUser, &peerName, &peerAva, &peerBot,
 		); err != nil {
 			return nil, err
 		}
@@ -312,6 +314,7 @@ func (r *Repository) scanChatRows(rows pgx.Rows) ([]Chat, error) {
 		if peerID != nil {
 			c.PeerUserID = peerID
 			c.PeerUsername = peerUser
+			c.PeerIsBot = peerBot
 			if peerName != nil && *peerName != "" {
 				c.Title = peerName
 			}
@@ -748,7 +751,7 @@ func (r *Repository) RegisterView(ctx context.Context, chatID uuid.UUID, message
 const messageSelectBase = `
 	SELECT m.id, m.chat_id, m.sender_id, m.content, m.message_type, m.reply_to_id,
 	       m.created_at, m.edited_at, m.deleted_at,
-	       COALESCE(u.display_name, ''), COALESCE(u.avatar_uri, ''),
+	       COALESCE(u.display_name, ''), COALESCE(u.avatar_uri, ''), COALESCE(u.kind = 'bot', FALSE),
 	       rc.delivered_to, rc.read_by,
 	       COALESCE(m.sender_id <> $1 AND (cpv.last_read_message_id IS NULL OR m.id > cpv.last_read_message_id), FALSE) AS is_unread,
 	       (ms.message_id IS NOT NULL) AS is_starred,
@@ -866,6 +869,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 	for rows.Next() {
 		var m messageRow
 		var senderName, senderAvatar string
+		var senderBot bool
 		var deliveredTo, readBy, forwardCount int
 		var isUnread, isStarred bool
 		var srcChannel, srcPost *string
@@ -876,7 +880,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 		var reactionsJSON string
 		if err := rows.Scan(&m.ID, &m.ChatID, &m.SenderID, &m.Content,
 			&m.MessageType, &m.ReplyToID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt,
-			&senderName, &senderAvatar, &deliveredTo, &readBy, &isUnread, &isStarred,
+			&senderName, &senderAvatar, &senderBot, &deliveredTo, &readBy, &isUnread, &isStarred,
 			&forwardCount, &srcChannel, &srcPost, &srcChat, &m.SourceMessageID, &expiresAt,
 			&viewLimit, &viewsUsed, &reactionsJSON); err != nil {
 			return nil, err
@@ -909,6 +913,7 @@ func (r *Repository) ListMessages(ctx context.Context, chatID, viewerID uuid.UUI
 			DeletedAt:       m.DeletedAt,
 			SenderName:      senderName,
 			SenderAvatar:    senderAvatar,
+			SenderIsBot:     senderBot,
 			DeliveredTo:     deliveredTo,
 			ReadBy:          readByFor(readBy, hideRead),
 			IsUnread:        isUnread,
@@ -1000,7 +1005,7 @@ func (r *Repository) GetMessage(ctx context.Context, chatID uuid.UUID, msgID int
 	const q = `
 		SELECT m.id, m.chat_id, m.sender_id, m.content, m.message_type, m.reply_to_id,
 		       m.created_at, m.edited_at, m.deleted_at,
-		       COALESCE(u.display_name, ''), COALESCE(u.avatar_uri, ''),
+		       COALESCE(u.display_name, ''), COALESCE(u.avatar_uri, ''), COALESCE(u.kind = 'bot', FALSE),
 		       m.source_chat_id, m.source_message_id
 		FROM messages m
 		LEFT JOIN users u ON u.id = m.sender_id
@@ -1008,9 +1013,10 @@ func (r *Repository) GetMessage(ctx context.Context, chatID uuid.UUID, msgID int
 	`
 	var m messageRow
 	var senderName, senderAvatar string
+	var senderBot bool
 	err := r.db.QueryRow(ctx, q, chatID, msgID).Scan(
 		&m.ID, &m.ChatID, &m.SenderID, &m.Content, &m.MessageType, &m.ReplyToID,
-		&m.CreatedAt, &m.EditedAt, &m.DeletedAt, &senderName, &senderAvatar,
+		&m.CreatedAt, &m.EditedAt, &m.DeletedAt, &senderName, &senderAvatar, &senderBot,
 		&m.SourceChatID, &m.SourceMessageID,
 	)
 	if err != nil {
@@ -1032,6 +1038,7 @@ func (r *Repository) GetMessage(ctx context.Context, chatID uuid.UUID, msgID int
 		DeletedAt:       m.DeletedAt,
 		SenderName:      senderName,
 		SenderAvatar:    senderAvatar,
+		SenderIsBot:     senderBot,
 		SourceChatID:    m.SourceChatID,
 		SourceMessageID: m.SourceMessageID,
 	}, nil

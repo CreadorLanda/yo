@@ -40,6 +40,7 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
     senderId: m.sender_id,
     replyToId: m.reply_to_id,
     senderAvatarUri: m.sender_avatar,
+    ...(m.sender_is_bot ? { senderIsBot: true } : {}),
     edited: !!m.edited_at,
     deletedAt: m.deleted_at,
     status: m.read_by && m.read_by > 0 ? 'read' : m.delivered_to && m.delivered_to > 0 ? 'delivered' : 'sent',
@@ -122,6 +123,23 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
           ...(event === 'achievement_awarded' ? { achievementId: parts[3], targetId: parts[4] } : {}),
         },
       };
+    }
+    if (parts[0] === 'bot' && parts.length >= 4) {
+      const event = parts[1];
+      if (event === 'added' || event === 'removed' || event === 'read_all') {
+        return {
+          ...base,
+          text: '',
+          system: true,
+          systemEvent: {
+            kind: 'bot',
+            event,
+            actorId: parts[2],
+            botId: parts[3],
+            ...(event === 'read_all' ? { on: parts[4] === 'on' } : {}),
+          },
+        };
+      }
     }
     return { ...base, text: '', system: true, systemEvent: { kind: 'joined' } };
   }

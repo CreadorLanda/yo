@@ -41,6 +41,8 @@ type Chat struct {
 	// Direct-chat peer (client E2EE session establishment).
 	PeerUserID   *uuid.UUID `json:"peer_user_id,omitempty"`
 	PeerUsername *string    `json:"peer_username,omitempty"`
+	// PeerIsBot: the other side of a direct chat is a bot (#326).
+	PeerIsBot bool `json:"peer_is_bot,omitempty"`
 	// Per-user settings. Two participants can disagree on all three.
 	PinnedAt   *time.Time `json:"pinned_at,omitempty"`
 	MutedUntil *time.Time `json:"muted_until,omitempty"`
@@ -167,6 +169,8 @@ type Message struct {
 	DeletedAt    *time.Time  `json:"deleted_at,omitempty"`
 	SenderName   string      `json:"sender_name,omitempty"`
 	SenderAvatar string      `json:"sender_avatar,omitempty"`
+	// SenderIsBot badges a bot's messages (#326).
+	SenderIsBot bool `json:"sender_is_bot,omitempty"`
 	// Receipt summary for the requesting user / chat (optional enrichment).
 	// PollVotes carries per-option tallies for poll messages. The body itself
 	// is end-to-end encrypted, so this is the only tally the server can serve.

@@ -33,6 +33,7 @@ function mapDTO(g: GroupDTO): GroupInfo {
     username: m.username ? `@${m.username.replace(/^@/, '')}` : '',
     avatarUri: m.avatar_uri ?? '',
     role: m.role,
+    ...(m.is_bot ? { isBot: true } : {}),
   }));
   return {
     id: g.id,

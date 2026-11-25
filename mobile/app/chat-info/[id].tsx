@@ -1,3 +1,5 @@
+import { BotBadge } from '@/components/bots/bot-badge';
+import { ChatBotsSection } from '@/components/bots/chat-bots-section';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Avatar } from '@/components/ui/avatar';
@@ -1118,9 +1120,12 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
                     ) : null}
                     <Avatar uri={m.avatarUri} id={m.id} username={m.name} size={36} />
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
-                        {m.name}
-                      </Text>
+                      <View style={styles.memberNameRow}>
+                        <Text style={[styles.rowLabel, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>
+                          {m.name}
+                        </Text>
+                        {m.isBot ? <BotBadge /> : null}
+                      </View>
                       {m.username ? (
                         <Text style={[styles.rowSub, { color: colors.textSecondary }]} numberOfLines={1}>
                           {m.username}
@@ -1150,6 +1155,8 @@ useEffect(() => { void refreshChats({ archived: true }); }, []);
                 </Pressable>
               ) : null}
             </Section>
+            {/* Bots in the group (#326). */}
+            {id ? <ChatBotsSection chatId={id} isAdmin={!!isGroupAdmin} /> : null}
           </>
         ) : null}
 
@@ -1545,6 +1552,7 @@ const styles = StyleSheet.create({
   },
   rowAvatar: { width: 36, height: 36, borderRadius: Radii.pill },
   rowText: { flex: 1, gap: 2 },
+  memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   rowLabel: { ...Typography.body, fontSize: 15 },
   rowSub: { ...Typography.caption, lineHeight: 18 },
   rowValue: { ...Typography.caption },

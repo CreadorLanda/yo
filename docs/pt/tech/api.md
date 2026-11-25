@@ -46,6 +46,8 @@ Como os bots encaixam na cifra de ponta a ponta está decidido no [ADR 0002](../
 ### Bots numa conversa
 `GET /chats/:id/bots` para qualquer membro; `POST`, `PATCH` e `DELETE /chats/:id/bots[/:botId]` só para admins do grupo. Adicionar, remover e ligar ou desligar a leitura total deixam uma mensagem de sistema no grupo. Por omissão um bot recebe `messages.read.commands`, `messages.send` e `members.read`.
 
+Os membros de um grupo trazem `is_bot`, uma conversa direta com um bot traz `peer_is_bot` e as mensagens de um bot trazem `sender_is_bot`, para a app mostrar o distintivo BOT onde quer que o nome apareça. Adicionar, remover e dar ou retirar a leitura total deixam mensagens de sistema `bot:added|removed|read_all:<ator>:<bot>[:on|off]`, que a app mostra na língua de quem lê.
+
 ### Modo privado
 Um membro entrega a um bot o que lhe é dirigido (comando, menção, resposta ou interação) com `POST /chats/:id/bots/:botId/updates`, num envelope `soc1.` cifrado só para o bot. O servidor descarta as chaves de grupo dirigidas a bots sem `messages.read.all`, e dar, retirar a leitura total ou remover um bot com ela avança a época das chaves.
 

@@ -251,7 +251,12 @@ export default function BotScreen() {
           <Text style={[styles.handle, { color: colors.textSecondary }]}>@{bot.username}</Text>
           <View style={styles.heroActions}>
             <PrimaryButton
+              label={t('bots.add_to_group')}
+              onPress={() => router.push({ pathname: '/bots/add', params: { botId: bot.id } })}
+            />
+            <PrimaryButton
               label={t('bots.open_chat')}
+              variant="secondary"
               onPress={() =>
                 void run('dm', async () => {
                   const { chat_id } = await openBotDirect(bot.id);
