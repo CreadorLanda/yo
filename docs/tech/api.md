@@ -694,6 +694,8 @@ A command: `{name, description, description_pt?, options: [{name, description, d
 
 People invoke a command as text — `/remind when:2026-11-26T09:00:00Z what:"drink water"`, with `@bot` when two bots share the name — so the group sees it. In privacy mode the bot's copy (`command.invoked`) carries `command {name, options}` already parsed. The registry and autocomplete answers are visible to the server; what a person types is not.
 
+#### Events: gateway and webhooks
+
 
 A bot receives events two ways, like Discord: a websocket it keeps open, or a webhook the server POSTs to. Every event is recorded once with an increasing `id`; both channels carry the same JSON:
 
