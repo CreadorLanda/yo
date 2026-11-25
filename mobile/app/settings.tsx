@@ -945,6 +945,16 @@ export default function SettingsScreen() {
           />
         </Group>
 
+        <Group title={t('settings.section_developer')}>
+          <Row
+            icon="hardware-chip-outline"
+            label={t('bots.my_bots')}
+            value={t('settings.developer_bots_hint')}
+            onPress={() => router.push('/bots')}
+            last
+          />
+        </Group>
+
         <Group title={t('settings.section_help')}>
           <Row
             icon="help-circle-outline"
