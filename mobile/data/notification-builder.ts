@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 
+import { textOfBody } from '@/data/link-preview';
 import { decryptMessageContent } from '@/data/message-map';
 import { bootstrapAuth, getCurrentUser } from '@/data/auth-store';
 import { bootstrapChatPrefs, getChatPrefs } from '@/data/chat-prefs';
@@ -90,6 +91,8 @@ export async function presentMessageNotification(data: MessagePushData): Promise
     }
   }
 
+  // A link card travels beside the words (#353); the words are the message.
+  body = textOfBody(body);
   // A media message arrives as JSON with a path inside. Announcing that raw
   // would be the same mistake in a different shape.
   if (body.trim().startsWith('{')) body = t('push.sent_attachment');

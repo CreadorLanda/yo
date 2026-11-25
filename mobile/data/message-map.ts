@@ -8,6 +8,7 @@ import {
   syncGroupKeys,
 } from '@/data/crypto';
 import type { MediaAttachment, Message, MessageAttachment } from '@/data/mock';
+import { decodeTextBody } from '@/data/link-preview';
 import { t } from '@/i18n';
 
 /**
@@ -217,6 +218,11 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
   // Client-E2EE envelope: keep ciphertext until async decrypt fills in.
   if (isEnvelope(m.content)) {
     return { ...base, text: '🔒 …' };
+  }
+  // A text body may carry a link card next to the words (#353).
+  if (mt === 'text' || mt === 'reply') {
+    const { text, preview } = decodeTextBody(m.content);
+    return preview ? { ...base, text, linkPreview: preview } : { ...base, text };
   }
   return base;
 }

@@ -472,6 +472,8 @@ export default {
     privacy_link_title: 'Open link?',
     privacy_link_body: 'Confirm that you want to open this address in an in-app browser.',
     privacy_link_open: 'Open',
+    link_preview_loading: 'Loading link preview…',
+    link_preview_remove: 'Remove link preview',
     select: 'Select',
     star_message: 'Star message',
     unstar_message: 'Remove star',

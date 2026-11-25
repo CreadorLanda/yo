@@ -472,6 +472,8 @@ export default {
     privacy_link_title: 'Abrir link?',
     privacy_link_body: 'Confirma que queres abrir este endereço num navegador interno.',
     privacy_link_open: 'Abrir',
+    link_preview_loading: 'A carregar a pré-visualização…',
+    link_preview_remove: 'Remover pré-visualização',
     select: 'Selecionar',
     star_message: 'Adicionar às favoritas',
     unstar_message: 'Remover das favoritas',

@@ -23,6 +23,7 @@ import { refreshBlocks } from '@/data/block-store';
 import { getCachedChat, refreshChats } from '@/data/chat-store';
 import { displayChatName } from '@/data/chat-identity';
 import { appAlert } from '@/data/dialog-store';
+import { textOfBody } from '@/data/link-preview';
 import { decryptMessageContent, formatMsgTime } from '@/data/message-map';
 import {
   MAX_EVIDENCE,
@@ -73,7 +74,7 @@ export default function ReportScreen() {
         const text = new Map<string, string>();
         for (const m of dtos) {
           if (m.message_type && m.message_type !== 'text' && m.message_type !== 'reply') continue;
-          text.set(String(m.id), await decryptMessageContent(m, me, chat?.peer_user_id));
+          text.set(String(m.id), textOfBody(await decryptMessageContent(m, me, chat?.peer_user_id)));
         }
         if (!cancelled) setCandidates(evidenceCandidates(dtos, text, me));
       } catch {

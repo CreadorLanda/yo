@@ -1,3 +1,4 @@
+import type { LinkPreview } from '@/data/link-preview';
 import type { StoryReactionCount } from '@/data/story-reactions';
 
 const dicebear = (style: string, seed: string, bg: string) =>
@@ -233,6 +234,8 @@ export type Message = {
   sourceMessageId?: number;
   id: string;
   text: string;
+  /** A card for the first link, built by the sender and sealed with the text (#353). */
+  linkPreview?: LinkPreview;
   fromMe: boolean;
   timestamp: string;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';

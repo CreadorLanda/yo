@@ -39,6 +39,7 @@ import { AnonInbox } from '@/components/story/anon-inbox';
 import { listChannelInvites } from '@/data/api/channels';
 import { anonInbox, type AnonThread } from '@/data/api/stories';
 import { useRevealedChats } from '@/data/chat-lock';
+import { textOfBody } from '@/data/link-preview';
 import { decryptMessageContent } from '@/data/message-map';
 import { isMachineText, previewShape } from '@/data/message-preview';
 import { isSealedBody } from '@/data/message-sync';
@@ -195,7 +196,7 @@ export default function ChatsScreen() {
           if (label) return [c.id, label] as const;
           const known = getCachedPreview(c.id, lm.content);
           if (known != null) return [c.id, known] as const;
-          const text = await decryptMessageContent(
+          const text = textOfBody(await decryptMessageContent(
           {
             id: 0,
             chat_id: c.id,
@@ -206,7 +207,7 @@ export default function ChatsScreen() {
           } as never,
             me,
             c.peer_user_id,
-          );
+          ));
           // The net. A type this build does not know about, or one added
           // without a case, still must not put a record in front of anybody
           // — which is exactly how {"kind":"poll",…} reached this list once.
