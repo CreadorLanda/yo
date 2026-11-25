@@ -109,7 +109,8 @@ func New(cfg config.Config) (*Server, error) {
 	usersRepo := users.NewRepository(pg)
 	onboardingRepo := users.NewOnboardingPreferenceRepository(pg)
 	onboardingSvc := users.NewOnboardingService(onboardingRepo)
-	usersCtl := users.NewController(users.NewService(usersRepo), onboardingSvc)
+	usersSvc := users.NewService(usersRepo)
+	usersCtl := users.NewController(usersSvc, onboardingSvc)
 	users.Register(authed, usersCtl)
 
 	keysRepo := keys.NewRepository(pg)
@@ -126,7 +127,14 @@ func New(cfg config.Config) (*Server, error) {
 	// Built before messages and groups, because they publish through it.
 	devEnv := cfg.Env == "dev"
 	botsRepo := bots.NewRepository(pg)
-	botsSvc := bots.NewService(botsRepo).WithPrivateWebhooks(devEnv)
+	botsSvc := bots.NewService(botsRepo).WithPrivateWebhooks(devEnv).
+		// Safety (#343): the platform kill switch, and strikes that suspend
+		// a bot that keeps hitting the send limit.
+		WithPlatformDisabled(cfg.Bots.Disabled).
+		WithStrikeLimiter(bots.NewRedisLimiter(rdb))
+	// Deleting an account first asks every bot it shared a chat with to
+	// delete what it holds about the person.
+	usersSvc.WithBeforeDelete(botsSvc.NotifyDataDeletion)
 	botGateway := bots.NewGateway(botsSvc)
 	botWebhooks := bots.NewWebhookWorker(botsRepo, devEnv)
 	botsSvc.WithEventSink(botGateway).WithWebhookWaker(botWebhooks).WithUpdateNotifier(botsSvc)
@@ -749,7 +757,7 @@ type botAPIHandlers struct {
 // drift.
 func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, gw *bots.Gateway, h botAPIHandlers, limiter bots.Limiter) {
 	g := api.Group("/bot/v1")
-	g.Use(bots.Auth(svc), bots.RateLimit(limiter))
+	g.Use(bots.Auth(svc), bots.RateLimit(limiter, svc.Strike))
 	g.GET("/me", ctl.GetMe)
 	// Slash commands (#324): global, or for one chat it is installed in.
 	g.GET("/commands", ctl.GetBotCommands)

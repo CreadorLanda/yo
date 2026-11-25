@@ -22,7 +22,8 @@ func writeErr(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrChatNotFound), errors.Is(err, ErrNotInstalled):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": rootErr(err)})
-	case errors.Is(err, ErrNotOwner), errors.Is(err, ErrNotGroupAdmin), errors.Is(err, ErrScopeMissing):
+	case errors.Is(err, ErrNotOwner), errors.Is(err, ErrNotGroupAdmin), errors.Is(err, ErrScopeMissing),
+		errors.Is(err, ErrBotSuspended):
 		ctx.JSON(http.StatusForbidden, gin.H{"error": rootErr(err)})
 	case errors.Is(err, ErrUsernameTaken), errors.Is(err, ErrAlreadyInstalled):
 		ctx.JSON(http.StatusConflict, gin.H{"error": rootErr(err)})
@@ -32,6 +33,8 @@ func writeErr(ctx *gin.Context, err error) {
 		errors.Is(err, ErrInvalidUpdate), errors.Is(err, ErrInvalidWebhookURL),
 		errors.Is(err, ErrInvalidIntent):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrBotsDisabled):
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 	}

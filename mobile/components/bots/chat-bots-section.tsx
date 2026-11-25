@@ -7,11 +7,12 @@ import { BotBadge } from '@/components/bots/bot-badge';
 import { Avatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
-import { listChatBots, uninstallBot, updateBotScopes, type BotInstallationDTO } from '@/data/api/bots';
+import { askBotToForgetMe, listChatBots, uninstallBot, updateBotScopes, type BotInstallationDTO } from '@/data/api/bots';
 import { FULL_READ_SCOPES, hasFullRead, PRIVACY_SCOPES } from '@/data/bot-policy';
 import { invalidateChatBots } from '@/data/bot-store';
 import { appAlert } from '@/data/dialog-store';
 import { refreshGroup } from '@/data/group-store';
+import { showToast } from '@/data/toast-store';
 import { useTheme } from '@/hooks/use-theme';
 import { t } from '@/i18n';
 
@@ -44,6 +45,19 @@ export function ChatBotsSection({ chatId, isAdmin }: { chatId: string; isAdmin: 
 
   const fail = () => appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
 
+  // Anyone here can ask a bot to delete what it holds about them (#343).
+  const forgetMe = (inst: BotInstallationDTO) =>
+    appAlert(t('bots.forget_title', { name: inst.bot.display_name }), t('bots.forget_body'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('bots.forget_action'),
+        onPress: () =>
+          void askBotToForgetMe(inst.bot.id)
+            .then(() => showToast(t('bots.forget_sent'), 'success'))
+            .catch(fail),
+      },
+    ]);
+
   const manage = (inst: BotInstallationDTO) => {
     const full = hasFullRead(inst.scopes);
     appAlert(inst.bot.display_name, full ? t('bots.reads_all') : t('bots.reads_addressed'), [
@@ -62,6 +76,7 @@ export function ChatBotsSection({ chatId, isAdmin }: { chatId: string; isAdmin: 
           ]);
         },
       },
+      { text: t('bots.forget_action'), onPress: () => forgetMe(inst) },
       {
         text: t('bots.remove_from_group'),
         style: 'destructive',
@@ -97,13 +112,28 @@ export function ChatBotsSection({ chatId, isAdmin }: { chatId: string; isAdmin: 
             <Text style={[styles.label, { color: colors.primary }]}>{t('bots.add_bot')}</Text>
           </Pressable>
         ) : null}
+        {isAdmin ? (
+          <Pressable
+            onPress={() => router.push({ pathname: '/bots/audit', params: { chatId } })}
+            style={({ pressed }) => [
+              styles.row,
+              { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider },
+              pressed && { backgroundColor: colors.surfaceMuted },
+            ]}
+            accessibilityRole="button"
+          >
+            <View style={[styles.addIcon, { backgroundColor: colors.surfaceMuted }]}>
+              <Ionicons name="document-text-outline" size={18} color={colors.textSecondary} />
+            </View>
+            <Text style={[styles.label, { color: colors.text }]}>{t('bots.audit_title')}</Text>
+          </Pressable>
+        ) : null}
         {bots.map((inst, i) => {
           const full = hasFullRead(inst.scopes);
           return (
             <Pressable
               key={inst.bot.id}
-              onPress={isAdmin ? () => manage(inst) : undefined}
-              disabled={!isAdmin}
+              onPress={() => (isAdmin ? manage(inst) : forgetMe(inst))}
               style={({ pressed }) => [
                 styles.row,
                 (isAdmin || i > 0) && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider },
@@ -129,7 +159,7 @@ export function ChatBotsSection({ chatId, isAdmin }: { chatId: string; isAdmin: 
                   </Text>
                 </View>
               </View>
-              {isAdmin ? <Ionicons name="ellipsis-vertical" size={18} color={colors.textSecondary} /> : null}
+              <Ionicons name="ellipsis-vertical" size={18} color={colors.textSecondary} />
             </Pressable>
           );
         })}

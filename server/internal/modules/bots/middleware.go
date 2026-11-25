@@ -20,8 +20,16 @@ import (
 // person-facing controllers mounted under /api/bot/v1 serve bots unchanged.
 func Auth(svc *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if svc.Disabled() {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": ErrBotsDisabled.Error()})
+			return
+		}
 		p, err := svc.Authenticate(c.Request.Context(), c.GetHeader("Authorization"))
 		if err != nil {
+			if errors.Is(err, ErrBotSuspended) {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": ErrBotSuspended.Error()})
+				return
+			}
 			if errors.Is(err, ErrInvalidToken) {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": ErrInvalidToken.Error()})
 				return
@@ -120,7 +128,7 @@ const (
 // RateLimit applies the per-bot budget to every bot request, and the
 // per-chat send budget to routes with a chat id. A failure to reach Redis
 // lets the request through: rate limiting must not take bots down with it.
-func RateLimit(l Limiter) gin.HandlerFunc {
+func RateLimit(l Limiter, onChatLimit ...func(ctx context.Context, botID uuid.UUID)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if l == nil {
 			c.Next()
@@ -132,6 +140,10 @@ func RateLimit(l Limiter) gin.HandlerFunc {
 		}
 		if chat := c.Param("id"); chat != "" && c.Request.Method == http.MethodPost {
 			if !allow(c, l, "chat:"+chat+":"+bot, ChatMessagesPerMinute) {
+				// A bot that keeps hitting this is suspended (#343).
+				for _, f := range onChatLimit {
+					f(c.Request.Context(), middleware.UserIDFrom(c))
+				}
 				return
 			}
 		}

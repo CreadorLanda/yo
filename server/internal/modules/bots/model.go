@@ -71,6 +71,9 @@ type Bot struct {
 	Verified    bool      `json:"verified"`
 	OwnerID     uuid.UUID `json:"owner_id"`
 	CreatedAt   time.Time `json:"created_at"`
+	// Suspended bots cannot authenticate (#343).
+	Suspended       bool   `json:"suspended,omitempty"`
+	SuspendedReason string `json:"suspended_reason,omitempty"`
 }
 
 // Token is a bot token's metadata. The secret itself is only ever in

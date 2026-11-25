@@ -24,6 +24,14 @@ type Config struct {
 	Media    MediaConfig
 	Push     PushConfig
 	LiveKit  LiveKitConfig
+	Bots     BotsConfig
+}
+
+// BotsConfig holds the platform-wide switch for bots (#343).
+type BotsConfig struct {
+	// Disabled stops every bot at once: their API answers 503 and no bot can
+	// be added to a chat. People's chats keep working.
+	Disabled bool
 }
 
 // LiveKitConfig points at the self-hosted SFU.
@@ -113,7 +121,8 @@ func Load() (Config, error) {
 		// Production is the safe default. Local development declares APP_ENV=dev
 		// in server/.env; an omitted variable must never enable dev-only OTP
 		// responses in a deployed process.
-		Env: getenv("APP_ENV", "prod"),
+		Env:  getenv("APP_ENV", "prod"),
+		Bots: BotsConfig{Disabled: getenv("BOTS_DISABLED", "") == "true"},
 		HTTP: HTTPConfig{
 			Addr:        getenv("HTTP_ADDR", ":8080"),
 			CORSOrigins: splitList(os.Getenv("CORS_ALLOWED_ORIGINS")),

@@ -26,6 +26,16 @@ var usernameRe = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
 
 type Service struct {
 	repo *Repository
+	// beforeDelete runs before an account is erased, while its memberships
+	// still say who it shared chats with (bots ask for its data gone, #343).
+	beforeDelete []func(ctx context.Context, userID uuid.UUID) error
+}
+
+// WithBeforeDelete registers work to do before an account is erased. A
+// failure there is logged by the caller's hook and never blocks deletion.
+func (s *Service) WithBeforeDelete(f func(ctx context.Context, userID uuid.UUID) error) *Service {
+	s.beforeDelete = append(s.beforeDelete, f)
+	return s
 }
 
 func NewService(repo *Repository) *Service {
@@ -210,6 +220,9 @@ func hasPatchFields(p PatchRequest) bool {
 // there is a lie told to someone who asked to be gone. Everything that
 // references the user cascades away with it.
 func (s *Service) Delete(ctx context.Context, userID uuid.UUID) error {
+	for _, f := range s.beforeDelete {
+		_ = f(ctx, userID)
+	}
 	err := s.repo.Delete(ctx, userID)
 	if IsNoRows(err) {
 		return ErrNotFound

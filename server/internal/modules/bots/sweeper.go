@@ -39,6 +39,9 @@ func (s *Sweeper) Start() {
 				} else if n > 0 {
 					log.Info().Int64("purged", n).Msg("expired bot updates purged")
 				}
+				if _, err := s.svc.PurgeExpiredAudit(ctx); err != nil {
+					log.Warn().Err(err).Msg("bot audit sweep failed")
+				}
 				if n, err := s.svc.PurgeExpiredEvents(ctx); err != nil {
 					log.Warn().Err(err).Msg("bot event sweep failed")
 				} else if n > 0 {

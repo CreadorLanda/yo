@@ -694,6 +694,16 @@ A command: `{name, description, description_pt?, options: [{name, description, d
 
 People invoke a command as text — `/remind when:2026-11-26T09:00:00Z what:"drink water"`, with `@bot` when two bots share the name — so the group sees it. In privacy mode the bot's copy (`command.invoked`) carries `command {name, options}` already parsed. The registry and autocomplete answers are visible to the server; what a person types is not.
 
+#### Safety
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/chats/:id/bots/audit` | Group admins: the last 100 bot events in the group — `{action, actor_id, actor_name, bot_id, bot_name, detail, created_at}`. |
+| `POST` | `/bots/:id/reactivate` | Owner: lift an automatic (`rate_limit`) suspension. Others are `403 suspended_by_operators`. |
+| `POST` | `/bots/:id/forget-me` | Anyone sharing a chat with the bot: it gets `user.data_deletion`. `202`. |
+
+A suspended bot gets `403 bot_suspended`; `BOTS_DISABLED=true` makes the Bot API answer `503 bots_disabled`. Bots carry `suspended` and `suspended_reason`. Details and the rules for bot developers: [Bots: abuse, limits and data](../security/bots.md).
+
 #### Interactive messages
 
 A bot's card, buttons, menus and forms travel inside its end-to-end encrypted message — the server cannot see or check them, so the app does. The plaintext body is:
