@@ -1720,7 +1720,7 @@ useEffect(() => {
             : t(`chat_info.disappear_${sec}` as never)) + (sec === current ? '  ✓' : ''),
         onPress: () => {
           setDisappearing(id, sec).catch(() => {
-            appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
+            appAlert(t('chat.edit_failed'), t('chats.action_failed_body'));
           });
         },
       })).concat([{ text: t('common.cancel'), onPress: () => {} }]),
@@ -1838,16 +1838,26 @@ useEffect(() => {
             )
           : text;
 
-        apiEditMessage(id, mid, body)
+        // Sealed like a new message: the server takes only an E2EE envelope,
+        // and plaintext came back as a 400 that left the edit on this screen
+        // alone (#356).
+        encryptBody(body)
+          .then((sealed) => apiEditMessage(id, mid, sealed))
           .then((dto) => {
-            const mapped = mapApiMessage(dto, meId);
+            // Mapped from what was written, not from the envelope that came back.
+            const plainDTO = { ...dto, content: body };
+            const mapped = { ...mapApiMessage(plainDTO, meId), mentions: mentionsIn(text) };
             // Keep the resolved media we already have; the round-trip only
             // needs to confirm the edit.
             if (isMedia && target?.media) mapped.media = { ...target.media };
             setMessages((prev) => prev.map((m) => (m.id === editId ? mapped : m)));
+            saveCachedMessages(id, [{ dto: plainDTO, body }]).catch(() => {});
           })
           .catch(() => {
-            /* keep optimistic edit */
+            // Put back what the server still holds, and say the edit failed:
+            // a silent optimistic edit is how this went unnoticed.
+            if (target) setMessages((prev) => prev.map((m) => (m.id === editId ? target : m)));
+            appAlert(t('chats.action_failed_title'), t('chats.action_failed_body'));
           });
       }
       return;

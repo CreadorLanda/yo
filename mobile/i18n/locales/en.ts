@@ -462,6 +462,7 @@ export default {
     delete_for_everyone: 'Delete for everyone',
     cancel: 'Cancel',
     editing: 'Editing',
+    edit_failed: "Couldn't edit the message",
     forward_title: 'Forward to…',
     forward_search: 'Search chats',
     forward_sent: 'Forwarded to {{name}}',
