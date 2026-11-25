@@ -134,6 +134,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed (Corrigido)
 
+#### Sessão
+- Abrir a app a frio volta a entrar na sessão guardada. Quando outra parte da app lia a sessão ao mesmo tempo que o arranque, o arranque recebia "sem sessão" antes de a leitura acabar e mandava a pessoa para o onboarding
+
 #### Mensagens
 - Ao pressionar uma mensagem, a conversa por trás passa a ficar mesmo desfocada, como no iPhone, com só um escurecimento leve por cima. No Android o desfoque nem estava ligado, e uma camada preta forte escondia o que restava
 

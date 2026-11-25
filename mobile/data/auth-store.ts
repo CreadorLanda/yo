@@ -50,16 +50,18 @@ function subscribe(l: () => void) {
 let booting: Promise<ApiUser | null> | null = null;
 
 export async function bootstrapAuth(): Promise<ApiUser | null> {
-  if (booted) return cachedUser;
+  // In-flight first: `booted` only flips once the read has finished, so a
+  // caller arriving mid-read joins it instead of reading a still-null cache.
   if (booting) return booting;
+  if (booted) return cachedUser;
   booting = restoreSession().finally(() => {
+    booted = true;
     booting = null;
   });
   return booting;
 }
 
 async function restoreSession(): Promise<ApiUser | null> {
-  booted = true;
   try {
     // The keychain read is inside the try too: on Android it throws outright
     // when the entry cannot be decrypted (restored backup, changed signing
