@@ -139,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Abrir a app a frio volta a entrar na sessão guardada. Quando outra parte da app lia a sessão ao mesmo tempo que o arranque, o arranque recebia "sem sessão" antes de a leitura acabar e mandava a pessoa para o onboarding
 
 #### Mensagens
+- Editar uma mensagem de texto ou a legenda de uma foto chega mesmo ao servidor. A edição ia sem cifrar e o servidor recusava-a sem aviso, por isso o texto novo só aparecia no ecrã de quem editou e voltava atrás ao reabrir. Agora vai cifrada como uma mensagem nova e, se falhar, o texto original volta e a app avisa
 - Ao pressionar uma mensagem, a conversa por trás passa a ficar mesmo desfocada, como no iPhone, com só um escurecimento leve por cima. No Android o desfoque nem estava ligado, e uma camada preta forte escondia o que restava
 
 #### Lives

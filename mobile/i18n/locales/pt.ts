@@ -462,6 +462,7 @@ export default {
     delete_for_everyone: 'Eliminar para todos',
     cancel: 'Cancelar',
     editing: 'A editar',
+    edit_failed: 'Não foi possível editar a mensagem',
     forward_title: 'Reencaminhar para…',
     forward_search: 'Procurar conversas',
     forward_sent: 'Reencaminhada para {{name}}',
