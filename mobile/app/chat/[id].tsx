@@ -86,7 +86,10 @@ import { decodeTextBody, encodeTextBody, firstLink, textOfBody, type LinkPreview
 import { fetchLinkPreview } from '@/data/link-preview-fetch';
 import { DraftLinkPreview, LinkPreviewCard } from '@/components/chat/link-preview-card';
 import { BotBadge } from '@/components/bots/bot-badge';
-import { invalidateChatBots } from '@/data/bot-store';
+import { CommandPopover } from '@/components/bots/command-popover';
+import { CommandSheet } from '@/components/bots/command-sheet';
+import { buildInvocation, isAmbiguous, matchCommands, typedCommand, type ChatCommand } from '@/data/bot-commands';
+import { chatCommands, invalidateChatBots } from '@/data/bot-store';
 import {
   encodeMediaContent,
   mediaFileURL,
@@ -461,6 +464,9 @@ useEffect(() => {
     loading: boolean;
   } | null>(null);
   const [dismissedPreviewUrl, setDismissedPreviewUrl] = useState<string | null>(null);
+  // Slash commands of the bots here (#324), and the one being filled in.
+  const [commands, setCommands] = useState<ChatCommand[]>([]);
+  const [activeCommand, setActiveCommand] = useState<ChatCommand | null>(null);
   const [searchMode, setSearchMode] = useState(false);
   const [query, setQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState<ChatSearchFilter>('all');
@@ -1187,6 +1193,37 @@ useEffect(() => {
       clearTimeout(timer);
     };
   }, [activePreviewLink]);
+
+  // The bots' commands, for `/` in groups and in a direct chat with a bot.
+  const hasBots = isGroup || !!apiChatInfo?.peer_is_bot;
+  const botCount = (group?.members ?? []).filter((m) => m.isBot).length;
+  useEffect(() => {
+    if (!id || !hasBots) return;
+    let live = true;
+    void chatCommands(id).then((list) => {
+      if (live) setCommands(list);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id, hasBots, botCount]);
+  const typedSlash = editingMsgId ? null : typedCommand(draft);
+  const commandMatches = typedSlash !== null && commands.length > 0 ? matchCommands(commands, typedSlash) : [];
+  const commandMembers = (group?.members ?? [])
+    .filter((m) => !m.isBot && m.username)
+    .map((m) => ({ id: m.id, name: m.name, username: m.username.replace(/^@/, ''), avatarUri: m.avatarUri }));
+
+  const sendCommand = (command: ChatCommand, values: Record<string, string | number | undefined>) => {
+    submitText(buildInvocation(command, values, isAmbiguous(commands, command)));
+    setDraft('');
+    setActiveCommand(null);
+  };
+
+  const pickCommand = (command: ChatCommand) => {
+    Haptics.selectionAsync().catch(() => {});
+    if (command.options.length === 0) sendCommand(command, {});
+    else setActiveCommand(command);
+  };
 
   // Broadcast typing while the user is composing.
   useEffect(() => {
@@ -3312,6 +3349,11 @@ useEffect(() => {
               </View>
             ) : null}
 
+            {/* `/` lists the bots' commands (#324) */}
+            {commandMatches.length > 0 && recordPhase === 'idle' ? (
+              <CommandPopover commands={commandMatches} onPick={pickCommand} />
+            ) : null}
+
             {/* The draft's link card (#353) — X sends the message without it */}
             {!editingMsgId && draftPreview && recordPhase === 'idle' ? (
               <DraftLinkPreview
@@ -3539,6 +3581,17 @@ useEffect(() => {
           targets={deleteTargets}
           onCancel={() => setDeleteTargets([])}
           onConfirm={confirmDelete}
+        />
+      ) : null}
+
+      {/* A bot command's options (#324) */}
+      {activeCommand && id ? (
+        <CommandSheet
+          command={activeCommand}
+          chatId={id}
+          members={commandMembers}
+          onCancel={() => setActiveCommand(null)}
+          onSubmit={(values) => sendCommand(activeCommand, values)}
         />
       ) : null}
 

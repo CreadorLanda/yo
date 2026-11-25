@@ -32,4 +32,7 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	rg.DELETE("/chats/:id/bots/:botId", c.DeleteChatBot)
 	// A person's client hands a bot the envelope addressed to it (#322).
 	rg.POST("/chats/:id/bots/:botId/updates", c.PostChatBotUpdate)
+	// Slash commands (#324).
+	rg.GET("/chats/:id/commands", c.GetChatCommands)
+	rg.POST("/chats/:id/bots/:botId/autocomplete", c.PostAutocomplete)
 }

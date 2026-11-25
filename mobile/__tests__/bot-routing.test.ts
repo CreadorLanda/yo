@@ -58,3 +58,15 @@ test('only full-read bots may hold the group key', () => {
   expect(excluded.has('feed-id')).toBe(true);
   expect(excluded.has('mod-id')).toBe(false);
 });
+
+test('a bare command goes only to the bots that registered it (#324)', () => {
+  const [remind, poll] = [bots[0], bots[1]];
+  const routed = routeToBots({ text: '/remind what:x', bots, commandTargets: [remind.id] });
+  expect(routed.map((r) => r.botId)).toEqual([remind.id]);
+  // Nothing registered it: every listening bot, as before.
+  expect(routeToBots({ text: '/start', bots, commandTargets: null }).length).toBeGreaterThan(0);
+  // `@bot` still wins over the registry.
+  expect(routeToBots({ text: `/remind@${poll.username}`, bots, commandTargets: [remind.id] }).map((r) => r.botId)).toEqual(
+    poll.scopes.includes('messages.read.all') ? [] : [poll.id],
+  );
+});

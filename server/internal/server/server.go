@@ -751,6 +751,10 @@ func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, 
 	g := api.Group("/bot/v1")
 	g.Use(bots.Auth(svc), bots.RateLimit(limiter))
 	g.GET("/me", ctl.GetMe)
+	// Slash commands (#324): global, or for one chat it is installed in.
+	g.GET("/commands", ctl.GetBotCommands)
+	g.PUT("/commands", ctl.PutCommands)
+	g.POST("/autocomplete/:request_id", ctl.PostAutocompleteAnswer)
 	// Envelopes addressed to the bot in privacy mode (#322); asking with an
 	// offset confirms everything before it.
 	g.GET("/updates", ctl.GetUpdates)
@@ -767,6 +771,8 @@ func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, 
 	send := bots.RequireChatScope(svc, bots.ScopeSend)
 	chat := g.Group("/chats/:id")
 	chat.GET("/members", ctl.GetMembers)
+	chat.GET("/commands", bots.RequireInstalled(svc), ctl.GetBotCommands)
+	chat.PUT("/commands", bots.RequireInstalled(svc), ctl.PutCommands)
 	chat.POST("/messages", send, h.messages.PostMessage)
 	chat.PATCH("/messages/:mid", send, h.messages.PatchMessage)
 	chat.DELETE("/messages/:mid", send, h.messages.DeleteMessage)

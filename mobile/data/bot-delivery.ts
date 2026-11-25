@@ -1,6 +1,7 @@
 import { submitBotUpdate } from '@/data/api/bots';
 import { routeToBots } from '@/data/bot-routing';
-import { chatBots } from '@/data/bot-store';
+import { commandTargets, parseInvocation } from '@/data/bot-commands';
+import { chatBots, chatCommands } from '@/data/bot-store';
 import { encryptForPeerOrFail } from '@/data/crypto';
 
 /**
@@ -25,13 +26,24 @@ export async function deliverToBots(input: {
 }): Promise<void> {
   try {
     const bots = await chatBots(input.chatId);
-    const routes = routeToBots({ text: input.text, bots, replyToSenderId: input.replyToSenderId });
+    const commands = input.text.trim().startsWith('/') ? await chatCommands(input.chatId) : [];
+    const routes = routeToBots({
+      text: input.text,
+      bots,
+      replyToSenderId: input.replyToSenderId,
+      commandTargets: commandTargets(input.text, commands),
+    });
+    // The bot gets the options already split out, so it need not parse text.
+    const invocation = parseInvocation(input.text);
     for (const route of routes) {
       try {
         const body = JSON.stringify({
           v: 1,
           kind: route.kind,
           text: input.text,
+          ...(route.kind === 'command' && invocation
+            ? { command: { name: invocation.name, options: invocation.options } }
+            : {}),
           message_id: input.messageId,
           reply_to_id: input.replyToId,
         });

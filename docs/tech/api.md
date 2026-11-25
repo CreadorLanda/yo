@@ -677,7 +677,23 @@ Authenticate with `Authorization: Bot zsb_…`. Routes under `/chats/:id` answer
 
 Limits: 600 requests per minute per bot, 30 writes per minute per bot per chat. Over a limit: `429 {error: "rate_limited", retry_after}` and a `Retry-After` header. Bots cannot open chats with people, join calls, or be added to anonymous conversations.
 
-#### Events: gateway and webhooks
+#### Slash commands
+
+A bot registers what it answers to; typing `/` in a chat lists the commands of the bots there.
+
+| Method | Path | Notes |
+|---|---|---|
+| `PUT` | `/api/bot/v1/commands` | Bot token. `{commands: [...]}` replaces the bot's global set (max 100). |
+| `PUT` | `/api/bot/v1/chats/:id/commands` | Bot token, installed in the chat. A chat's own set; a command there replaces the global one of the same name. |
+| `GET` | `/api/bot/v1/commands`, `/api/bot/v1/chats/:id/commands` | The bot's sets. |
+| `GET` | `/chats/:id/commands` | Any member: the commands of the bots in the chat that listen for commands (every bot in a direct chat with it), each with `bot {id, username, display_name, avatar_url}`. |
+| `POST` | `/chats/:id/bots/:botId/autocomplete` | Any member: `{command, option, content}` where `content` is the typed value as a `soc1.` envelope for the bot. The bot gets a `command.autocomplete` event and answers within 3 s. `{choices}`, `504 autocomplete_timeout` otherwise. |
+| `POST` | `/api/bot/v1/autocomplete/:request_id` | Bot token: `{choices: [{name, value}]}` (max 25). |
+
+A command: `{name, description, description_pt?, options: [{name, description, description_pt?, type, required?, choices?, autocomplete?}]}`. `name` is 1–32 of `a-z0-9_-`; descriptions up to 100 characters; up to 10 options, required ones first; `type` is `string`, `number`, `user`, `datetime` (RFC 3339) or `choice` (1–25 `{name, value}`); `autocomplete` only on `string` and `number`. Invalid sets are refused whole (`400 invalid_command` with a `detail`).
+
+People invoke a command as text — `/remind when:2026-11-26T09:00:00Z what:"drink water"`, with `@bot` when two bots share the name — so the group sees it. In privacy mode the bot's copy (`command.invoked`) carries `command {name, options}` already parsed. The registry and autocomplete answers are visible to the server; what a person types is not.
+
 
 A bot receives events two ways, like Discord: a websocket it keeps open, or a webhook the server POSTs to. Every event is recorded once with an increasing `id`; both channels carry the same JSON:
 

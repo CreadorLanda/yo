@@ -37,6 +37,8 @@ export function routeToBots(input: {
   bots: RoutableBot[];
   /** Sender of the message being replied to, when this is a reply. */
   replyToSenderId?: string | null;
+  /** Bots that registered this command (#324); null when none did. */
+  commandTargets?: string[] | null;
 }): BotRoute[] {
   const text = input.text.trim();
   const candidates = input.bots.filter(wantsAddressed);
@@ -45,9 +47,14 @@ export function routeToBots(input: {
   const command = COMMAND.exec(text);
   if (command) {
     const target = command[2]?.toLowerCase();
-    // `/cmd@somebot` is for that bot only. A bare `/cmd` goes to every bot
-    // listening for commands until bots register their commands (#324).
-    const hit = target ? candidates.filter((b) => b.username.toLowerCase() === target) : candidates;
+    // `/cmd@somebot` is for that bot only. A bare `/cmd` goes to the bots
+    // that registered it (#324), or, when none did, to every bot listening.
+    const registered = input.commandTargets;
+    const hit = target
+      ? candidates.filter((b) => b.username.toLowerCase() === target)
+      : registered
+        ? candidates.filter((b) => registered.includes(b.id))
+        : candidates;
     return hit.map((b) => ({ botId: b.id, username: b.username, kind: 'command' }));
   }
 

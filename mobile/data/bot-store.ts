@@ -1,4 +1,5 @@
-import { listChatBots } from '@/data/api/bots';
+import { listChatBots, listChatCommands } from '@/data/api/bots';
+import type { ChatCommand } from '@/data/bot-commands';
 import { botsWithoutFullRead, type RoutableBot } from '@/data/bot-routing';
 
 /**
@@ -26,8 +27,28 @@ export async function chatBots(chatId: string): Promise<RoutableBot[]> {
 
 /** Forget a chat's bots, e.g. when its membership changed. */
 export function invalidateChatBots(chatId?: string): void {
-  if (chatId) cache.delete(chatId);
-  else cache.clear();
+  if (chatId) {
+    cache.delete(chatId);
+    commandCache.delete(chatId);
+  } else {
+    cache.clear();
+    commandCache.clear();
+  }
+}
+
+const commandCache = new Map<string, { at: number; commands: ChatCommand[] }>();
+
+/** The slash commands of a chat's bots (#324), cached like the bots themselves. */
+export async function chatCommands(chatId: string): Promise<ChatCommand[]> {
+  const hit = commandCache.get(chatId);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.commands;
+  try {
+    const commands = (await listChatCommands(chatId)) ?? [];
+    commandCache.set(chatId, { at: Date.now(), commands });
+    return commands;
+  } catch {
+    return hit?.commands ?? [];
+  }
 }
 
 /**
