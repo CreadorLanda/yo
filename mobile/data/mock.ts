@@ -234,6 +234,8 @@ export type Message = {
   sourceMessageId?: number;
   id: string;
   text: string;
+  /** Sent by a bot account; its name carries a badge (#326). */
+  senderIsBot?: boolean;
   /** A card for the first link, built by the sender and sealed with the text (#353). */
   linkPreview?: LinkPreview;
   fromMe: boolean;
@@ -275,6 +277,14 @@ export type Message = {
         targetName?: string;
         role?: string;
         achievementId?: string;
+      }
+    | {
+        /** A bot added, removed, or given or denied full read (#326). */
+        kind: 'bot';
+        event: 'added' | 'removed' | 'read_all';
+        actorId: string;
+        botId: string;
+        on?: boolean;
       };
   replyTo?: { id: string; text: string; fromMe: boolean; senderName?: string; icon?: string };
   /**
@@ -320,6 +330,8 @@ export type GroupMember = {
   username: string;
   avatarUri: string;
   role: 'admin' | 'moderator' | 'member';
+  /** A bot account, badged in lists (#326). */
+  isBot?: boolean;
 };
 
 /** Number of past messages a new member can see. `Infinity` means all. */

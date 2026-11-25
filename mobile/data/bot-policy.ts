@@ -4,7 +4,7 @@
  * server/internal/modules/bots/token.go), which stays the authority.
  */
 
-import type { BotEventType } from '@/data/api/bots';
+import type { BotEventType, BotScope } from '@/data/api/bots';
 
 const USERNAME_SHAPE = /^[a-z0-9_]{3,32}$/;
 
@@ -71,4 +71,15 @@ export const SECRET_CLIPBOARD_SECONDS = 60;
 /** The gateway address for an API base URL: http → ws, https → wss. */
 export function gatewayUrl(apiBase: string): string {
   return `${apiBase.replace(/\/+$/, '').replace(/^http/, 'ws')}/api/bot/v1/gateway`;
+}
+
+
+/** What a bot gets in a group by default: privacy mode (ADR 0002). */
+export const PRIVACY_SCOPES: BotScope[] = ['messages.read.commands', 'messages.send', 'members.read'];
+
+/** Privacy mode plus reading every message — admin-granted and announced. */
+export const FULL_READ_SCOPES: BotScope[] = [...PRIVACY_SCOPES, 'messages.read.all'];
+
+export function hasFullRead(scopes: readonly BotScope[]): boolean {
+  return scopes.includes('messages.read.all');
 }

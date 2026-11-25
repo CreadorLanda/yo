@@ -262,7 +262,11 @@ export default function CreateBotScreen() {
                 <Ionicons name="checkmark-circle" size={48} color={colors.success} />
               </View>
               <Text style={[styles.handle, { color: colors.textSecondary }]}>@{bot.username}</Text>
-              <PrimaryButton label={t('bots.open_chat')} onPress={openChat} />
+              <PrimaryButton
+                label={t('bots.add_to_group')}
+                onPress={() => router.replace({ pathname: '/bots/add', params: { botId: bot.id } })}
+              />
+              <PrimaryButton label={t('bots.open_chat')} variant="secondary" onPress={openChat} />
               <PrimaryButton
                 label={t('bots.manage')}
                 variant="secondary"

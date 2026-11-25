@@ -145,7 +145,8 @@ func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID) ([]group
 func (r *Repository) ListMembers(ctx context.Context, chatID uuid.UUID) ([]Member, error) {
 	const q = `
 		SELECT cp.user_id, COALESCE(u.username,''), COALESCE(u.display_name,''),
-		       COALESCE(u.avatar_uri,''), COALESCE(cp.role,'member'), cp.joined_at
+		       COALESCE(u.avatar_uri,''), COALESCE(cp.role,'member'), cp.joined_at,
+		       u.kind = 'bot'
 		FROM chat_participants cp
 		JOIN users u ON u.id = cp.user_id
 		WHERE cp.chat_id = $1
@@ -160,7 +161,7 @@ func (r *Repository) ListMembers(ctx context.Context, chatID uuid.UUID) ([]Membe
 	for rows.Next() {
 		var m Member
 		var role string
-		if err := rows.Scan(&m.UserID, &m.Username, &m.DisplayName, &m.AvatarURI, &role, &m.JoinedAt); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Username, &m.DisplayName, &m.AvatarURI, &role, &m.JoinedAt, &m.IsBot); err != nil {
 			return nil, err
 		}
 		m.Role = MemberRole(role)

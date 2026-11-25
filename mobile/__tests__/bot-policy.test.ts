@@ -1,11 +1,14 @@
 import { expect, test } from 'bun:test';
 
 import {
+  FULL_READ_SCOPES,
   gatewayUrl,
+  hasFullRead,
   isValidBotName,
   isValidBotUsername,
   looksLikeWebhookUrl,
   normalizeBotUsername,
+  PRIVACY_SCOPES,
   suggestBotUsername,
 } from '@/data/bot-policy';
 
@@ -46,4 +49,10 @@ test('names and webhook URLs', () => {
 test('the gateway address follows the API scheme', () => {
   expect(gatewayUrl('https://api.zwo.example')).toBe('wss://api.zwo.example/api/bot/v1/gateway');
   expect(gatewayUrl('http://192.168.1.2:8080/')).toBe('ws://192.168.1.2:8080/api/bot/v1/gateway');
+});
+
+test('privacy mode is the default and full read is one extra scope', () => {
+  expect(hasFullRead(PRIVACY_SCOPES)).toBe(false);
+  expect(hasFullRead(FULL_READ_SCOPES)).toBe(true);
+  expect(FULL_READ_SCOPES.filter((s) => !PRIVACY_SCOPES.includes(s))).toEqual(['messages.read.all']);
 });

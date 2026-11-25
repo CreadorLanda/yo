@@ -239,6 +239,7 @@ export default function RootLayout() {
             <Stack.Screen name="bots/index" options={{ headerShown: false }} />
             <Stack.Screen name="bots/create" options={{ headerShown: false }} />
             <Stack.Screen name="bots/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="bots/add" options={{ headerShown: false }} />
             <Stack.Screen
               name="themes/create"
               options={{
