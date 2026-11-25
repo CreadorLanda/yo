@@ -53,6 +53,7 @@ type Server struct {
 	mediaSweeper *media.Sweeper
 	msgSweeper   *messages.Sweeper
 	botSweeper   *bots.Sweeper
+	botWebhooks  *bots.WebhookWorker
 	pubSrv       *http.Server
 	errCh        chan error
 }
@@ -118,6 +119,19 @@ func New(cfg config.Config) (*Server, error) {
 
 	// Realtime hub (WebSocket fan-out for messaging events).
 	hub := realtime.NewHub()
+
+	// Bots hear what they may of the same events (#323). The tee gives the
+	// hub everything, and turns what a bot installed in the chat is allowed
+	// to see into bot events — delivered over the gateway and to webhooks.
+	// Built before messages and groups, because they publish through it.
+	devEnv := cfg.Env == "dev"
+	botsRepo := bots.NewRepository(pg)
+	botsSvc := bots.NewService(botsRepo).WithPrivateWebhooks(devEnv)
+	botGateway := bots.NewGateway(botsSvc)
+	botWebhooks := bots.NewWebhookWorker(botsRepo, devEnv)
+	botsSvc.WithEventSink(botGateway).WithWebhookWaker(botWebhooks).WithUpdateNotifier(botsSvc)
+	bus := bots.NewTee(hub, botsSvc)
+	botsSvc.WithBroadcaster(bus)
 	mediaRepo := media.NewRepository(pg)
 	mediaSvc := media.NewService(mediaRepo, cfg.Media.Dir, cfg.Media.MaxUploadBytes, cfg.Media.TTL)
 
@@ -139,7 +153,7 @@ func New(cfg config.Config) (*Server, error) {
 	// Native E2E-encrypted messaging (push for offline peers via notifSvc).
 	msgRepo := messages.NewRepository(pg, cfg.Crypto.MessageKey)
 	groupsRepo := groups.NewRepository(pg)
-	groupsSvc := groups.NewService(groupsRepo).WithBroadcaster(hub)
+	groupsSvc := groups.NewService(groupsRepo).WithBroadcaster(bus)
 	// Blocking, which both messages and calls consult through a narrow
 	// interface rather than importing this module.
 	blocksRepo := blocks.NewRepo(pg)
@@ -147,7 +161,7 @@ func New(cfg config.Config) (*Server, error) {
 		users: usersRepo, chats: msgRepo,
 	}))
 
-	msgSvc := messages.NewService(msgRepo, usersRepo, hub, notifSvc).
+	msgSvc := messages.NewService(msgRepo, usersRepo, bus, notifSvc).
 		WithBlocks(blocksRepo).
 		WithMediaAccess(mediaSvc).
 		WithGroupPolicy(groupsSvc)
@@ -182,11 +196,10 @@ func New(cfg config.Config) (*Server, error) {
 	// group reuses the person-facing controllers — a bot sends a message, a
 	// key bundle or a file exactly as a person's client does, encrypted on
 	// its own machine — behind bot auth, per-chat scopes and rate limits.
-	botsSvc := bots.NewService(bots.NewRepository(pg)).WithBroadcaster(hub)
 	botsCtl := bots.NewController(botsSvc)
 	bots.Register(authed, botsCtl)
 
-	mountBotAPI(api, botsSvc, botsCtl, botAPIHandlers{
+	mountBotAPI(api, botsSvc, botsCtl, botGateway, botAPIHandlers{
 		keys: keysCtl, media: mediaCtl, messages: msgCtl, groups: groupsCtl,
 	}, bots.NewRedisLimiter(rdb))
 
@@ -254,6 +267,7 @@ func New(cfg config.Config) (*Server, error) {
 		liveSweeper: liveSweeper,
 		msgSweeper:  messages.NewSweeper(msgSvc, 5*time.Minute),
 		botSweeper:  bots.NewSweeper(botsSvc, time.Hour),
+		botWebhooks: botWebhooks,
 		errCh:       make(chan error, 2),
 	}, nil
 }
@@ -659,6 +673,9 @@ func (s *Server) ListenAndServe() {
 	if s.msgSweeper != nil {
 		s.msgSweeper.Start()
 	}
+	if s.botWebhooks != nil {
+		s.botWebhooks.Start()
+	}
 	if s.botSweeper != nil {
 		s.botSweeper.Start()
 	}
@@ -687,6 +704,9 @@ func (s *Server) Close() {
 	}
 	if s.msgSweeper != nil {
 		s.msgSweeper.Stop()
+	}
+	if s.botWebhooks != nil {
+		s.botWebhooks.Stop()
 	}
 	if s.botSweeper != nil {
 		s.botSweeper.Stop()
@@ -727,13 +747,17 @@ type botAPIHandlers struct {
 // message, a key bundle or a file exactly as a client does — encrypted on its
 // own machine (ADR 0002). Shared with the integration test so the two cannot
 // drift.
-func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, h botAPIHandlers, limiter bots.Limiter) {
+func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, gw *bots.Gateway, h botAPIHandlers, limiter bots.Limiter) {
 	g := api.Group("/bot/v1")
 	g.Use(bots.Auth(svc), bots.RateLimit(limiter))
 	g.GET("/me", ctl.GetMe)
 	// Envelopes addressed to the bot in privacy mode (#322); asking with an
 	// offset confirms everything before it.
 	g.GET("/updates", ctl.GetUpdates)
+	// Events pushed live, with heartbeats, intents and resume (#323).
+	if gw != nil {
+		g.GET("/gateway", gw.Handler)
+	}
 	g.PUT("/keys", h.keys.PutKeys)
 	g.GET("/keys/count", h.keys.GetMyCount)
 	g.GET("/users/by-username/:username/keys", h.keys.GetBundle)

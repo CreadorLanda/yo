@@ -18,6 +18,13 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	rg.POST("/bots/:id/tokens", c.PostToken)
 	rg.DELETE("/bots/:id/tokens", c.DeleteTokens)
 	rg.POST("/bots/:id/dm", c.PostDirect)
+	// Event delivery (#323).
+	rg.GET("/bots/:id/webhook", c.GetWebhook)
+	rg.PUT("/bots/:id/webhook", c.PutWebhook)
+	rg.DELETE("/bots/:id/webhook", c.DeleteWebhook)
+	rg.POST("/bots/:id/webhook/secret", c.PostWebhookSecret)
+	rg.GET("/bots/:id/deliveries", c.GetDeliveries)
+	rg.POST("/bots/:id/test-event", c.PostTestEvent)
 
 	rg.GET("/chats/:id/bots", c.GetChatBots)
 	rg.POST("/chats/:id/bots", c.PostChatBot)

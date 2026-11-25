@@ -8,7 +8,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Sweeper drops bot updates no bot collected within UpdateRetention.
+// Sweeper drops bot updates no bot collected within UpdateRetention, and
+// events (with their deliveries) past EventRetention.
 type Sweeper struct {
 	svc   *Service
 	every time.Duration
@@ -37,6 +38,11 @@ func (s *Sweeper) Start() {
 					log.Warn().Err(err).Msg("bot update sweep failed")
 				} else if n > 0 {
 					log.Info().Int64("purged", n).Msg("expired bot updates purged")
+				}
+				if n, err := s.svc.PurgeExpiredEvents(ctx); err != nil {
+					log.Warn().Err(err).Msg("bot event sweep failed")
+				} else if n > 0 {
+					log.Info().Int64("purged", n).Msg("expired bot events purged")
 				}
 				cancel()
 			}

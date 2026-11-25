@@ -29,7 +29,8 @@ func writeErr(ctx *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidUsername), errors.Is(err, ErrInvalidName),
 		errors.Is(err, ErrDescriptionLong), errors.Is(err, ErrTooManyBots),
 		errors.Is(err, ErrInvalidScope), errors.Is(err, ErrChatNotSupported),
-		errors.Is(err, ErrInvalidUpdate):
+		errors.Is(err, ErrInvalidUpdate), errors.Is(err, ErrInvalidWebhookURL),
+		errors.Is(err, ErrInvalidIntent):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
@@ -271,4 +272,96 @@ func (c *Controller) GetMembers(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, list)
+}
+
+// ── Owner: webhook and delivery log (#323) ──────────────────────────────────
+
+// GetWebhook: GET /bots/:id/webhook. Never returns the secret.
+func (c *Controller) GetWebhook(ctx *gin.Context) {
+	id, ok := paramUUID(ctx, "id")
+	if !ok {
+		return
+	}
+	cfg, err := c.svc.Webhook(ctx.Request.Context(), middleware.UserIDFrom(ctx), id)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, cfg)
+}
+
+// PutWebhook: PUT /bots/:id/webhook. The first time, the reply carries the
+// signing secret, shown this once.
+func (c *Controller) PutWebhook(ctx *gin.Context) {
+	id, ok := paramUUID(ctx, "id")
+	if !ok {
+		return
+	}
+	var req WebhookRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
+	cfg, err := c.svc.SetWebhook(ctx.Request.Context(), middleware.UserIDFrom(ctx), id, req)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Header("Cache-Control", "no-store")
+	ctx.JSON(http.StatusOK, cfg)
+}
+
+// DeleteWebhook: DELETE /bots/:id/webhook.
+func (c *Controller) DeleteWebhook(ctx *gin.Context) {
+	id, ok := paramUUID(ctx, "id")
+	if !ok {
+		return
+	}
+	if err := c.svc.ClearWebhook(ctx.Request.Context(), middleware.UserIDFrom(ctx), id); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
+// PostWebhookSecret: POST /bots/:id/webhook/secret rotates the signing secret.
+func (c *Controller) PostWebhookSecret(ctx *gin.Context) {
+	id, ok := paramUUID(ctx, "id")
+	if !ok {
+		return
+	}
+	cfg, err := c.svc.RotateWebhookSecret(ctx.Request.Context(), middleware.UserIDFrom(ctx), id)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Header("Cache-Control", "no-store")
+	ctx.JSON(http.StatusOK, cfg)
+}
+
+// GetDeliveries: GET /bots/:id/deliveries — the last 100 webhook attempts.
+func (c *Controller) GetDeliveries(ctx *gin.Context) {
+	id, ok := paramUUID(ctx, "id")
+	if !ok {
+		return
+	}
+	list, err := c.svc.Deliveries(ctx.Request.Context(), middleware.UserIDFrom(ctx), id)
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, list)
+}
+
+// PostTestEvent: POST /bots/:id/test-event sends the bot a ping.
+func (c *Controller) PostTestEvent(ctx *gin.Context) {
+	id, ok := paramUUID(ctx, "id")
+	if !ok {
+		return
+	}
+	if err := c.svc.TestEvent(ctx.Request.Context(), middleware.UserIDFrom(ctx), id); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusAccepted)
 }
