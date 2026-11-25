@@ -242,6 +242,7 @@ func (r *Repository) ClaimDeliveries(ctx context.Context, limit int, lease time.
 			return nil, err
 		}
 		p.Event.Data = data
+		p.Event.CreatedAt = p.Event.CreatedAt.UTC()
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -290,6 +291,12 @@ func (r *Repository) Deliveries(ctx context.Context, botID uuid.UUID, limit int)
 		if err := rows.Scan(&d.ID, &d.EventID, &d.EventType, &d.Status, &d.Attempts, &d.LastStatus,
 			&d.LastError, &d.CreatedAt, &d.DeliveredAt); err != nil {
 			return nil, err
+		}
+		// Times are UTC on the wire (RFC 3339), whatever the server's zone.
+		d.CreatedAt = d.CreatedAt.UTC()
+		if d.DeliveredAt != nil {
+			t := d.DeliveredAt.UTC()
+			d.DeliveredAt = &t
 		}
 		out = append(out, d)
 	}

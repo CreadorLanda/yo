@@ -151,6 +151,10 @@ func TestBotEventsEndToEnd(t *testing.T) {
 		"kind": "command", "content": envelope,
 	}), http.StatusCreated, "submit command")
 	cmd := readUntil(t, ws, bots.EventCommandInvoked)
+	var cmdEvent bots.Event
+	if err := json.Unmarshal(cmd.D, &cmdEvent); err != nil || cmdEvent.CreatedAt.Location() != time.UTC {
+		t.Fatalf("event times must be UTC: %s (err %v)", cmd.D, err)
+	}
 	if !strings.Contains(string(cmd.D), envelope) {
 		t.Fatalf("command event should carry the envelope: %s", cmd.D)
 	}

@@ -102,6 +102,7 @@ func (r *Repository) InsertEvent(ctx context.Context, botID uuid.UUID, typ strin
 		)
 		SELECT e.id, e.created_at, EXISTS(SELECT 1 FROM d) FROM e
 	`, botID, typ, chatID, string(data)).Scan(&ev.ID, &ev.CreatedAt, &queued)
+	ev.CreatedAt = ev.CreatedAt.UTC()
 	return ev, queued, err
 }
 
@@ -126,6 +127,7 @@ func (r *Repository) EventsAfter(ctx context.Context, botID uuid.UUID, after int
 			return nil, err
 		}
 		ev.Data = data
+		ev.CreatedAt = ev.CreatedAt.UTC()
 		out = append(out, ev)
 	}
 	return out, rows.Err()
@@ -176,6 +178,7 @@ func (r *Repository) update(ctx context.Context, botID uuid.UUID, id int64) (Upd
 		return Update{}, ErrNotFound
 	}
 	u.Kind = UpdateKind(kind)
+	u.CreatedAt = u.CreatedAt.UTC()
 	return u, err
 }
 
