@@ -778,6 +778,7 @@ func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, 
 
 	send := bots.RequireChatScope(svc, bots.ScopeSend)
 	chat := g.Group("/chats/:id")
+	chat.GET("", ctl.GetChat)
 	chat.GET("/members", ctl.GetMembers)
 	chat.GET("/commands", bots.RequireInstalled(svc), ctl.GetBotCommands)
 	// A reply only one member sees (#325); checked inside, so it also works

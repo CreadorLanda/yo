@@ -149,7 +149,18 @@ type chatBot struct {
 }
 
 func (r *Repository) chatBots(ctx context.Context, chatID uuid.UUID) ([]chatBot, error) {
-	rows, err := r.db.Query(ctx, `SELECT bot_id, scopes FROM bot_installations WHERE chat_id = $1`, chatID)
+	// Installed bots, plus the bot on the other side of a direct chat: that
+	// chat is the person talking to the bot, so it hears every message there
+	// (#329) — without it a bot could never answer a direct message.
+	rows, err := r.db.Query(ctx, `
+		SELECT bot_id, scopes FROM bot_installations WHERE chat_id = $1
+		UNION ALL
+		SELECT b.user_id, ARRAY['messages.read.commands', 'messages.read.all', 'messages.send', 'members.read']
+		FROM chats c
+		JOIN chat_participants cp ON cp.chat_id = c.id
+		JOIN bots b ON b.user_id = cp.user_id
+		WHERE c.id = $1 AND c.type = 'direct'
+	`, chatID)
 	if err != nil {
 		return nil, err
 	}

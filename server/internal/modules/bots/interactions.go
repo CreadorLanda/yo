@@ -109,3 +109,36 @@ func (c *Controller) PostEphemeral(ctx *gin.Context) {
 		writeErr(ctx, err)
 	}
 }
+
+// ChatInfo is what a bot may know about a chat it is in.
+type ChatInfo struct {
+	ID   uuid.UUID `json:"id"`
+	Type string    `json:"type"`
+}
+
+// Chat tells a bot whether a chat is a group or a direct chat, which decides
+// how it seals a reply (sender key or pairwise).
+func (s *Service) Chat(ctx context.Context, chatID, botID uuid.UUID) (ChatInfo, error) {
+	ci, err := s.repo.chatInfo(ctx, chatID, botID)
+	if err != nil {
+		return ChatInfo{}, err
+	}
+	if !ci.CallerIsInIt {
+		return ChatInfo{}, ErrChatNotFound
+	}
+	return ChatInfo{ID: chatID, Type: ci.Type}, nil
+}
+
+// GetChat: GET /bot/v1/chats/:id (bot).
+func (c *Controller) GetChat(ctx *gin.Context) {
+	chatID, ok := paramUUID(ctx, "id")
+	if !ok {
+		return
+	}
+	info, err := c.svc.Chat(ctx.Request.Context(), chatID, middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, info)
+}
