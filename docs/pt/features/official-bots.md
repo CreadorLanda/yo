@@ -2,6 +2,14 @@
 
 O ZwoSocial corre alguns bots próprios. São bots normais sobre o SDK público, com chaves próprias e em modo privado, a menos que um grupo lhes dê mais. Por isso não recebem nada que um bot de terceiros não receberia. O código e a operação estão em `official-bots/README.md`.
 
+## Tarefas e standup (#334)
+
+- **`/task`** cria, lista, conclui e atribui tarefas. Cada uma tem um cartão com os botões **Feita** e **Fico eu**, e o bot avisa quando chega o prazo.
+- **`/standup`** publica no grupo, à hora marcada ("dias úteis às 9h30"), um formulário de três perguntas. No fim da janela publica um resumo com os planos, os bloqueios e quem não respondeu. As respostas apagam-se depois do resumo.
+- **`/digest`** envia um resumo semanal às segundas.
+
+Funciona em modo privado e não precisa de integrações. Exportar tarefas chega com os conectores (#337).
+
 ## Moderação (#333)
 
 - **Boas-vindas e regras.** Dá as boas-vindas aos novos membros e pode mantê-los silenciados até aceitarem as regras.

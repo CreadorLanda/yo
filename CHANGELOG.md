@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - registo de moderação noutra conversa.
 
   Os admins decidem num novo interruptor, "Deixar moderar membros", anunciado ao grupo. Um bot nunca pode silenciar, remover, banir nem apagar mensagens de admins ou moderadores. O grupo vê cada acção, e os admins vêem e levantam os bans. O conteúdo das mensagens nunca é guardado
+- Bot oficial de tarefas e standup (#334):
+  - `/task` cria, lista, conclui e atribui tarefas, com cartões com botões e aviso quando chega o prazo;
+  - `/standup` publica à hora marcada um formulário no grupo e, no fim, um resumo com os planos, os bloqueios e quem não respondeu;
+  - `/digest` envia um resumo semanal.
+
+  Funciona em modo privado e sem integrações, e as respostas do standup apagam-se depois do resumo
 - SDKs de bots (#329): `@zwosocial/bot` (TypeScript) e `github.com/CreadorLanda/yo/sdk/go` tratam das chaves e da cifra, de comandos, botões e autocompletar, do gateway com retoma, dos webhooks assinados e dos limites de pedidos. Há exemplos de eco, lembretes, sondagens e notificações do GitHub. O CI corre os bots de exemplo contra um servidor real. Os bots passam também a receber as mensagens da sua conversa directa com uma pessoa
 
 #### Câmara e posts
