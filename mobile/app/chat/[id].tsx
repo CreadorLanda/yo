@@ -4476,6 +4476,19 @@ function BubbleBody({
   const showSender = (isGroup || !!msg.isAI) && !mine && msg.isFirstInGroup && !!msg.senderName;
   const bodyColor = mine ? chat.textMine || colors.onPrimary : chat.textTheirs || colors.text;
   const mentionCol = mine ? chat.textMine || colors.onPrimary : colors.primary;
+  // A bot's components (#325): after its words, before the time.
+  const interactiveView = msg.interactive ? (
+    <InteractiveMessage
+      interactive={msg.interactive}
+      members={interactMembers ?? []}
+      onInteract={
+        msg.senderIsBot || msg.ephemeral
+          ? (componentId, values) => onBotInteract?.(msg, componentId, values) ?? Promise.resolve()
+          : undefined
+      }
+      onOpenLink={(url) => onLinkPress?.(url)}
+    />
+  ) : null;
 
   // Deleted message → italic placeholder, no reactions, no swipe-reply target.
   if (msg.deletedAt) {
@@ -4665,18 +4678,6 @@ function BubbleBody({
         </View>
       ) : null}
 
-      {msg.interactive ? (
-        <InteractiveMessage
-          interactive={msg.interactive}
-          members={interactMembers ?? []}
-          onInteract={
-            msg.senderIsBot || msg.ephemeral
-              ? (componentId, values) => onBotInteract?.(msg, componentId, values) ?? Promise.resolve()
-              : undefined
-          }
-          onOpenLink={(url) => onLinkPress?.(url)}
-        />
-      ) : null}
 
       {msg.attachment ? (
         <AttachmentBubble
@@ -4713,9 +4714,13 @@ function BubbleBody({
           {msg.linkPreview ? (
             <LinkPreviewCard preview={msg.linkPreview} mine={mine} onOpen={(url) => onLinkPress?.(url)} />
           ) : null}
+          {interactiveView}
           <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} />
         </View>
       ) : null}
+
+
+      {!hasText ? interactiveView : null}
 
       {(isAudio || hasAttachment || !!msg.interactive) && !hasText ? <MetaRow msg={msg} onRetry={() => onRetry?.(msg.id)} /> : null}
 

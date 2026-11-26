@@ -105,10 +105,14 @@ func (t *Tee) forward(ctx context.Context, userIDs []uuid.UUID, chatID uuid.UUID
 	for _, id := range userIDs {
 		recipients[id] = true
 	}
+	// A bot can be listed twice (a direct chat with it also has an
+	// installation row); it gets each event once.
+	sent := map[uuid.UUID]bool{}
 	for _, b := range bots {
-		if !recipients[b.BotID] || !hasScope(b.Scopes, scope) {
+		if sent[b.BotID] || !recipients[b.BotID] || !hasScope(b.Scopes, scope) {
 			continue
 		}
+		sent[b.BotID] = true
 		t.bots.Emit(ctx, b.BotID, event, &chatID, payload)
 	}
 }

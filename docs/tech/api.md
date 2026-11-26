@@ -667,6 +667,7 @@ Authenticate with `Authorization: Bot zsb_…`. Routes under `/chats/:id` answer
 | `PUT` | `/keys`, `GET /keys/count` | — (publish and top up the bot device's keys) |
 | `GET` | `/users/by-username/:username/keys` and `/identity` | — |
 | `POST` | `/media/upload` | — |
+| `GET` | `/chats/:id` | installed (or the bot's own direct chat) — `{id, type}`, `type` is `direct` or `group` |
 | `GET` | `/chats/:id/members` | `members.read` |
 | `POST` | `/chats/:id/messages` | `messages.send` |
 | `PATCH`, `DELETE` | `/chats/:id/messages/:mid` | `messages.send` (own messages only) |
@@ -676,6 +677,8 @@ Authenticate with `Authorization: Bot zsb_…`. Routes under `/chats/:id` answer
 | `GET` | `/groups/:id/sender-keys` | installed (only keys addressed to the bot — none unless it has full read) |
 
 Limits: 600 requests per minute per bot, 30 writes per minute per bot per chat. Over a limit: `429 {error: "rate_limited", retry_after}` and a `Retry-After` header. Bots cannot open chats with people, join calls, or be added to anonymous conversations.
+
+SDKs that do all of this for you: [bots-sdk.md](bots-sdk.md).
 
 #### Slash commands
 
