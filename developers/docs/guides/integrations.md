@@ -1,4 +1,5 @@
 ---
+description: 'Bridge another service into chats: verify its webhook, post only where asked.'
 title: Integrations
 sidebar_position: 4
 ---

@@ -1,4 +1,5 @@
 ---
+description: 'Event types, the websocket gateway protocol, and signed webhooks with retries.'
 title: Events — gateway or webhooks
 sidebar_position: 3
 ---

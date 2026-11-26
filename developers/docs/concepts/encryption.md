@@ -1,4 +1,5 @@
 ---
+description: 'Why a bot is a device with its own keys, which envelope each event uses, and what the server can see.'
 title: Encryption
 sidebar_position: 1
 ---

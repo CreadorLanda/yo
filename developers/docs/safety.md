@@ -1,4 +1,5 @@
 ---
+description: 'The data rules every bot must follow, deletion requests, suspension and what admins see.'
 title: Safety and data rules
 sidebar_position: 5
 ---

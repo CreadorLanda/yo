@@ -3,6 +3,8 @@
  *
  *   E2E_API_URL=http://127.0.0.1:8080 bun test/e2e.ts ts
  *   E2E_API_URL=http://127.0.0.1:8080 bun test/e2e.ts go
+ *   E2E_API_URL=… bun test/e2e.ts ts path/to/bot.ts     # your own bot (sdk/BOTS.md)
+ *   E2E_API_URL=… bun test/e2e.ts go path/to/package     # your own Go bot
  *
  * A person signs up (the server must run with APP_ENV=dev, which returns the
  * code), creates a bot, and the echo example for that SDK is started with
@@ -19,6 +21,8 @@ import { MemoryStore } from '../src/store';
 
 const api = (process.env.E2E_API_URL ?? 'http://127.0.0.1:8080').replace(/\/+$/, '');
 const runner = process.argv[2] ?? 'ts';
+// A bot of your own instead of the echo example; it must behave like it.
+const custom = process.argv[3] ? resolve(process.argv[3]) : undefined;
 const sdkRoot = resolve(import.meta.dir, '..', '..');
 
 function fail(msg: string): never {
@@ -73,14 +77,14 @@ const token = typeof created.token === 'string' ? created.token : created.token.
 const work = mkdtempSync(join(tmpdir(), 'zwosocial-e2e-'));
 const env = { ...process.env, BOT_TOKEN: token, API_URL: api };
 if (runner === 'go') {
-  const built = Bun.spawnSync(['go', 'build', '-o', join(work, 'echo'), './examples/echo'], { cwd: join(sdkRoot, 'go'), stderr: 'pipe' });
+  const built = Bun.spawnSync(['go', 'build', '-o', join(work, 'echo'), custom ? '.' : './examples/echo'], { cwd: custom ?? join(sdkRoot, 'go'), stderr: 'pipe' });
   if (built.exitCode !== 0) fail(`go build: ${built.stderr.toString()}`);
 }
 // Each bot keeps its store in a fresh directory.
 const child =
   runner === 'go'
     ? spawn(join(work, 'echo'), [], { cwd: work, env })
-    : spawn('bun', [join(sdkRoot, 'typescript', 'examples', 'echo.ts')], { cwd: work, env });
+    : spawn('bun', [custom ?? join(sdkRoot, 'typescript', 'examples', 'echo.ts')], { cwd: work, env });
 let output = '';
 child.stdout.on('data', (d) => (output += d));
 child.stderr.on('data', (d) => (output += d));

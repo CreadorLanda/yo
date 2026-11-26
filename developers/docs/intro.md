@@ -1,4 +1,5 @@
 ---
+description: 'Create a bot in the app, write it in TypeScript or Go, and talk to it.'
 title: Quick start
 slug: /
 sidebar_position: 1

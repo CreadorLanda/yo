@@ -1,4 +1,5 @@
 ---
+description: 'The Go SDK: the same model as TypeScript, with the same store format.'
 title: Go
 sidebar_position: 2
 ---

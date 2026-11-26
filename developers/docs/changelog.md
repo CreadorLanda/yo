@@ -1,4 +1,5 @@
 ---
+description: 'What changed in Bot API v1.'
 title: Changelog
 sidebar_position: 6
 ---
