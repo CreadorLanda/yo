@@ -1,0 +1,25 @@
+name: Official bots
+
+on:
+  pull_request:
+    paths:
+      - 'official-bots/**'
+      - 'sdk/typescript/**'
+      - '.github/workflows/official-bots.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+        working-directory: sdk/typescript
+      - run: bun install --frozen-lockfile
+        working-directory: official-bots
+      - run: bun run typecheck
+        working-directory: official-bots
+      - run: bun test
+        working-directory: official-bots
