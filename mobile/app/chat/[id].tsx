@@ -3748,16 +3748,20 @@ function SystemDivider({
         ? t('bots.system_added', { actor, bot })
         : ev.event === 'removed'
           ? t('bots.system_removed', { actor, bot })
-          : ev.on
-            ? t('bots.system_read_all_on', { actor, bot })
-            : t('bots.system_read_all_off', { actor, bot });
+          : ev.event === 'moderate'
+            ? ev.on
+              ? t('bots.system_moderate_on', { actor, bot })
+              : t('bots.system_moderate_off', { actor, bot })
+            : ev.on
+              ? t('bots.system_read_all_on', { actor, bot })
+              : t('bots.system_read_all_off', { actor, bot });
     return (
       <View style={styles.systemRow}>
         <View style={[styles.systemPill, { backgroundColor: colors.surface }]}>
           <Ionicons
-            name={ev.event === 'read_all' && ev.on ? 'eye-outline' : 'hardware-chip-outline'}
+            name={ev.event === 'read_all' && ev.on ? 'eye-outline' : ev.event === 'moderate' ? 'shield-outline' : 'hardware-chip-outline'}
             size={11}
-            color={ev.event === 'read_all' && ev.on ? colors.warning : colors.textSecondary}
+            color={(ev.event === 'read_all' || ev.event === 'moderate') && ev.on ? colors.warning : colors.textSecondary}
           />
           <Text style={[styles.systemText, { color: colors.textSecondary }]}>{label}</Text>
         </View>
@@ -3787,6 +3791,14 @@ function SystemDivider({
     if (ev.event === 'admin_handoff') label = t('chat.group_admin_handoff', { oldAdmin: actor, newAdmin: target });
     if (ev.event === 'achievement_created') label = t('chat.group_achievement_created', { actor });
     if (ev.event === 'achievement_awarded') label = t('chat.group_achievement_awarded', { actor, member: target });
+    // Moderation (#333).
+    if (ev.event === 'member_muted') {
+      const until = ev.until ? new Date(ev.until * 1000).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '';
+      label = t('chat.group_member_muted', { actor, member: target, until });
+    }
+    if (ev.event === 'member_unmuted') label = t('chat.group_member_unmuted', { actor, member: target });
+    if (ev.event === 'member_banned') label = t('chat.group_member_banned', { actor, member: target });
+    if (ev.event === 'member_unbanned') label = t('chat.group_member_unbanned', { actor, member: target });
     return (
       <View style={styles.systemRow}>
         <View style={[styles.systemPill, { backgroundColor: colors.surface }]}>

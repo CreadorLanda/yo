@@ -8,7 +8,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { askBotToForgetMe, listChatBots, uninstallBot, updateBotScopes, type BotInstallationDTO } from '@/data/api/bots';
-import { FULL_READ_SCOPES, hasFullRead, PRIVACY_SCOPES } from '@/data/bot-policy';
+import { canModerate, hasFullRead, scopesFor } from '@/data/bot-policy';
 import { invalidateChatBots } from '@/data/bot-store';
 import { appAlert } from '@/data/dialog-store';
 import { refreshGroup } from '@/data/group-store';
@@ -60,12 +60,13 @@ export function ChatBotsSection({ chatId, isAdmin }: { chatId: string; isAdmin: 
 
   const manage = (inst: BotInstallationDTO) => {
     const full = hasFullRead(inst.scopes);
+    const mod = canModerate(inst.scopes);
     appAlert(inst.bot.display_name, full ? t('bots.reads_all') : t('bots.reads_addressed'), [
       {
         text: full ? t('bots.make_private') : t('bots.allow_read_all'),
         onPress: () => {
           const apply = () =>
-            updateBotScopes(chatId, inst.bot.id, full ? PRIVACY_SCOPES : FULL_READ_SCOPES).then(changed).catch(fail);
+            updateBotScopes(chatId, inst.bot.id, scopesFor({ readAll: !full, moderate: mod })).then(changed).catch(fail);
           if (full) {
             void apply();
             return;
@@ -73,6 +74,21 @@ export function ChatBotsSection({ chatId, isAdmin }: { chatId: string; isAdmin: 
           appAlert(t('bots.allow_read_all_title', { name: inst.bot.display_name }), t('bots.allow_read_all_body'), [
             { text: t('common.cancel'), style: 'cancel' },
             { text: t('bots.allow_read_all'), onPress: () => void apply() },
+          ]);
+        },
+      },
+      {
+        text: mod ? t('bots.stop_moderating') : t('bots.allow_moderate'),
+        onPress: () => {
+          const apply = () =>
+            updateBotScopes(chatId, inst.bot.id, scopesFor({ readAll: full, moderate: !mod })).then(changed).catch(fail);
+          if (mod) {
+            void apply();
+            return;
+          }
+          appAlert(t('bots.allow_moderate_title', { name: inst.bot.display_name }), t('bots.allow_moderate_body'), [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('bots.allow_moderate'), onPress: () => void apply() },
           ]);
         },
       },
@@ -130,6 +146,7 @@ export function ChatBotsSection({ chatId, isAdmin }: { chatId: string; isAdmin: 
         ) : null}
         {bots.map((inst, i) => {
           const full = hasFullRead(inst.scopes);
+          const mod = canModerate(inst.scopes);
           return (
             <Pressable
               key={inst.bot.id}
@@ -158,6 +175,14 @@ export function ChatBotsSection({ chatId, isAdmin }: { chatId: string; isAdmin: 
                     {full ? t('bots.reads_all') : t('bots.reads_addressed')}
                   </Text>
                 </View>
+                {mod ? (
+                  <View style={styles.nameRow}>
+                    <Ionicons name="shield-outline" size={12} color={colors.warning} />
+                    <Text style={[styles.sub, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {t('bots.moderates')}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
               <Ionicons name="ellipsis-vertical" size={18} color={colors.textSecondary} />
             </Pressable>

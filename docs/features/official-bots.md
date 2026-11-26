@@ -2,6 +2,19 @@
 
 ZwoSocial runs a few bots of its own. They are ordinary bots on the public SDK, with their own keys and in privacy mode unless a group grants more, so they get nothing a third-party bot would not. Code and operations: `official-bots/README.md`.
 
+## Moderation (#333)
+
+- **Welcomes and rules.** It welcomes new members and can keep them muted until they accept the rules.
+- **Admin commands.** `/warn`, `/mute`, `/kick` and `/ban`, with warnings escalating from a warning to mutes and then removal.
+- **Content filters.** With full read granted it filters links, banned words, floods, repeated messages and slow mode.
+
+It only does what the group's admins grant, and every grant is announced:
+
+- **"Let it moderate members"** lets it mute, remove, ban and delete messages. It never acts on admins or moderators, and the server enforces that.
+- **"Let it read every message"** is needed for the content filters. Without it they never run, and `/mod` says so.
+
+Every action is a notice in the group and an entry in its bot activity, and it can also go to a mod log in another chat. Message contents are never stored.
+
 ## Reminders and Scheduler (#332)
 
 - `/remind` reminds you, someone in the chat, or the whole chat, once or on repeat. "When" is written in English or Portuguese, for example "amanhã às 9", "in 10 minutes", "every monday 10:00" or "dias úteis às 8h30", or picked in the app.

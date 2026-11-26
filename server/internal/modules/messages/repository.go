@@ -1364,3 +1364,22 @@ func readByFor(readBy int, hide bool) int {
 	}
 	return readBy
 }
+
+// ModerateDelete soft-deletes a member's message in a group, unless it was
+// sent by an admin or moderator. False when nothing matched.
+func (r *Repository) ModerateDelete(ctx context.Context, chatID uuid.UUID, msgID int64) (bool, error) {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE messages m SET deleted_at = NOW(), content = ''
+		FROM chats c
+		WHERE m.id = $1 AND m.chat_id = $2 AND c.id = m.chat_id AND c.type = 'group'
+		  AND m.deleted_at IS NULL AND m.message_type <> 'system'
+		  AND NOT EXISTS (
+		    SELECT 1 FROM chat_participants p
+		    WHERE p.chat_id = m.chat_id AND p.user_id = m.sender_id AND p.role IN ('admin', 'moderator')
+		  )
+	`, msgID, chatID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}

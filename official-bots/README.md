@@ -5,6 +5,7 @@ The bots ZwoSocial runs itself. They are ordinary bots built on the TypeScript S
 | Bot | Run | Issue |
 |---|---|---|
 | Reminders and Scheduler | `bun run reminders` | #332 |
+| Moderation | `bun run moderation` | #333 |
 
 ## Running
 
@@ -30,8 +31,11 @@ With Docker, from the repository root:
 
 ```sh
 docker build -f official-bots/Dockerfile -t zwosocial-reminders .
-docker run -d -e BOT_TOKEN=zsb_… -v reminders-data:/data zwosocial-reminders
+docker run -d -e BOT_TOKEN=zsb_… -v reminders-data:/data zwosocial-reminders              # reminders
+docker run -d -e BOT_TOKEN=zsb_… -v moderation-data:/data zwosocial-reminders moderation   # moderation
 ```
+
+Each bot has its own account, token and data volume.
 
 ## Reminders and Scheduler
 
@@ -66,3 +70,43 @@ Replies follow the language of the time you wrote, and the bot remembers it per 
 - **Time zones.** Times are read and repeated in the time zone of the person who set them, and daylight-saving changes keep the local hour. A rule for the 31st fires on the last day of shorter months.
 - **Limits.** Each person can have at most 50 pending jobs across all chats.
 - **Data.** Jobs hold only what is needed to send them. A `user.data_deletion` deletes everything set by or for that person, and removing the bot from a chat deletes that chat's jobs.
+
+## Moderation
+
+Group admins add it from **Group info → Bots**. What it can do depends on what they grant, and the app says so plainly:
+
+| Granted | What works |
+|---|---|
+| nothing extra (privacy mode) | welcomes, `/rules`, and `/warn` |
+| **Let it moderate members** (`members.manage`) | also `/mute`, `/kick`, `/ban` and `/unban`, and muting newcomers until they accept the rules |
+| **Let it read every message** (`messages.read.all`) and moderate | also content filters: links, banned words, flood, repeated messages and slow mode |
+
+Content filters never run without full read, because the bot cannot see the messages. `/mod` shows what is on and, in words, what is missing.
+
+| Command (admins and moderators) | |
+|---|---|
+| `/mod` | Privately, the settings, with buttons to turn welcomes, rule acceptance, links, repeated messages, flood and the language on or off. |
+| `/rules [text]` | Anyone can show the rules; admins set them with `text`. |
+| `/warn who [reason]` | Warns someone. Warnings escalate. |
+| `/mute who for [reason]` | `for` is `10m`, `2h` or `1d` (1 minute to 30 days). |
+| `/unmute who` | |
+| `/kick who [reason]` | Removes someone; they can be added back. |
+| `/ban who [reason]` | Removes someone and keeps them out until a ban is lifted. |
+| `/unban username` | Lifts a ban. |
+| `/words add\|remove\|list [word]` | The banned words list. |
+| `/slowmode seconds` | Seconds between one person's messages; `0` turns it off. |
+| `/modlog [code]` | Sends the group's mod log to another chat. Running it in the group gives a code; running it with that code in the other chat links them. |
+
+### Policies
+
+- **Nobody outranks admins.** The server refuses to moderate admins or moderators, and their messages are never filtered.
+- **Escalation.** Warnings in the last 24 hours escalate:
+  1. a warning;
+  2. a 10-minute mute;
+  3. an hour's mute;
+  4. removal.
+
+  Slow mode deletes the message but does not count as a warning.
+- **Welcomes.** New members get a welcome and, if rules are set, an "I accept the rules" button. With rule acceptance on, newcomers are muted (up to 7 days) until they tap it. Only the newcomer can accept their own welcome.
+- **Seen by everyone.** Every mute, removal and ban is a notice in the group and an entry in the group's bot activity, and with a linked log it also appears in the mod log.
+- **Data.** The bot never stores message contents. Recent messages are kept in memory only, for a minute, to catch floods and repeats. It stores settings, warnings (kept 30 days), and the people it banned (so `/unban` works by name). A `user.data_deletion` deletes that person's warnings and records.

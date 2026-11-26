@@ -10,6 +10,8 @@ import {
   normalizeBotUsername,
   PRIVACY_SCOPES,
   suggestBotUsername,
+  canModerate,
+  scopesFor,
 } from '@/data/bot-policy';
 
 test('bot usernames follow the server rule', () => {
@@ -55,4 +57,11 @@ test('privacy mode is the default and full read is one extra scope', () => {
   expect(hasFullRead(PRIVACY_SCOPES)).toBe(false);
   expect(hasFullRead(FULL_READ_SCOPES)).toBe(true);
   expect(FULL_READ_SCOPES.filter((s) => !PRIVACY_SCOPES.includes(s))).toEqual(['messages.read.all']);
+});
+
+test('scopesFor: each switch changes only its own part (#333)', () => {
+  expect(scopesFor({ readAll: false, moderate: false })).toEqual(['messages.read.commands', 'messages.send', 'members.read']);
+  const both = scopesFor({ readAll: true, moderate: true });
+  expect(hasFullRead(both) && canModerate(both)).toBe(true);
+  expect(canModerate(scopesFor({ readAll: true, moderate: false }))).toBe(false);
 });

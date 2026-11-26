@@ -122,12 +122,21 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
           ...(event === 'admin_handoff' ? { targetId: parts[3] } : {}),
           ...(event === 'achievement_created' ? { achievementId: parts[3] } : {}),
           ...(event === 'achievement_awarded' ? { achievementId: parts[3], targetId: parts[4] } : {}),
+          // Moderation (#333).
+          ...(event === 'member_muted' ? { targetId: parts[3], until: Number(parts[4]) || undefined } : {}),
+          ...(event === 'member_unmuted' || event === 'member_unbanned' ? { targetId: parts[3] } : {}),
+          ...(event === 'member_banned'
+            ? {
+                targetId: parts[3],
+                ...(parts[4] ? { targetName: decodeURIComponent(parts.slice(4).join(':')) } : {}),
+              }
+            : {}),
         },
       };
     }
     if (parts[0] === 'bot' && parts.length >= 4) {
       const event = parts[1];
-      if (event === 'added' || event === 'removed' || event === 'read_all') {
+      if (event === 'added' || event === 'removed' || event === 'read_all' || event === 'moderate') {
         return {
           ...base,
           text: '',
@@ -137,7 +146,7 @@ export function mapApiMessage(m: MessageDTO, meId?: string | null): Message {
             event,
             actorId: parts[2],
             botId: parts[3],
-            ...(event === 'read_all' ? { on: parts[4] === 'on' } : {}),
+            ...(event === 'read_all' || event === 'moderate' ? { on: parts[4] === 'on' } : {}),
           },
         };
       }

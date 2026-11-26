@@ -59,6 +59,21 @@ SDKs que tratam de tudo isto: [bots-sdk.md](bots-sdk.md).
 ### Comandos com /
 Um bot regista os comandos a que responde com `PUT /api/bot/v1/commands` (globais, até 100) ou `PUT /api/bot/v1/chats/:id/commands` (só numa conversa onde está; substitui o global com o mesmo nome). Qualquer membro vê os comandos dos bots da conversa com `GET /chats/:id/commands`. Cada comando tem `name` (1–32 de `a-z0-9_-`), descrição (até 100 caracteres, com `description_pt` opcional) e até 10 opções (`string`, `number`, `user`, `datetime` em RFC 3339 ou `choice` com 1–25 escolhas; as obrigatórias primeiro). O autocomplete (`POST /chats/:id/bots/:botId/autocomplete`) leva o texto escrito num envelope `soc1.` para o bot, que recebe `command.autocomplete` e responde em 3 s com `POST /api/bot/v1/autocomplete/:request_id`. Um comando é enviado como texto (`/remind when:... what:"..."`, com `@bot` quando dois bots partilham o nome), e o bot em modo privado recebe as opções já separadas em `command.invoked`. O servidor vê o registo e as sugestões do bot, nunca o que a pessoa escreve.
 
+### Moderação (#333)
+
+Um bot cuja instalação tenha `members.manage` pode moderar. Os admins dão essa permissão com "Deixar moderar membros", e dar ou retirar a permissão publica `bot:moderate:<actor>:<bot>:on|off`. Admins e moderadores nunca podem ser alvo: um pedido desses dá `403 cannot_moderate_admin`.
+
+Rotas, em `/api/bot/v1/chats/:id/moderation`:
+
+- `POST /members/:uid/mute` com `{seconds, reason?}`, de 60 s a 30 dias. Até lá o membro não consegue enviar (`403 group_permission_denied`).
+- `DELETE /members/:uid/mute` levanta o silêncio.
+- `POST /members/:uid/kick` remove o membro e avança a época de chaves.
+- `POST /members/:uid/ban` com `{reason?}` remove o membro e regista um ban; voltar a adicioná-lo dá `409 member_banned`.
+- `DELETE /members/:uid/ban` levanta o ban.
+- `DELETE /messages/:mid` apaga para todos uma mensagem de um membro. Nunca apaga avisos do sistema nem mensagens de admins ou moderadores (`404`).
+
+Cada acção fica como aviso no grupo (`group:member_muted`, `member_unmuted`, `member_removed`, `member_banned`, `member_unbanned`) e na actividade de bots (`mod.*`). Os admins vêem os bans em `GET /groups/:id/bans` e levantam-nos com `DELETE /groups/:id/bans/:userId`. O `GET /api/bot/v1/chats/:id` passa a devolver também o `title` do grupo e as `scopes` do bot nesse grupo.
+
 ### Segurança
 `GET /chats/:id/bots/audit` (admins) devolve a actividade dos bots do grupo; `POST /bots/:id/reactivate` (dono) levanta uma suspensão automática; `POST /bots/:id/forget-me` pede ao bot que apague os dados de quem pede. Um bot suspenso recebe `403 bot_suspended` e `BOTS_DISABLED=true` faz a Bot API responder `503 bots_disabled`. Detalhes e regras para quem desenvolve bots: [Bots: abuso, limites e dados](../security/bots.md).
 

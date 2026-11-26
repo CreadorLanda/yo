@@ -80,8 +80,30 @@ export class ApiClient implements KeyServer {
     await this.request('POST', `/groups/${chatId}/sender-keys`, { epoch, entries });
   }
 
+  /** Direct or group; for a group, its title and what the admins allowed the bot. */
   chat(chatId: string) {
-    return this.request<{ id: string; type: 'direct' | 'group' }>('GET', `/chats/${chatId}`);
+    return this.request<{ id: string; type: 'direct' | 'group'; title?: string; scopes?: string[] }>('GET', `/chats/${chatId}`);
+  }
+
+  // Moderation (#333): needs members.manage; never works on admins or moderators.
+  mute(chatId: string, userId: string, seconds: number, reason?: string) {
+    return this.request('POST', `/chats/${chatId}/moderation/members/${userId}/mute`, { seconds, reason });
+  }
+  unmute(chatId: string, userId: string) {
+    return this.request('DELETE', `/chats/${chatId}/moderation/members/${userId}/mute`);
+  }
+  kick(chatId: string, userId: string, reason?: string) {
+    return this.request('POST', `/chats/${chatId}/moderation/members/${userId}/kick`, { reason });
+  }
+  ban(chatId: string, userId: string, reason?: string) {
+    return this.request('POST', `/chats/${chatId}/moderation/members/${userId}/ban`, { reason });
+  }
+  unban(chatId: string, userId: string) {
+    return this.request('DELETE', `/chats/${chatId}/moderation/members/${userId}/ban`);
+  }
+  /** Deletes a member's message for everyone. */
+  deleteAsModerator(chatId: string, messageId: number) {
+    return this.request('DELETE', `/chats/${chatId}/moderation/messages/${messageId}`);
   }
   members(chatId: string) {
     return this.request<ChatMember[]>('GET', `/chats/${chatId}/members`);

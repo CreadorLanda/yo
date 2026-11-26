@@ -31,6 +31,8 @@ type Service struct {
 	// Safety (#343): the platform kill switch and rate-limit strikes.
 	disabled bool
 	strikes  Limiter
+	// Moderation (#333): mute, remove, ban, delete, with members.manage.
+	moderator Moderator
 }
 
 func NewService(repo *Repository) *Service {

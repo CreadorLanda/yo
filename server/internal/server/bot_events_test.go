@@ -317,6 +317,7 @@ func botEventsRouter(t *testing.T, pool *pgxpool.Pool) (*gin.Engine, []byte, *bo
 	usersRepo := users.NewRepository(pool)
 	groupsSvc := groups.NewService(groups.NewRepository(pool)).WithBroadcaster(bus)
 	msgSvc := messages.NewService(messages.NewRepository(pool, ""), usersRepo, bus, nil).WithGroupPolicy(groupsSvc)
+	botsSvc.WithModerator(moderator{groups: groupsSvc, messages: msgSvc})
 	msgCtl := messages.NewController(msgSvc, nil, secret)
 	keysCtl := keys.NewController(keys.NewService(keys.NewRepository(pool), usersRepo))
 	mediaCtl := media.NewController(media.NewService(media.NewRepository(pool), t.TempDir(), 1<<20, time.Hour))

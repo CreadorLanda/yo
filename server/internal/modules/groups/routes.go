@@ -14,6 +14,9 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	g.DELETE("/:id/members/:userId", c.DeleteMember)
 	g.PATCH("/:id/members/:userId", c.PatchMemberRole)
 	g.POST("/:id/leave", c.PostLeave)
+	// Bans (#333): admins see and lift them; bans are made by moderation.
+	g.GET("/:id/bans", c.GetBans)
+	g.DELETE("/:id/bans/:userId", c.DeleteBan)
 	g.GET("/:id/achievements", c.GetAchievements)
 	g.POST("/:id/achievements", c.PostAchievement)
 	g.POST("/:id/achievements/:achievementId/awards", c.PostAchievementAward)

@@ -114,6 +114,11 @@ func (c *Controller) PostEphemeral(ctx *gin.Context) {
 type ChatInfo struct {
 	ID   uuid.UUID `json:"id"`
 	Type string    `json:"type"`
+	// Title is the group's name; empty for a direct chat.
+	Title string `json:"title,omitempty"`
+	// Scopes are what the group's admins allowed the bot here (#333), so it
+	// can say plainly what it cannot do. Absent in a direct chat.
+	Scopes []Scope `json:"scopes,omitempty"`
 }
 
 // Chat tells a bot whether a chat is a group or a direct chat, which decides
@@ -126,7 +131,14 @@ func (s *Service) Chat(ctx context.Context, chatID, botID uuid.UUID) (ChatInfo, 
 	if !ci.CallerIsInIt {
 		return ChatInfo{}, ErrChatNotFound
 	}
-	return ChatInfo{ID: chatID, Type: ci.Type}, nil
+	info := ChatInfo{ID: chatID, Type: ci.Type}
+	if ci.Type == "group" {
+		info.Title, info.Scopes, err = s.repo.groupSeenByBot(ctx, chatID, botID)
+		if err != nil {
+			return ChatInfo{}, err
+		}
+	}
+	return info, nil
 }
 
 // GetChat: GET /bot/v1/chats/:id (bot).
@@ -141,4 +153,15 @@ func (c *Controller) GetChat(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, info)
+}
+
+func (r *Repository) groupSeenByBot(ctx context.Context, chatID, botID uuid.UUID) (string, []Scope, error) {
+	var title string
+	var scopes []string
+	err := r.db.QueryRow(ctx, `
+		SELECT COALESCE(c.title, ''), COALESCE(i.scopes, '{}')
+		FROM chats c LEFT JOIN bot_installations i ON i.chat_id = c.id AND i.bot_id = $2
+		WHERE c.id = $1
+	`, chatID, botID).Scan(&title, &scopes)
+	return title, toScopes(scopes), err
 }

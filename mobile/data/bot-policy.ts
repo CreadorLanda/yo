@@ -83,3 +83,21 @@ export const FULL_READ_SCOPES: BotScope[] = [...PRIVACY_SCOPES, 'messages.read.a
 export function hasFullRead(scopes: readonly BotScope[]): boolean {
   return scopes.includes('messages.read.all');
 }
+
+/** Whether the bot may mute, remove and ban members (#333). */
+export function canModerate(scopes: readonly BotScope[]): boolean {
+  return scopes.includes('members.manage');
+}
+
+/**
+ * The scopes for a bot in a group, from the two things admins decide:
+ * whether it reads everything, and whether it moderates members. Each switch
+ * changes only its own part.
+ */
+export function scopesFor(choice: { readAll: boolean; moderate: boolean }): BotScope[] {
+  return [
+    ...PRIVACY_SCOPES,
+    ...(choice.readAll ? (['messages.read.all'] as BotScope[]) : []),
+    ...(choice.moderate ? (['members.manage'] as BotScope[]) : []),
+  ];
+}

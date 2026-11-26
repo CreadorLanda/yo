@@ -138,10 +138,49 @@ func (c *Client) PublishSenderKeys(ctx context.Context, chatID string, epoch int
 
 // ChatType is "direct" or "group".
 func (c *Client) ChatType(ctx context.Context, chatID string) (string, error) {
-	var res struct {
-		Type string `json:"type"`
-	}
-	return res.Type, c.do(ctx, http.MethodGet, "/chats/"+chatID, nil, &res)
+	info, err := c.Chat(ctx, chatID)
+	return info.Type, err
+}
+
+// ChatInfo is a chat as the bot sees it.
+type ChatInfo struct {
+	ID     string   `json:"id"`
+	Type   string   `json:"type"`
+	Title  string   `json:"title,omitempty"`
+	Scopes []string `json:"scopes,omitempty"`
+}
+
+// Chat is direct or group; for a group, its title and what the admins allowed the bot.
+func (c *Client) Chat(ctx context.Context, chatID string) (ChatInfo, error) {
+	var info ChatInfo
+	return info, c.do(ctx, http.MethodGet, "/chats/"+chatID, nil, &info)
+}
+
+// Moderation (#333): needs members.manage; never works on admins or moderators.
+
+func (c *Client) Mute(ctx context.Context, chatID, userID string, d time.Duration, reason string) error {
+	return c.do(ctx, http.MethodPost, "/chats/"+chatID+"/moderation/members/"+userID+"/mute", map[string]any{"seconds": int(d.Seconds()), "reason": reason}, nil)
+}
+
+func (c *Client) Unmute(ctx context.Context, chatID, userID string) error {
+	return c.do(ctx, http.MethodDelete, "/chats/"+chatID+"/moderation/members/"+userID+"/mute", nil, nil)
+}
+
+func (c *Client) Kick(ctx context.Context, chatID, userID, reason string) error {
+	return c.do(ctx, http.MethodPost, "/chats/"+chatID+"/moderation/members/"+userID+"/kick", map[string]string{"reason": reason}, nil)
+}
+
+func (c *Client) Ban(ctx context.Context, chatID, userID, reason string) error {
+	return c.do(ctx, http.MethodPost, "/chats/"+chatID+"/moderation/members/"+userID+"/ban", map[string]string{"reason": reason}, nil)
+}
+
+func (c *Client) Unban(ctx context.Context, chatID, userID string) error {
+	return c.do(ctx, http.MethodDelete, "/chats/"+chatID+"/moderation/members/"+userID+"/ban", nil, nil)
+}
+
+// DeleteAsModerator deletes a member's message for everyone.
+func (c *Client) DeleteAsModerator(ctx context.Context, chatID string, messageID int64) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/chats/%s/moderation/messages/%d", chatID, messageID), nil, nil)
 }
 
 func (c *Client) Members(ctx context.Context, chatID string) ([]ChatMember, error) {
