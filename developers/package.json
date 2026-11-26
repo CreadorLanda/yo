@@ -1,0 +1,30 @@
+{
+  "name": "zwosocial-developers",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "gen:api": "bun scripts/gen-api.ts",
+    "check:mirror": "bun scripts/check-mirror.ts",
+    "start": "bun run gen:api && docusaurus start",
+    "build": "bun run gen:api && bun run check:mirror && docusaurus build",
+    "serve": "docusaurus serve"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3",
+    "@docusaurus/preset-classic": "^3",
+    "@easyops-cn/docusaurus-search-local": "^0.55.3",
+    "@mdx-js/react": "^3",
+    "clsx": "^2.1.1",
+    "prism-react-renderer": "^2.4.1",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@docusaurus/module-type-aliases": "^3",
+    "@docusaurus/tsconfig": "^3",
+    "@docusaurus/types": "^3",
+    "@types/bun": "^1.4.5",
+    "typescript": "^7.0.2",
+    "yaml": "^2.9.1"
+  }
+}

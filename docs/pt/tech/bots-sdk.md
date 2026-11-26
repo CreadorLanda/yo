@@ -1,6 +1,6 @@
 # SDKs de bots
 
-Os SDKs estão em `sdk/`: `@zwosocial/bot` para TypeScript e `github.com/CreadorLanda/yo/sdk/go` para Go. Com eles, um bot reduz-se a alguns handlers. O SDK trata das partes fáceis de errar: a cifra, a entrega e as novas tentativas.
+O guia público para quem desenvolve bots é o site em `developers/` (Docusaurus, EN e PT); esta página é a visão de engenharia. Os SDKs estão em `sdk/`: `@zwosocial/bot` para TypeScript e `github.com/CreadorLanda/yo/sdk/go` para Go. Com eles, um bot reduz-se a alguns handlers. O SDK trata das partes fáceis de errar: a cifra, a entrega e as novas tentativas.
 
 ## Como um bot vê uma conversa
 

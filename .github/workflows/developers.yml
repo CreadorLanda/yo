@@ -1,0 +1,51 @@
+name: Developer site
+
+on:
+  pull_request:
+    paths:
+      - 'developers/**'
+      - '.github/workflows/developers.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'developers/**'
+      - '.github/workflows/developers.yml'
+
+jobs:
+  # Generates the API reference from the OpenAPI spec, checks every English
+  # page has a Portuguese twin, and builds both locales. Broken links and
+  # anchors fail the build (onBrokenLinks: 'throw').
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: developers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'push'
+        with:
+          path: developers/build
+
+  # Publishes main to GitHub Pages (Settings → Pages → Source: GitHub Actions).
+  deploy:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
