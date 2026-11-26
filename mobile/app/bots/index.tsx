@@ -73,8 +73,8 @@ export default function MyBotsScreen() {
                   <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
                     {b.display_name}
                   </Text>
-                  <Text style={[styles.handle, { color: colors.textSecondary }]} numberOfLines={1}>
-                    @{b.username}
+                  <Text style={[styles.handle, { color: b.suspended ? colors.danger : colors.textSecondary }]} numberOfLines={1}>
+                    {b.suspended ? t('bots.suspended_title') : `@${b.username}`}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />

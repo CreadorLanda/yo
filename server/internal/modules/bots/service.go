@@ -28,6 +28,9 @@ type Service struct {
 	allowPrivateWebhooks bool
 	// Waiting autocomplete requests (#324).
 	autocomplete autocompleteBroker
+	// Safety (#343): the platform kill switch and rate-limit strikes.
+	disabled bool
+	strikes  Limiter
 }
 
 func NewService(repo *Repository) *Service {
@@ -213,12 +216,22 @@ func (s *Service) Install(ctx context.Context, chatID, actor uuid.UUID, req Inst
 	if err != nil {
 		return Installation{}, err
 	}
+	if s.disabled {
+		return Installation{}, ErrBotsDisabled
+	}
+	if bot.Suspended {
+		return Installation{}, ErrBotSuspended
+	}
 	scopes, err := normalizeScopes(req.Scopes)
 	if err != nil {
 		return Installation{}, err
 	}
 	if err := s.repo.Install(ctx, chatID, bot.ID, actor, scopes); err != nil {
 		return Installation{}, err
+	}
+	s.repo.addAudit(ctx, chatID, &actor, &bot.ID, AuditAdded, map[string]any{"scopes": scopes})
+	if hasScope(scopes, ScopeReadAll) {
+		s.repo.addAudit(ctx, chatID, &actor, &bot.ID, AuditReadAllOn, nil)
 	}
 	s.announce(ctx, chatID)
 	inst, err := s.repo.Installation(ctx, chatID, bot.ID)
@@ -241,6 +254,14 @@ func (s *Service) UpdateScopes(ctx context.Context, chatID, botID, actor uuid.UU
 	hadAll, hasAll, err := s.repo.UpdateScopes(ctx, chatID, botID, actor, norm)
 	if err != nil {
 		return Installation{}, err
+	}
+	switch {
+	case !hadAll && hasAll:
+		s.repo.addAudit(ctx, chatID, &actor, &botID, AuditReadAllOn, nil)
+	case hadAll && !hasAll:
+		s.repo.addAudit(ctx, chatID, &actor, &botID, AuditReadAllOff, nil)
+	default:
+		s.repo.addAudit(ctx, chatID, &actor, &botID, AuditScopesChanged, map[string]any{"scopes": norm})
 	}
 	if hadAll != hasAll {
 		// Full read on or off changes who may hold the group key; clients
@@ -268,6 +289,7 @@ func (s *Service) Uninstall(ctx context.Context, chatID, botID, actor uuid.UUID)
 	if err := s.repo.Uninstall(ctx, chatID, botID, actor); err != nil {
 		return err
 	}
+	s.repo.addAudit(ctx, chatID, &actor, &botID, AuditRemoved, nil)
 	s.publish(chatID, members, botID)
 	s.Emit(ctx, botID, EventBotRemoved, &chatID, map[string]any{"removed_by": actor})
 	return nil

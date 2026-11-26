@@ -21,12 +21,14 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 const botColumns = `
 	b.user_id, u.username, u.display_name, COALESCE(u.avatar_uri, ''),
-	b.description, b.privacy_mode, b.verified, b.owner_id, b.created_at`
+	b.description, b.privacy_mode, b.verified, b.owner_id, b.created_at,
+	b.suspended_at IS NOT NULL, b.suspended_reason`
 
 func scanBot(row pgx.Row) (Bot, error) {
 	var b Bot
 	err := row.Scan(&b.ID, &b.Username, &b.DisplayName, &b.AvatarURL,
-		&b.Description, &b.PrivacyMode, &b.Verified, &b.OwnerID, &b.CreatedAt)
+		&b.Description, &b.PrivacyMode, &b.Verified, &b.OwnerID, &b.CreatedAt,
+		&b.Suspended, &b.SuspendedReason)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Bot{}, ErrNotFound
 	}
@@ -239,16 +241,20 @@ func (r *Repository) ListTokens(ctx context.Context, botID uuid.UUID) ([]Token, 
 func (r *Repository) Authenticate(ctx context.Context, hash []byte) (Principal, error) {
 	var p Principal
 	var tokenID uuid.UUID
+	var suspended bool
 	err := r.db.QueryRow(ctx, `
-		SELECT t.id, b.user_id, b.device_id
+		SELECT t.id, b.user_id, b.device_id, b.suspended_at IS NOT NULL
 		FROM bot_tokens t JOIN bots b ON b.user_id = t.bot_id
 		WHERE t.token_hash = $1 AND t.revoked_at IS NULL
-	`, hash).Scan(&tokenID, &p.BotID, &p.DeviceID)
+	`, hash).Scan(&tokenID, &p.BotID, &p.DeviceID, &suspended)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Principal{}, ErrInvalidToken
 	}
 	if err != nil {
 		return Principal{}, err
+	}
+	if suspended {
+		return Principal{}, ErrBotSuspended
 	}
 	_, _ = r.db.Exec(ctx, `
 		UPDATE bot_tokens SET last_used_at = NOW()
@@ -441,7 +447,8 @@ func (r *Repository) ListInstallations(ctx context.Context, chatID uuid.UUID) ([
 		b := &inst.Bot
 		if err := rows.Scan(&inst.ChatID, &scopes, &inst.InstalledBy, &inst.CreatedAt,
 			&b.ID, &b.Username, &b.DisplayName, &b.AvatarURL, &b.Description,
-			&b.PrivacyMode, &b.Verified, &b.OwnerID, &b.CreatedAt); err != nil {
+			&b.PrivacyMode, &b.Verified, &b.OwnerID, &b.CreatedAt,
+			&b.Suspended, &b.SuspendedReason); err != nil {
 			return nil, err
 		}
 		inst.Scopes = toScopes(scopes)

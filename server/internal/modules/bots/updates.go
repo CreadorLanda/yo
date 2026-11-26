@@ -175,6 +175,9 @@ func (s *Service) SubmitUpdate(ctx context.Context, chatID, botID, sender uuid.U
 	if err != nil {
 		return 0, err
 	}
+	if req.Kind == UpdateCommand {
+		s.auditCommand(ctx, chatID, botID, sender)
+	}
 	if s.notifier != nil {
 		s.notifier.BotUpdate(ctx, botID, id)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,5 +73,20 @@ func TestSetBotPrincipalMarksTheRequest(t *testing.T) {
 	middleware.SetBotPrincipal(c, id, uuid.New())
 	if !middleware.IsBot(c) || middleware.UserIDFrom(c) != id {
 		t.Fatal("bot principal not visible to controllers")
+	}
+}
+
+func TestKillSwitchStopsEveryBot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := NewService(nil).WithPlatformDisabled(true)
+	r := gin.New()
+	r.Use(Auth(svc))
+	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set("Authorization", "Bot zsb_whatever")
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "bots_disabled") {
+		t.Fatalf("kill switch: %d %s", rec.Code, rec.Body.String())
 	}
 }

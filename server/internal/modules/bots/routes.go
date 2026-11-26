@@ -25,6 +25,10 @@ func Register(rg *gin.RouterGroup, c *Controller) {
 	rg.POST("/bots/:id/webhook/secret", c.PostWebhookSecret)
 	rg.GET("/bots/:id/deliveries", c.GetDeliveries)
 	rg.POST("/bots/:id/test-event", c.PostTestEvent)
+	// Safety (#343).
+	rg.POST("/bots/:id/reactivate", c.PostReactivate)
+	rg.POST("/bots/:id/forget-me", c.PostForgetMe)
+	rg.GET("/chats/:id/bots/audit", c.GetChatBotAudit)
 
 	rg.GET("/chats/:id/bots", c.GetChatBots)
 	rg.POST("/chats/:id/bots", c.PostChatBot)

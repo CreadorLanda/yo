@@ -19,6 +19,7 @@ import {
   listBotDeliveries,
   listBotTokens,
   openBotDirect,
+  reactivateBot,
   revokeBotTokens,
   rotateBotToken,
   rotateBotWebhookSecret,
@@ -249,6 +250,29 @@ export default function BotScreen() {
             </View>
           </View>
           <Text style={[styles.handle, { color: colors.textSecondary }]}>@{bot.username}</Text>
+          {bot.suspended ? (
+            <View style={[styles.suspended, { backgroundColor: colors.surface, borderColor: colors.danger }]}>
+              <Ionicons name="ban-outline" size={18} color={colors.danger} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[styles.rowTitle, { color: colors.danger }]}>{t('bots.suspended_title')}</Text>
+                <Text style={[styles.rowBody, { color: colors.textSecondary }]}>
+                  {bot.suspended_reason === 'rate_limit' ? t('bots.suspended_rate_limit') : t('bots.suspended_operators')}
+                </Text>
+              </View>
+              {bot.suspended_reason === 'rate_limit' ? (
+                <SmallButton
+                  label={t('bots.reactivate')}
+                  busy={busy === 'reactivate'}
+                  onPress={() =>
+                    void run('reactivate', async () => {
+                      setBot(await reactivateBot(bot.id));
+                      showToast(t('bots.reactivated'), 'success');
+                    })
+                  }
+                />
+              ) : null}
+            </View>
+          ) : null}
           <View style={styles.heroActions}>
             <PrimaryButton
               label={t('bots.add_to_group')}
@@ -454,6 +478,15 @@ const styles = StyleSheet.create({
   badgeText: { ...Typography.micro },
   handle: { ...Typography.callout },
   heroActions: { alignSelf: 'stretch', gap: Spacing.sm, marginTop: Spacing.sm },
+  suspended: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+  },
   section: { gap: Spacing.sm },
   sectionTitle: { ...Typography.label, textTransform: 'uppercase' },
   card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: Radii.lg, padding: Spacing.lg, gap: Spacing.md },

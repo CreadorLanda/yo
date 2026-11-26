@@ -19,6 +19,9 @@ export type BotDTO = {
   verified: boolean;
   owner_id: string;
   created_at: string;
+  /** A suspended bot cannot sign in (#343). `rate_limit` is the owner's to lift. */
+  suspended?: boolean;
+  suspended_reason?: string;
 };
 
 export type BotInstallationDTO = {
@@ -177,4 +180,38 @@ export function requestAutocomplete(
     `/api/chats/${chatId}/bots/${botId}/autocomplete`,
     body,
   );
+}
+
+// ── Safety (#343) ───────────────────────────────────────────────────────────
+
+export type BotAuditEntryDTO = {
+  id: number;
+  action:
+    | 'bot.added'
+    | 'bot.removed'
+    | 'bot.read_all_on'
+    | 'bot.read_all_off'
+    | 'bot.scopes_changed'
+    | 'bot.suspended'
+    | 'command.run';
+  actor_id?: string;
+  actor_name?: string;
+  bot_id?: string;
+  bot_name?: string;
+  detail: Record<string, unknown>;
+  created_at: string;
+};
+
+export function chatBotAudit(chatId: string) {
+  return api.get<BotAuditEntryDTO[]>(`/api/chats/${chatId}/bots/audit`);
+}
+
+/** Lift an automatic suspension (owner only). */
+export function reactivateBot(id: string) {
+  return api.post<BotDTO>(`/api/bots/${id}/reactivate`, {});
+}
+
+/** Ask a bot you share a chat with to delete what it holds about you. */
+export function askBotToForgetMe(id: string) {
+  return api.post<void>(`/api/bots/${id}/forget-me`, {});
 }
