@@ -160,3 +160,21 @@ export function updateBotScopes(chatId: string, botId: string, scopes: BotScope[
 export function uninstallBot(chatId: string, botId: string) {
   return api.del<void>(`/api/chats/${chatId}/bots/${botId}`);
 }
+
+// ── Slash commands (#324) ───────────────────────────────────────────────────
+
+export function listChatCommands(chatId: string) {
+  return api.get<import('@/data/bot-commands').ChatCommand[]>(`/api/chats/${chatId}/commands`);
+}
+
+/** Ask a bot for choices; `content` is the typed value sealed for the bot. */
+export function requestAutocomplete(
+  chatId: string,
+  botId: string,
+  body: { command: string; option: string; content: string },
+) {
+  return api.post<{ choices: import('@/data/bot-commands').CommandChoice[] }>(
+    `/api/chats/${chatId}/bots/${botId}/autocomplete`,
+    body,
+  );
+}

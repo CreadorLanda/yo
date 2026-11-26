@@ -26,6 +26,8 @@ type Service struct {
 	sink                 EventSink
 	waker                waker
 	allowPrivateWebhooks bool
+	// Waiting autocomplete requests (#324).
+	autocomplete autocompleteBroker
 }
 
 func NewService(repo *Repository) *Service {
