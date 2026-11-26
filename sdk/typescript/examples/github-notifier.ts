@@ -3,7 +3,7 @@
  * (content type JSON, with a secret) at this server; pushes, pull requests,
  * issues and releases are posted as cards.
  *
- *   BOT_TOKEN=zsb_… API_URL=https://api.example GITHUB_WEBHOOK_SECRET=… PORT=3000 \
+ *   BOT_TOKEN=zsb_… API_URL=https://yo.alexandrelanda.com GITHUB_WEBHOOK_SECRET=… PORT=3000 \
  *     bun examples/github-notifier.ts
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';

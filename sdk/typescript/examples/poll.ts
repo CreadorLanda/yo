@@ -2,7 +2,7 @@
  * Poll bot: `/poll question:… options:"Pizza, Sushi, Tacos"` posts buttons;
  * each click counts (one vote per person, changeable) and updates the poll.
  *
- *   BOT_TOKEN=zsb_… API_URL=https://api.example bun examples/poll.ts
+ *   BOT_TOKEN=zsb_… API_URL=https://yo.alexandrelanda.com bun examples/poll.ts
  */
 import { Bot, type Component, type Reply } from '../src/index';
 

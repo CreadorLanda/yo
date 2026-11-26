@@ -1,7 +1,7 @@
 /**
  * Echo bot: repeats what people send it, and shows a button.
  *
- *   BOT_TOKEN=zsb_… API_URL=https://api.example bun examples/echo.ts
+ *   BOT_TOKEN=zsb_… API_URL=https://yo.alexandrelanda.com bun examples/echo.ts
  */
 import { Bot } from '../src/index';
 

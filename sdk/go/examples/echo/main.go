@@ -1,6 +1,6 @@
 // Echo bot: repeats what it is told, with a button to say it again.
 //
-//	BOT_TOKEN=zsb_… API_URL=https://api.zwosocial.com go run ./examples/echo
+//	BOT_TOKEN=zsb_… API_URL=https://yo.alexandrelanda.com go run ./examples/echo
 package main
 
 import (

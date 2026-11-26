@@ -15,7 +15,7 @@ bun add @zwosocial/bot
 ```ts
 import { Bot } from '@zwosocial/bot';
 
-const bot = new Bot({ token: process.env.BOT_TOKEN!, apiUrl: 'https://api.zwosocial.com' });
+const bot = new Bot({ token: process.env.BOT_TOKEN!, apiUrl: 'https://yo.alexandrelanda.com' });
 
 await bot.setCommands([{ name: 'ping', description: 'Check the bot is alive', options: [] }]);
 bot.command('ping', (ctx) => ctx.reply('pong 🏓'));
