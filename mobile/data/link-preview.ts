@@ -9,6 +9,7 @@
  * device. The fetching lives in `link-preview-fetch.ts`.
  */
 
+import { decodeBotBody, isInteractiveBody } from '@/data/bot-message';
 import { normalizeUrl } from '@/data/link-policy';
 
 export type LinkPreview = {
@@ -61,6 +62,8 @@ export function decodeTextBody(body: string): { text: string; preview?: LinkPrev
 
 /** Just the words of a body, for notifications, the chat list and search. */
 export function textOfBody(body: string): string {
+  // A bot's interactive message (#325) is read for its words too.
+  if (isInteractiveBody(body)) return decodeBotBody(body).text;
   return decodeTextBody(body).text;
 }
 

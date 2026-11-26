@@ -772,6 +772,9 @@ func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, 
 	chat := g.Group("/chats/:id")
 	chat.GET("/members", ctl.GetMembers)
 	chat.GET("/commands", bots.RequireInstalled(svc), ctl.GetBotCommands)
+	// A reply only one member sees (#325); checked inside, so it also works
+	// in a direct chat with the bot, which has no installation.
+	chat.POST("/ephemeral", ctl.PostEphemeral)
 	chat.PUT("/commands", bots.RequireInstalled(svc), ctl.PutCommands)
 	chat.POST("/messages", send, h.messages.PostMessage)
 	chat.PATCH("/messages/:mid", send, h.messages.PatchMessage)

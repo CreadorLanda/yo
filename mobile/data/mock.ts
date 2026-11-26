@@ -1,3 +1,4 @@
+import type { BotInteractive } from '@/data/bot-message';
 import type { LinkPreview } from '@/data/link-preview';
 import type { StoryReactionCount } from '@/data/story-reactions';
 
@@ -236,6 +237,10 @@ export type Message = {
   text: string;
   /** Sent by a bot account; its name carries a badge (#326). */
   senderIsBot?: boolean;
+  /** A bot's card, buttons, menus or form (#325). */
+  interactive?: BotInteractive;
+  /** A bot's reply only this person sees; never stored (#325). */
+  ephemeral?: boolean;
   /** A card for the first link, built by the sender and sealed with the text (#353). */
   linkPreview?: LinkPreview;
   fromMe: boolean;

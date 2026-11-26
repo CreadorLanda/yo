@@ -976,6 +976,12 @@ export default {
     reconnecting: 'The connection dropped. Trying to reconnect…',
   },
   bots: {
+    ui_expired: 'This bot message has expired.',
+    ui_failed: 'Could not reach the bot. Try again.',
+    ui_confirm: 'Confirm',
+    ui_submit: 'Send',
+    ui_only_you: 'Only you can see this',
+    dev_gallery: 'Bot components (dev)',
     commands_a11y: 'Bot commands',
     command_send: 'Send',
     command_number: 'Enter a number.',
