@@ -1,7 +1,7 @@
 // Poll bot: `/poll question:… options:"Pizza, Sushi, Tacos"` posts buttons;
 // each click counts (one vote per person, changeable) and updates the poll.
 //
-//	BOT_TOKEN=zsb_… API_URL=https://api.zwosocial.com go run ./examples/poll
+//	BOT_TOKEN=zsb_… API_URL=https://yo.alexandrelanda.com go run ./examples/poll
 package main
 
 import (

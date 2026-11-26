@@ -1,0 +1,22 @@
+{
+  "title": {
+    "message": "ZwoSocial para programadores",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "ZwoSocial",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.Docs": {
+    "message": "Documentação",
+    "description": "Navbar item with label Docs"
+  },
+  "item.label.API": {
+    "message": "API",
+    "description": "Navbar item with label API"
+  },
+  "item.label.SDKs": {
+    "message": "SDKs",
+    "description": "Navbar item with label SDKs"
+  }
+}

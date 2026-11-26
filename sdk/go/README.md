@@ -5,7 +5,7 @@ go get github.com/CreadorLanda/yo/sdk/go
 ```
 
 ```go
-bot := zwosocial.New(os.Getenv("BOT_TOKEN"), "https://api.zwosocial.com", nil)
+bot := zwosocial.New(os.Getenv("BOT_TOKEN"), "https://yo.alexandrelanda.com", nil)
 
 bot.Command("ping", func(c *zwosocial.Context) error {
 	return c.Reply(zwosocial.Text("pong 🏓"))

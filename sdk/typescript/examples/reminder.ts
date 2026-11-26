@@ -3,7 +3,7 @@
  * `when` is a date from the app's picker, or typed as `10m`, `2h`, `1d`.
  * Reminders are kept in the bot's store, so a restart does not lose them.
  *
- *   BOT_TOKEN=zsb_… API_URL=https://api.example bun examples/reminder.ts
+ *   BOT_TOKEN=zsb_… API_URL=https://yo.alexandrelanda.com bun examples/reminder.ts
  */
 import { Bot } from '../src/index';
 

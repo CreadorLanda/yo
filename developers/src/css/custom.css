@@ -1,0 +1,21 @@
+/* The app's brand ramp (mobile/constants/theme.ts): 600 in light, 400 in dark. */
+:root {
+  --ifm-color-primary: #5b3df5;
+  --ifm-color-primary-dark: #4a2fd1;
+  --ifm-color-primary-darker: #4a2fd1;
+  --ifm-color-primary-darkest: #3b26a6;
+  --ifm-color-primary-light: #7a5cff;
+  --ifm-color-primary-lighter: #9680ff;
+  --ifm-color-primary-lightest: #b3a2ff;
+  --ifm-code-font-size: 90%;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #9680ff;
+  --ifm-color-primary-dark: #7a5cff;
+  --ifm-color-primary-darker: #5b3df5;
+  --ifm-color-primary-darkest: #4a2fd1;
+  --ifm-color-primary-light: #b3a2ff;
+  --ifm-color-primary-lighter: #cec2ff;
+  --ifm-color-primary-lightest: #e6e0ff;
+}

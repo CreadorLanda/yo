@@ -1,0 +1,492 @@
+openapi: 3.1.0
+info:
+  title: ZwoSocial Bot API
+  version: v1
+  description: >-
+    The API a bot uses with its token. Every message is an end-to-end encrypted
+    envelope (`soc1.` pairwise, `soc1g.` group); plaintext is refused. The
+    SDKs do the encryption for you.
+  x-description-pt: >-
+    A API que um bot usa com o seu token. Todas as mensagens são envelopes
+    cifrados ponta a ponta (`soc1.` par a par, `soc1g.` de grupo); texto
+    simples é recusado. Os SDKs tratam da cifra.
+servers:
+  - url: https://yo.alexandrelanda.com/api/bot/v1
+security:
+  - botToken: []
+
+components:
+  securitySchemes:
+    botToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: '`Bot zsb_…` — the token shown once when the bot is created or its token rotated.'
+      x-description-pt: '`Bot zsb_…` — o token mostrado uma vez ao criar o bot ou rodar o token.'
+  parameters:
+    ChatId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MessageId:
+      name: mid
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, examples: [scope_missing] }
+        detail: { type: string }
+        retry_after: { type: integer, description: 'Seconds, on 429 only.', x-description-pt: 'Segundos, só em 429.' }
+    Bot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string, examples: [reminders_bot] }
+        display_name: { type: string }
+        description: { type: string }
+        avatar_url: { type: string }
+        privacy_mode: { type: boolean }
+    Member:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        username: { type: string }
+        display_name: { type: string }
+        is_bot: { type: boolean }
+        role: { type: string, enum: [admin, member] }
+    SendMessage:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, description: A `soc1.` (direct chat) or `soc1g.` (group) envelope., x-description-pt: Um envelope `soc1.` (conversa directa) ou `soc1g.` (grupo). }
+        message_type: { type: string, default: text }
+        reply_to_id: { type: integer, format: int64 }
+        media_ids: { type: array, items: { type: string, format: uuid } }
+    Message:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        chat_id: { type: string, format: uuid }
+        sender_id: { type: string, format: uuid }
+        content: { type: string }
+        message_type: { type: string }
+        reply_to_id: { type: integer, format: int64 }
+        sender_is_bot: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Update:
+      type: object
+      properties:
+        update_id: { type: integer, format: int64 }
+        chat_id: { type: string, format: uuid }
+        sender_id: { type: string, format: uuid }
+        kind: { type: string, enum: [command, mention, reply, interaction] }
+        content: { type: string, description: A `soc1.` envelope sealed for the bot alone., x-description-pt: Um envelope `soc1.` cifrado só para o bot. }
+        message_id: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+    Command:
+      type: object
+      required: [name, description]
+      properties:
+        name: { type: string, pattern: '^[a-z0-9_-]{1,32}$' }
+        description: { type: string, maxLength: 100 }
+        description_pt: { type: string, maxLength: 100 }
+        options:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [name, description, type]
+            properties:
+              name: { type: string }
+              description: { type: string }
+              description_pt: { type: string }
+              type: { type: string, enum: [string, number, user, datetime, choice] }
+              required: { type: boolean }
+              autocomplete: { type: boolean, description: Only on string and number., x-description-pt: Só em string e number. }
+              choices:
+                type: array
+                maxItems: 25
+                items: { $ref: '#/components/schemas/Choice' }
+    Choice:
+      type: object
+      required: [name, value]
+      properties:
+        name: { type: string }
+        value: { oneOf: [{ type: string }, { type: number }] }
+    KeyBundle:
+      type: object
+      properties:
+        identity_key: { type: string }
+        signed_pre_key:
+          type: object
+          properties:
+            key_id: { type: integer }
+            public_key: { type: string }
+            signature: { type: string }
+        one_time_pre_keys:
+          type: array
+          items:
+            type: object
+            properties:
+              key_id: { type: integer }
+              public_key: { type: string }
+  responses:
+    NotInstalled:
+      description: The bot is not in this chat (`chat_not_found`).
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ScopeMissing:
+      description: The installation lacks the scope (`scope_missing`), or the bot is suspended (`bot_suspended`).
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    RateLimited:
+      description: Over a limit (`rate_limited`); wait `Retry-After` seconds.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+paths:
+  /me:
+    get:
+      tags: [Bot]
+      summary: The bot's own profile
+      x-summary-pt: O perfil do próprio bot
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Bot' } } } }
+        '401': { description: 'Missing, revoked or invalid token.' }
+        '503': { description: Bots are switched off by the operators (`bots_disabled`). }
+
+  /updates:
+    get:
+      tags: [Events]
+      summary: Envelopes addressed to the bot (privacy mode)
+      x-summary-pt: Envelopes dirigidos ao bot (modo privado)
+      description: Oldest first. Asking with `offset` confirms and deletes everything before it. Uncollected updates expire after 7 days. Most bots use the gateway or a webhook instead.
+      x-description-pt: Do mais antigo para o mais recente. Pedir com `offset` confirma e apaga tudo o que vem antes. Os que não forem recolhidos expiram ao fim de 7 dias. A maioria dos bots usa antes o gateway ou um webhook.
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, format: int64 } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 100 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Update' } } } } }
+
+  /gateway:
+    get:
+      tags: [Events]
+      summary: Websocket for live events
+      x-summary-pt: Websocket para eventos em direto
+      description: See the gateway guide for the frames. Up to 5 connections per bot.
+      x-description-pt: Os frames estão no guia do gateway. Até 5 ligações por bot.
+      responses:
+        '101': { description: Switching protocols. }
+
+  /commands:
+    get:
+      tags: [Commands]
+      summary: The bot's global commands
+      x-summary-pt: Os comandos globais do bot
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Command' } } } } }
+    put:
+      tags: [Commands]
+      summary: Replace the bot's global commands
+      x-summary-pt: Substituir os comandos globais do bot
+      description: Up to 100. An invalid set is refused whole with `400 invalid_command` and a `detail`.
+      x-description-pt: Até 100. Um conjunto inválido é recusado por inteiro com `400 invalid_command` e um `detail`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commands]
+              properties:
+                commands: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/Command' } }
+      responses:
+        '204': { description: Saved. }
+        '400': { description: Invalid, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /autocomplete/{request_id}:
+    post:
+      tags: [Commands]
+      summary: Answer an autocomplete request
+      x-summary-pt: Responder a um pedido de autocompletar
+      description: Within 3 seconds of the `command.autocomplete` event.
+      x-description-pt: Até 3 segundos depois do evento `command.autocomplete`.
+      parameters:
+        - { name: request_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [choices]
+              properties:
+                choices: { type: array, maxItems: 25, items: { $ref: '#/components/schemas/Choice' } }
+      responses:
+        '204': { description: Delivered. }
+        '404': { description: The request expired or was already answered (`autocomplete_request_not_found`). }
+
+  /keys:
+    put:
+      tags: [Keys]
+      summary: Publish or top up the bot's keys
+      x-summary-pt: Publicar ou repor as chaves do bot
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/KeyBundle' } } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { one_time_remaining: { type: integer } } }
+
+  /keys/count:
+    get:
+      tags: [Keys]
+      summary: How many one-time keys are left
+      x-summary-pt: Quantas chaves de uso único restam
+      responses:
+        '200': { description: OK }
+
+  /users/by-username/{username}/keys:
+    get:
+      tags: [Keys]
+      summary: Someone's key bundle, to start a session
+      x-summary-pt: O pacote de chaves de alguém, para iniciar uma sessão
+      description: Consumes one of their one-time keys.
+      x-description-pt: Gasta uma das chaves de uso único dessa pessoa.
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '404': { description: 'No such user, or no keys published.' }
+
+  /users/by-username/{username}/identity:
+    get:
+      tags: [Keys]
+      summary: Someone's identity key only
+      x-summary-pt: Só a chave de identidade de alguém
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+
+  /media/upload:
+    post:
+      tags: [Messages]
+      summary: Upload an encrypted attachment
+      x-summary-pt: Carregar um anexo cifrado
+      responses:
+        '201': { description: Uploaded; reference its id in `media_ids`. }
+
+  /chats/{id}:
+    get:
+      tags: [Chats]
+      summary: Whether a chat is direct or a group
+      x-summary-pt: Se uma conversa é directa ou de grupo
+      description: Decides how a reply is sealed. Works in chats the bot is installed in and in its own direct chats.
+      x-description-pt: Decide como se cifra uma resposta. Funciona nas conversas onde o bot está instalado e nas suas conversas directas.
+      parameters: [{ $ref: '#/components/parameters/ChatId' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  type: { type: string, enum: [direct, group] }
+        '404': { $ref: '#/components/responses/NotInstalled' }
+
+  /chats/{id}/members:
+    get:
+      tags: [Chats]
+      summary: The members of a chat
+      x-summary-pt: Os membros de uma conversa
+      x-scope: members.read
+      parameters: [{ $ref: '#/components/parameters/ChatId' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Member' } } } } }
+        '403': { $ref: '#/components/responses/ScopeMissing' }
+        '404': { $ref: '#/components/responses/NotInstalled' }
+
+  /chats/{id}/commands:
+    get:
+      tags: [Commands]
+      summary: The bot's commands for one chat
+      x-summary-pt: Os comandos do bot numa conversa
+      parameters: [{ $ref: '#/components/parameters/ChatId' }]
+      responses:
+        '200': { description: OK }
+    put:
+      tags: [Commands]
+      summary: Replace the bot's commands for one chat
+      x-summary-pt: Substituir os comandos do bot numa conversa
+      description: A command here replaces the global one of the same name.
+      x-description-pt: Um comando aqui substitui o global com o mesmo nome.
+      parameters: [{ $ref: '#/components/parameters/ChatId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                commands: { type: array, items: { $ref: '#/components/schemas/Command' } }
+      responses:
+        '204': { description: Saved. }
+
+  /chats/{id}/messages:
+    get:
+      tags: [Messages]
+      summary: Page through a chat's history
+      x-summary-pt: Percorrer o histórico de uma conversa
+      x-scope: messages.read.all
+      parameters:
+        - { $ref: '#/components/parameters/ChatId' }
+        - { name: before, in: query, schema: { type: integer, format: int64 } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Message' } } } } }
+        '403': { $ref: '#/components/responses/ScopeMissing' }
+    post:
+      tags: [Messages]
+      summary: Send a message
+      x-summary-pt: Enviar uma mensagem
+      x-scope: messages.send
+      description: 30 writes per minute per bot per chat.
+      x-description-pt: 30 escritas por minuto por bot em cada conversa.
+      parameters: [{ $ref: '#/components/parameters/ChatId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SendMessage' } } }
+      responses:
+        '201': { description: Sent, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '400': { description: 'Not an envelope, the wrong kind for the chat (`invalid_e2ee_envelope_for_chat`), or a group envelope from an old key epoch (`stale_group_epoch`).' }
+        '403': { $ref: '#/components/responses/ScopeMissing' }
+        '404': { $ref: '#/components/responses/NotInstalled' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /chats/{id}/messages/{mid}:
+    patch:
+      tags: [Messages]
+      summary: Edit one of the bot's messages
+      x-summary-pt: Editar uma mensagem do bot
+      x-scope: messages.send
+      parameters: [{ $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [content], properties: { content: { type: string } } }
+      responses:
+        '200': { description: Edited. }
+        '403': { description: Not the bot's message. }
+    delete:
+      tags: [Messages]
+      summary: Delete one of the bot's messages
+      x-summary-pt: Apagar uma mensagem do bot
+      x-scope: messages.send
+      parameters: [{ $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' }]
+      responses:
+        '204': { description: Deleted. }
+
+  /chats/{id}/messages/{mid}/reactions:
+    post:
+      tags: [Messages]
+      summary: React to a message
+      x-summary-pt: Reagir a uma mensagem
+      x-scope: messages.send
+      parameters: [{ $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [emoji], properties: { emoji: { type: string } } }
+      responses:
+        '200': { description: OK }
+    delete:
+      tags: [Messages]
+      summary: Remove the bot's reaction
+      x-summary-pt: Retirar a reacção do bot
+      x-scope: messages.send
+      parameters: [{ $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' }]
+      responses:
+        '204': { description: Removed. }
+
+  /chats/{id}/ephemeral:
+    post:
+      tags: [Messages]
+      summary: Reply to one member only ("Only you can see this")
+      x-summary-pt: Responder só a um membro ("Só tu vês isto")
+      description: Pushed live as `bot.ephemeral` and never stored. Works with `messages.send` or in the bot's own direct chat.
+      x-description-pt: Enviada em direto como `bot.ephemeral` e nunca guardada. Funciona com `messages.send` ou na conversa directa do bot.
+      parameters: [{ $ref: '#/components/parameters/ChatId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, content]
+              properties:
+                user_id: { type: string, format: uuid }
+                content: { type: string, description: A `soc1.` envelope for that member., x-description-pt: Um envelope `soc1.` para esse membro. }
+      responses:
+        '202': { description: Pushed. }
+        '404': { description: Not a member of the chat (`not_chat_member`). }
+
+  /groups/{id}/sender-keys:
+    get:
+      tags: [Keys]
+      summary: Group sender keys addressed to the bot
+      x-summary-pt: As chaves de grupo dirigidas ao bot
+      description: Empty unless the bot has full read — the server drops any others (privacy mode).
+      x-description-pt: Vazio a menos que o bot tenha leitura total; o servidor descarta as outras (modo privado).
+      parameters: [{ $ref: '#/components/parameters/ChatId' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  epoch: { type: integer }
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id: { type: string, format: uuid }
+                        epoch: { type: integer }
+                        ciphertext: { type: string }
+    post:
+      tags: [Keys]
+      summary: Hand the bot's own sender key to the members
+      x-summary-pt: Entregar aos membros a chave de envio do bot
+      x-scope: messages.send
+      parameters: [{ $ref: '#/components/parameters/ChatId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [epoch, entries]
+              properties:
+                epoch: { type: integer, description: The group's current key epoch., x-description-pt: A época de chaves actual do grupo. }
+                entries:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      user_id: { type: string, format: uuid }
+                      ciphertext: { type: string, description: The key in a `soc1.` envelope for that member., x-description-pt: A chave num envelope `soc1.` para esse membro. }
+      responses:
+        '204': { description: Stored. }
+        '409': { description: Stale epoch (`stale_key_epoch`) — fetch the epoch again. }

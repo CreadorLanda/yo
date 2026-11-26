@@ -1,6 +1,6 @@
 # Bot SDKs
 
-The SDKs live in `sdk/`: `@zwosocial/bot` for TypeScript and `github.com/CreadorLanda/yo/sdk/go` for Go. Each one turns a bot into a few handlers and takes care of the parts that are easy to get wrong: encryption, delivery and retries.
+The public guide for bot developers is the site in `developers/` (Docusaurus, EN and PT); this page is the engineering view. The SDKs live in `sdk/`: `@zwosocial/bot` for TypeScript and `github.com/CreadorLanda/yo/sdk/go` for Go. Each one turns a bot into a few handlers and takes care of the parts that are easy to get wrong: encryption, delivery and retries.
 
 ## How a bot sees a conversation
 
