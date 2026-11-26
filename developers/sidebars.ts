@@ -8,7 +8,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Guides',
       collapsed: false,
-      items: ['guides/commands', 'guides/interactive-messages', 'guides/events', 'guides/integrations'],
+      items: ['guides/commands', 'guides/interactive-messages', 'guides/events', 'guides/integrations', 'guides/build-with-an-llm'],
     },
     { type: 'category', label: 'SDKs', items: ['sdks/typescript', 'sdks/go'] },
     { type: 'category', label: 'API', items: ['api/overview', 'api/reference'] },

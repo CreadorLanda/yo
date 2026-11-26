@@ -1,4 +1,5 @@
 ---
+description: 'Authentication, error codes and rate limits of the Bot API.'
 title: Overview
 sidebar_position: 1
 ---

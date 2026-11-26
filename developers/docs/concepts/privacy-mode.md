@@ -1,4 +1,5 @@
 ---
+description: 'What a bot receives in a group, how full read is granted, and the scopes an installation can have.'
 title: Privacy mode and scopes
 sidebar_position: 2
 ---

@@ -1,4 +1,5 @@
 ---
+description: 'The @zwosocial/bot API: handlers, context, replies, store and examples.'
 title: TypeScript
 sidebar_position: 1
 ---

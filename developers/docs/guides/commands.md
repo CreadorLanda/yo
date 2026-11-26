@@ -1,4 +1,5 @@
 ---
+description: 'Register slash commands with typed options, handle them, and answer autocomplete within 3 seconds.'
 title: Slash commands
 sidebar_position: 1
 ---

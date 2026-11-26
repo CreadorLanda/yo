@@ -9,4 +9,6 @@ Write a ZwoSocial bot in about 20 lines. The SDK handles the end-to-end encrypti
 
 Both SDKs speak the app's protocol byte for byte and share the same store format, so a bot can move from one SDK to the other.
 
+Writing a bot with a coding assistant? Give it [BOTS.md](BOTS.md).
+
 The protocol, events and limits are described in [docs/tech/bots-sdk.md](../docs/tech/bots-sdk.md).

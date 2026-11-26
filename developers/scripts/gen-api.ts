@@ -114,6 +114,7 @@ function render(lang: 'en' | 'pt'): string {
   const out: string[] = [
     '---',
     `title: ${t.title}`,
+    `description: '${pt ? 'Todos os endpoints da Bot API, gerados a partir da especificação OpenAPI.' : 'Every Bot API endpoint, generated from the OpenAPI spec.'}'`,
     'sidebar_position: 2',
     '---',
     '',

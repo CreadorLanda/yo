@@ -5,9 +5,10 @@
   "scripts": {
     "gen:api": "bun scripts/gen-api.ts",
     "check:mirror": "bun scripts/check-mirror.ts",
-    "start": "bun run gen:api && docusaurus start",
-    "build": "bun run gen:api && bun run check:mirror && docusaurus build",
-    "serve": "docusaurus serve"
+    "start": "bun run gen:api && bun run gen:llms && docusaurus start",
+    "build": "bun run gen:api && bun run gen:llms && bun run check:mirror && docusaurus build",
+    "serve": "docusaurus serve",
+    "gen:llms": "bun scripts/gen-llms.ts"
   },
   "dependencies": {
     "@docusaurus/core": "^3",

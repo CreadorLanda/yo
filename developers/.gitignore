@@ -5,3 +5,6 @@ build/
 docs/api/reference.md
 i18n/pt/docusaurus-plugin-content-docs/current/api/reference.md
 static/openapi/
+static/llms.txt
+static/llms-full.txt
+static/md/
