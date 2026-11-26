@@ -697,6 +697,23 @@ A command: `{name, description, description_pt?, options: [{name, description, d
 
 People invoke a command as text — `/remind when:2026-11-26T09:00:00Z what:"drink water"`, with `@bot` when two bots share the name — so the group sees it. In privacy mode the bot's copy (`command.invoked`) carries `command {name, options}` already parsed. The registry and autocomplete answers are visible to the server; what a person types is not.
 
+#### Moderation (#333)
+
+A bot whose installation has `members.manage` can moderate. Admins grant it with "Let it moderate members", and granting or revoking it posts `bot:moderate:<actor>:<bot>:on|off`. Admins and moderators can never be targets: such a call is `403 cannot_moderate_admin`.
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/api/bot/v1/chats/:id/moderation/members/:uid/mute` | `{seconds, reason?}`, 60 s to 30 days. The member cannot send (`403 group_permission_denied`) until then. Posts `group:member_muted:<actor>:<uid>:<unix>`. |
+| `DELETE` | `…/members/:uid/mute` | Lifts the mute early. Posts `group:member_unmuted`. |
+| `POST` | `…/members/:uid/kick` | Removes the member and advances the key epoch. Posts `group:member_removed`. |
+| `POST` | `…/members/:uid/ban` | `{reason?}`. Removes the member if they are one, and records a ban: adding them back is `409 member_banned`. Posts `group:member_banned`. |
+| `DELETE` | `…/members/:uid/ban` | Lifts the ban. Posts `group:member_unbanned`. |
+| `DELETE` | `…/moderation/messages/:mid` | Deletes a member's message for everyone. Never a system notice, and never an admin's or moderator's message (`404`). |
+| `GET` | `/groups/:id/bans` | Group admins: `[{user_id, name, reason, created_at}]`. |
+| `DELETE` | `/groups/:id/bans/:userId` | Group admins lift a ban. |
+
+Every action is recorded in the group's bot activity (`mod.*`). `GET /api/bot/v1/chats/:id` also returns a group's `title` and the bot's `scopes` there, so a bot can say what it has not been allowed to do.
+
 #### Safety
 
 | Method | Path | Notes |

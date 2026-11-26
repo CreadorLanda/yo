@@ -12,4 +12,6 @@ ENV DATA_DIR=/data
 RUN mkdir -p /data && chown bun:bun /data
 VOLUME /data
 USER bun
-CMD ["bun", "src/reminders/main.ts"]
+# The bot to run is the argument: reminders or moderation.
+ENTRYPOINT ["bun", "run"]
+CMD ["reminders"]

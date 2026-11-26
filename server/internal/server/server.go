@@ -173,6 +173,7 @@ func New(cfg config.Config) (*Server, error) {
 		WithBlocks(blocksRepo).
 		WithMediaAccess(mediaSvc).
 		WithGroupPolicy(groupsSvc)
+	botsSvc.WithModerator(moderator{groups: groupsSvc, messages: msgSvc})
 	msgCtl := messages.NewController(msgSvc, hub, []byte(cfg.JWT.Secret))
 	messages.Register(authed, msgCtl)
 	// WS lives on the public /api group — token is validated inside the handler.
@@ -793,6 +794,15 @@ func mountBotAPI(api *gin.RouterGroup, svc *bots.Service, ctl *bots.Controller, 
 	// Only a bot granted full read can page through a chat's history; in
 	// privacy mode it could not decrypt it anyway (ADR 0002).
 	chat.GET("/messages", bots.RequireChatScope(svc, bots.ScopeReadAll), h.messages.GetMessages)
+
+	// Moderation (#333): only with members.manage, which admins grant openly.
+	mod := chat.Group("/moderation", bots.RequireChatScope(svc, bots.ScopeManage))
+	mod.POST("/members/:uid/mute", ctl.PostMute)
+	mod.DELETE("/members/:uid/mute", ctl.DeleteMute)
+	mod.POST("/members/:uid/kick", ctl.PostKick)
+	mod.POST("/members/:uid/ban", ctl.PostBan)
+	mod.DELETE("/members/:uid/ban", ctl.DeleteBan)
+	mod.DELETE("/messages/:mid", ctl.DeleteModMessage)
 
 	// Group sender keys. A bot distributes its own key to send into a group,
 	// and collects the keys addressed to it — which exist only once it has

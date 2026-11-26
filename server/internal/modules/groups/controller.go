@@ -234,8 +234,12 @@ func writeErr(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case errors.Is(err, ErrNotMember), errors.Is(err, ErrNotAdmin):
+	case errors.Is(err, ErrNotMember), errors.Is(err, ErrNotAdmin), errors.Is(err, ErrCannotModerate):
 		ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrMemberBanned):
+		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrInvalidMute):
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrLastAdmin), errors.Is(err, ErrNoEligibleAdmin), errors.Is(err, ErrInvalidTitle),
 		errors.Is(err, ErrInvalidRole), errors.Is(err, ErrInvalidHistory), errors.Is(err, ErrInvalidPermission),
 		errors.Is(err, ErrInvalidAchievement), errors.Is(err, ErrInvalidAchievementEvidence):
@@ -245,4 +249,43 @@ func writeErr(ctx *gin.Context, err error) {
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 	}
+}
+
+// GetBans: GET /groups/:id/bans (admins).
+func (c *Controller) GetBans(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	bans, err := c.svc.Bans(ctx.Request.Context(), id, middleware.UserIDFrom(ctx))
+	if err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, bans)
+}
+
+// DeleteBan: DELETE /groups/:id/bans/:userId (admins) lets someone be added again.
+func (c *Controller) DeleteBan(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id"})
+		return
+	}
+	uid, err := uuid.Parse(ctx.Param("userId"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_user_id"})
+		return
+	}
+	actor := middleware.UserIDFrom(ctx)
+	if err := c.svc.requireAdmin(ctx.Request.Context(), id, actor); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	if err := c.svc.Unban(ctx.Request.Context(), id, actor, uid); err != nil {
+		writeErr(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
 }

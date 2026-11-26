@@ -12,7 +12,7 @@ import { TextField } from '@/components/ui/text-field';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { ApiError } from '@/data/api/client';
 import { getBot, installBot, listMyBots, type BotDTO } from '@/data/api/bots';
-import { FULL_READ_SCOPES, normalizeBotUsername, PRIVACY_SCOPES } from '@/data/bot-policy';
+import { normalizeBotUsername, scopesFor } from '@/data/bot-policy';
 import { invalidateChatBots } from '@/data/bot-store';
 import { useChats } from '@/data/chat-store';
 import { appAlert } from '@/data/dialog-store';
@@ -37,6 +37,7 @@ export default function AddBotScreen() {
   const [searching, setSearching] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [readAll, setReadAll] = useState(false);
+  const [moderate, setModerate] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const groups = useMemo(() => chats.filter((c) => c.type === 'group'), [chats]);
@@ -70,7 +71,7 @@ export default function AddBotScreen() {
     if (!bot || !chatId) return;
     setBusy(true);
     try {
-      await installBot(chatId, { bot_id: bot.id, scopes: readAll ? FULL_READ_SCOPES : PRIVACY_SCOPES });
+      await installBot(chatId, { bot_id: bot.id, scopes: scopesFor({ readAll, moderate }) });
       invalidateChatBots(chatId);
       void refreshGroup(chatId).catch(() => {});
       showToast(t('bots.added', { name: bot.display_name }), 'success');
@@ -223,6 +224,15 @@ export default function AddBotScreen() {
                 </Text>
               </View>
               <Switch value={readAll} onValueChange={setReadAll} trackColor={{ true: colors.warning, false: colors.border }} />
+            </View>
+            <View style={[styles.list, styles.toggle, { backgroundColor: colors.surface }]}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[styles.name, { color: colors.text }]}>{t('bots.allow_moderate')}</Text>
+                <Text style={[styles.sub, { color: moderate ? colors.warning : colors.textSecondary }]}>
+                  {moderate ? t('bots.allow_moderate_body') : t('bots.moderate_off_hint')}
+                </Text>
+              </View>
+              <Switch value={moderate} onValueChange={setModerate} trackColor={{ true: colors.warning, false: colors.border }} />
             </View>
             <Text style={[styles.sub, { color: colors.textSecondary }]}>{t('bots.consent_announced')}</Text>
           </>

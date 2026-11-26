@@ -333,6 +333,12 @@ func (r *Repository) Install(ctx context.Context, chatID, botID, actor uuid.UUID
 			return err
 		}
 	}
+	// Power over members is announced like full read (#333).
+	if hasScope(scopes, ScopeManage) {
+		if err := insertSystem(ctx, tx, chatID, actor, fmt.Sprintf("bot:moderate:%s:%s:on", actor, botID)); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
@@ -371,6 +377,15 @@ func (r *Repository) UpdateScopes(ctx context.Context, chatID, botID, actor uuid
 			return false, false, err
 		}
 		if err := rotateGroupKey(ctx, tx, chatID); err != nil {
+			return false, false, err
+		}
+	}
+	if hadManage, hasManage := hasScope(toScopes(before), ScopeManage), hasScope(scopes, ScopeManage); hadManage != hasManage {
+		state := "off"
+		if hasManage {
+			state = "on"
+		}
+		if err := insertSystem(ctx, tx, chatID, actor, fmt.Sprintf("bot:moderate:%s:%s:%s", actor, botID, state)); err != nil {
 			return false, false, err
 		}
 	}

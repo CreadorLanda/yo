@@ -86,6 +86,12 @@ func TestBotChatInfoAndDirectMessages(t *testing.T) {
 	if got := chatType(group); got != "group" {
 		t.Fatalf("group reported as %q", got)
 	}
+	r := asBot(http.MethodGet, "/api/bot/v1/chats/"+group.String())
+	var info bots.ChatInfo
+	decode(t, r, &info)
+	if info.Title == "" || len(info.Scopes) != 2 {
+		t.Fatalf("group info %+v: want its title and the two scopes granted", info)
+	}
 
 	// A message in the direct chat is an event for the bot, exactly once.
 	expect(asUser(bob, http.MethodPost, "/api/chats/"+chat.ChatID.String()+"/messages", map[string]any{

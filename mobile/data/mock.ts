@@ -275,18 +275,31 @@ export type Message = {
     | { kind: 'disappearing'; seconds: number; actorId: string }
     | {
         kind: 'group';
-        event: 'created' | 'members_added' | 'member_removed' | 'role_changed' | 'admin_handoff' | 'achievement_created' | 'achievement_awarded';
+        event:
+          | 'created'
+          | 'members_added'
+          | 'member_removed'
+          | 'role_changed'
+          | 'admin_handoff'
+          | 'achievement_created'
+          | 'achievement_awarded'
+          | 'member_muted'
+          | 'member_unmuted'
+          | 'member_banned'
+          | 'member_unbanned';
         actorId: string;
         targetIds?: string[];
         targetId?: string;
         targetName?: string;
         role?: string;
         achievementId?: string;
+        /** member_muted: unix seconds. */
+        until?: number;
       }
     | {
         /** A bot added, removed, or given or denied full read (#326). */
         kind: 'bot';
-        event: 'added' | 'removed' | 'read_all';
+        event: 'added' | 'removed' | 'read_all' | 'moderate';
         actorId: string;
         botId: string;
         on?: boolean;

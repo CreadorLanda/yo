@@ -1125,3 +1125,22 @@ func boolStr(b bool) string {
 	}
 	return "0"
 }
+
+// DeleteAsModerator removes someone else's message for everyone (#333): a
+// moderation bot's anti-spam, or an admin acting through it. Groups only,
+// never a system notice, never an admin's or moderator's message.
+func (s *Service) DeleteAsModerator(ctx context.Context, chatID uuid.UUID, msgID int64) error {
+	ok, err := s.repo.ModerateDelete(ctx, chatID, msgID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrMessageNotFound
+	}
+	msg, err := s.repo.GetMessage(ctx, chatID, msgID)
+	if err != nil {
+		return err
+	}
+	s.broadcast(ctx, chatID, "message.deleted", msg)
+	return nil
+}

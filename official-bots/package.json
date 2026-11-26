@@ -6,7 +6,8 @@
   "scripts": {
     "reminders": "bun src/reminders/main.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "moderation": "bun src/moderation/main.ts"
   },
   "dependencies": {
     "tweetnacl": "^1.0.3"

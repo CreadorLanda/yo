@@ -274,6 +274,12 @@ func (s *Service) CanSend(ctx context.Context, chatID, userID uuid.UUID, message
 	if row.PostingUntil != nil && row.PostingUntil.After(time.Now()) && roleRank(role) < roleRank(MemberRole(row.PostingPermission)) {
 		return false, nil
 	}
+	// Muted by a moderator (#333).
+	if until, err := s.repo.mutedUntil(ctx, chatID, userID); err != nil {
+		return false, err
+	} else if until != nil {
+		return false, nil
+	}
 	return roleRank(role) >= roleRank(MemberRole(minimum)), nil
 }
 
@@ -285,6 +291,12 @@ func (s *Service) CanSend(ctx context.Context, chatID, userID uuid.UUID, message
 func (s *Service) AddMembers(ctx context.Context, groupID, actor uuid.UUID, userIDs []uuid.UUID, shareHistory bool) (Group, error) {
 	if err := s.requireAdmin(ctx, groupID, actor); err != nil {
 		return Group{}, err
+	}
+	// Someone banned (#333) stays out until an admin lifts the ban.
+	if banned, err := s.repo.anyBanned(ctx, groupID, userIDs); err != nil {
+		return Group{}, err
+	} else if banned {
+		return Group{}, ErrMemberBanned
 	}
 	addedIDs, err := s.repo.AddMembersWithHistoryAndRotate(ctx, groupID, actor, userIDs, shareHistory)
 	if err != nil {
