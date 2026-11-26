@@ -140,7 +140,7 @@ import {
   formatMsgTime,
   serverMessageId,
 } from '@/data/message-map';
-import { linkReplies } from '@/data/reply-link';
+import { appendLinked, linkReplies } from '@/data/reply-link';
 import { ensureLocal, mediaIdFromURL, useCacheState } from '@/data/media-cache';
 import {
   deleteCachedMessage,
@@ -914,9 +914,9 @@ useEffect(() => {
               const withoutOpt = prev.filter(
                 (m) => !(m.fromMe && m.id.startsWith('tmp_') && m.text === mapped.text),
               );
-              return [...withoutOpt, mapped];
+              return appendLinked(withoutOpt, mapped);
             }
-            return [...prev, mapped];
+            return appendLinked(prev, mapped);
           });
           if (!mapped.fromMe && !mapped.deletedAt) {
             const mid = Number(mapped.id);
