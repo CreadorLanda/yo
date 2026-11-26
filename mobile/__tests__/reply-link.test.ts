@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { linkReplies } from '../data/reply-link';
+import { appendLinked, linkReplies } from '../data/reply-link';
 import type { Message } from '../data/mock';
 
 const msg = (over: Partial<Message>): Message =>
@@ -44,4 +44,19 @@ test('mensagens sem resposta passam intactas', () => {
   const out = linkReplies(input);
   expect(out[0]).toBe(input[0]);
   expect(out[1]).toBe(input[1]);
+});
+
+test('uma resposta que chega ao vivo tambem leva a citacao (#367)', () => {
+  const list = [msg({ id: '10', text: 'olá bot', fromMe: true })];
+  const out = appendLinked(list, msg({ id: '11', text: 'You said: olá bot', replyToId: 10 }));
+  expect(out).toHaveLength(2);
+  expect(out[1].replyTo!.text).toBe('olá bot');
+  expect(out[1].replyTo!.fromMe).toBe(true);
+  // As anteriores ficam como estavam.
+  expect(out[0]).toBe(list[0]);
+});
+
+test('ao vivo, uma resposta a algo fora da pagina fica sem citacao', () => {
+  const out = appendLinked([msg({ id: '10' })], msg({ id: '12', replyToId: 3 }));
+  expect(out[1].replyTo).toBeUndefined();
 });

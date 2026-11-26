@@ -144,6 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Mensagens
 - Uma mensagem que desistiu de enviar (a vermelho) já não prende as que se escrevem a seguir na mesma conversa: estas seguem, e a falhada fica à espera de um toque para reenviar (#364)
+- Uma resposta que chega com a conversa aberta mostra logo a citação da mensagem a que responde; antes só aparecia ao reabrir a conversa (#367)
 
 #### Sessão
 - Abrir a app a frio volta a entrar na sessão guardada. Quando outra parte da app lia a sessão ao mesmo tempo que o arranque, o arranque recebia "sem sessão" antes de a leitura acabar e mandava a pessoa para o onboarding

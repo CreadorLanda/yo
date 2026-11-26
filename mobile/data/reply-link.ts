@@ -32,3 +32,12 @@ export function linkReplies(list: Message[]): Message[] {
     };
   });
 }
+
+/**
+ * Add one message that arrived live, with its quote filled in from what is
+ * already on screen (#367). The history path links a whole page at once;
+ * a live reply needs the same, or it shows no quote until the chat reopens.
+ */
+export function appendLinked(list: Message[], message: Message): Message[] {
+  return [...list, linkReplies([...list, message])[list.length]];
+}
