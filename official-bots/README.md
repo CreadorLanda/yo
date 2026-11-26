@@ -6,6 +6,7 @@ The bots ZwoSocial runs itself. They are ordinary bots built on the TypeScript S
 |---|---|---|
 | Reminders and Scheduler | `bun run reminders` | #332 |
 | Moderation | `bun run moderation` | #333 |
+| Tasks and Standup | `bun run tasks` | #334 |
 
 ## Running
 
@@ -33,6 +34,7 @@ With Docker, from the repository root:
 docker build -f official-bots/Dockerfile -t zwosocial-reminders .
 docker run -d -e BOT_TOKEN=zsb_… -v reminders-data:/data zwosocial-reminders              # reminders
 docker run -d -e BOT_TOKEN=zsb_… -v moderation-data:/data zwosocial-reminders moderation   # moderation
+docker run -d -e BOT_TOKEN=zsb_… -v tasks-data:/data zwosocial-reminders tasks             # tasks and standups
 ```
 
 Each bot has its own account, token and data volume.
@@ -110,3 +112,35 @@ Content filters never run without full read, because the bot cannot see the mess
 - **Welcomes.** New members get a welcome and, if rules are set, an "I accept the rules" button. With rule acceptance on, newcomers are muted (up to 7 days) until they tap it. Only the newcomer can accept their own welcome.
 - **Seen by everyone.** Every mute, removal and ban is a notice in the group and an entry in the group's bot activity, and with a linked log it also appears in the mod log.
 - **Data.** The bot never stores message contents. Recent messages are kept in memory only, for a minute, to catch floods and repeats. It stores settings, warnings (kept 30 days), and the people it banned (so `/unban` works by name). A `user.data_deletion` deletes that person's warnings and records.
+
+## Tasks and Standup
+
+It works in privacy mode, with no integration needed.
+
+| Command | |
+|---|---|
+| `/task action:add text [due] [who]` | A task card with **Done** and **I'll take it** buttons. `due` is written like a reminder ("friday 18:00", "daqui a 3 dias"). When the due time comes, the bot announces it once, mentioning the assignee. |
+| `/task action:list` | Open tasks, overdue ones first, with a menu to finish several at once. |
+| `/task action:done number` / `action:assign number who` | The same, by task number (`#3`). The card updates. |
+| `/standup when [zone] [window]` | `when` is a repeating time ("every weekday 9:30", "todos os dias úteis às 9h30"), `now` to run one at once, or `off`. `window` is the minutes allowed for answers (default 120). |
+| `/digest on\|off` | On Mondays at 9:00: what was done that week, what is open, what is overdue. |
+
+### Standups
+
+Bots cannot start private chats, so the standup lives in the group:
+
+1. At the set time the bot posts a card with a form of three questions: since last time, today, and blockers.
+2. Each person answers in the app; the reply is private.
+3. When the window closes, the bot posts a summary. It lists what each person plans today, any blockers, and who did not answer.
+
+A standup missed by more than its window (the bot was down) is skipped, not run late.
+
+### Data
+
+- Answers are kept only until the summary is posted, then deleted.
+- Tasks keep their title, assignee and dates.
+- A `user.data_deletion` deletes that person's tasks and answers, and removes their name from tasks others created.
+
+### Integrations
+
+Exporting tasks to Notion, Trello or GitHub comes with the integration connectors (#337). The bot works fully without them.

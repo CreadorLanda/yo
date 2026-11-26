@@ -2,6 +2,14 @@
 
 ZwoSocial runs a few bots of its own. They are ordinary bots on the public SDK, with their own keys and in privacy mode unless a group grants more, so they get nothing a third-party bot would not. Code and operations: `official-bots/README.md`.
 
+## Tasks and Standup (#334)
+
+- **`/task`** adds, lists, finishes and assigns tasks. Each one gets a card with **Done** and **I'll take it** buttons, and the bot announces it when it comes due.
+- **`/standup`** posts a form of three questions in the group at a set time ("every weekday 9:30"). When the window closes it posts a summary with plans, blockers and who did not answer. Answers are deleted once summarised.
+- **`/digest`** sends a weekly round-up on Mondays.
+
+It works in privacy mode and needs no integration. Exporting tasks comes with the connectors (#337).
+
 ## Moderation (#333)
 
 - **Welcomes and rules.** It welcomes new members and can keep them muted until they accept the rules.
