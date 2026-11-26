@@ -25,7 +25,7 @@ import {
   senderOfServerMessage,
   type PendingSend,
 } from '@/data/db/messages';
-import { hasExhaustedRetries } from '@/data/outbox-policy';
+import { hasExhaustedRetries, nextToSend } from '@/data/outbox-policy';
 
 export { hasExhaustedRetries, MAX_SEND_ATTEMPTS } from '@/data/outbox-policy';
 
@@ -196,6 +196,7 @@ async function recordFailure(next: PendingSend, err: unknown): Promise<OutboxEve
  * Drain one chat's queue, oldest message first. Ordering is the point: two
  * messages sent offline have to arrive in the order they were written, so
  * the next one never starts until the current one either lands or gives up.
+ * One that gave up is passed over, so it never blocks the rest (#364).
  *
  * A concurrent call for the same chat is a no-op — the loop it would join
  * is already running.
@@ -205,9 +206,8 @@ export async function drainOutbox(chatId: string): Promise<void> {
   draining.add(chatId);
   try {
     for (;;) {
-      const [next] = await listPendingSends(chatId);
+      const next = nextToSend(await listPendingSends(chatId));
       if (!next) break;
-      if (next.status === 'failed') break; // waiting on a manual retry
 
       const event = await attemptSend(next);
       emit(chatId, event);
